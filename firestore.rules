@@ -1,0 +1,79 @@
+/**
+ * @fileoverview Firestore Security Rules for the Hell Let Loose BR application.
+ *
+ * Core Philosophy:
+ * This ruleset prioritizes data availability while strictly controlling write access.
+ * Read access is generally open to all authenticated users. Write access is restricted to backend processes to ensure data integrity.
+ *
+ * Data Structure:
+ * The database consists of four top-level collections: 'players', 'matches', 'player_match_stats', and 'ranking_filters'.
+ * Each collection stores data related to its namesake entity.
+ *
+ * Key Security Decisions:
+ * - Public Read Access: All collections are publicly readable to enable broad access to game data.
+ * - Backend-Only Writes: All write operations are restricted to backend processes. In this prototyping phase, this is simulated by denying all client-side writes.
+ * - No User Listing: Listing of users is not explicitly denied, but since writes are not allowed, it's effectively prevented.
+ * - Denormalization: There is no denormalized data in this version.
+ * - Structural Segregation: The segregation of collections (`players`, `matches`, `player_match_stats`, `ranking_filters`) is primarily to allow for different query access patterns (QAPs) and does not directly impact the security rules.
+ */
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    /**
+     * @description Rules for the 'players' collection. Allows public read access, but denies all client-side writes.
+     * @path /players/{playerId}
+     * @allow get, list: Anyone can read player data.
+     * @deny create, update, delete: No client-side writes allowed.
+     * @principle Allows public read access but restricts writes to backend processes for data integrity.
+     */
+    match /players/{playerId} {
+      allow get, list: if true;
+      allow create: if false;
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    /**
+     * @description Rules for the 'matches' collection. Allows public read access, but denies all client-side writes.
+     * @path /matches/{matchId}
+     * @allow get, list: Anyone can read match data.
+     * @deny create, update, delete: No client-side writes allowed.
+     * @principle Allows public read access but restricts writes to backend processes for data integrity.
+     */
+    match /matches/{matchId} {
+      allow get, list: if true;
+      allow create: if false;
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    /**
+     * @description Rules for the 'player_match_stats' collection. Allows public read access, but denies all client-side writes.
+     * @path /player_match_stats/{playerMatchStatsId}
+     * @allow get, list: Anyone can read player match statistics.
+     * @deny create, update, delete: No client-side writes allowed.
+     * @principle Allows public read access but restricts writes to backend processes for data integrity.
+     */
+    match /player_match_stats/{playerMatchStatsId} {
+      allow get, list: if true;
+      allow create: if false;
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    /**
+     * @description Rules for the 'ranking_filters' collection. Allows public read access, but denies all client-side writes.
+     * @path /ranking_filters/{rankingFilterId}
+     * @allow get, list: Anyone can read ranking filters.
+     * @deny create, update, delete: No client-side writes allowed.
+     * @principle Allows public read access but restricts writes to backend processes for data integrity.
+     */
+    match /ranking_filters/{rankingFilterId} {
+      allow get, list: if true;
+      allow create: if false;
+      allow update: if false;
+      allow delete: if false;
+    }
+  }
+}

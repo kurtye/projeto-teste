@@ -1,0 +1,205 @@
+{
+  "entities": {
+    "Player": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Player",
+      "type": "object",
+      "description": "Represents a player in the Hell Let Loose game.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Player entity."
+        },
+        "playerName": {
+          "type": "string",
+          "description": "The player's in-game name."
+        },
+        "steamId": {
+          "type": "string",
+          "description": "The player's Steam ID."
+        },
+        "matchesPlayed": {
+          "type": "number",
+          "description": "Number of matches played by the player."
+        }
+      },
+      "required": [
+        "id",
+        "playerName",
+        "steamId"
+      ]
+    },
+    "Match": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Match",
+      "type": "object",
+      "description": "Represents a single match in Hell Let Loose.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Match entity."
+        },
+        "startTime": {
+          "type": "string",
+          "description": "The date and time when the match started.",
+          "format": "date-time"
+        },
+        "durationSeconds": {
+          "type": "number",
+          "description": "The duration of the match in seconds."
+        }
+      },
+      "required": [
+        "id",
+        "startTime",
+        "durationSeconds"
+      ]
+    },
+    "PlayerMatchStats": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "PlayerMatchStats",
+      "type": "object",
+      "description": "Represents the statistics of a player in a specific match.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the PlayerMatchStats entity."
+        },
+        "playerId": {
+          "type": "string",
+          "description": "Reference to Player. (Relationship: Player 1:N PlayerMatchStats)"
+        },
+        "matchId": {
+          "type": "string",
+          "description": "Reference to Match. (Relationship: Match 1:N PlayerMatchStats)"
+        },
+        "kills": {
+          "type": "number",
+          "description": "Number of kills achieved by the player in the match."
+        },
+        "deaths": {
+          "type": "number",
+          "description": "Number of deaths of the player in the match."
+        },
+        "kdRatio": {
+          "type": "number",
+          "description": "Kill/Death ratio of the player in the match."
+        },
+        "score": {
+          "type": "number",
+          "description": "The player's score in the match."
+        }
+      },
+      "required": [
+        "id",
+        "playerId",
+        "matchId"
+      ]
+    },
+    "RankingFilter": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "RankingFilter",
+      "type": "object",
+      "description": "Represents filters used to sort leaderboard rankings, such as server, time period, and metrics.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the RankingFilter entity."
+        },
+        "filterName": {
+          "type": "string",
+          "description": "The name of the filter (e.g., 'Server', 'Time Period')."
+        },
+        "filterValue": {
+          "type": "string",
+          "description": "The value of the filter (e.g., 'US East', 'Last Week')."
+        },
+        "metric": {
+          "type": "string",
+          "description": "The specific in-game metric the filter applies to (e.g., 'Kills', 'Score')."
+        }
+      },
+      "required": [
+        "id",
+        "filterName",
+        "filterValue",
+        "metric"
+      ]
+    }
+  },
+  "auth": {
+    "providers": [
+      "password",
+      "anonymous"
+    ]
+  },
+  "firestore": {
+    "structure": [
+      {
+        "path": "/players/{playerId}",
+        "definition": {
+          "entityName": "Player",
+          "schema": {
+            "$ref": "#/backend/entities/Player"
+          },
+          "description": "Collection of player documents, each containing player information such as playerName, steamId, and matchesPlayed.",
+          "params": [
+            {
+              "name": "playerId",
+              "description": "Unique identifier for the player."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/matches/{matchId}",
+        "definition": {
+          "entityName": "Match",
+          "schema": {
+            "$ref": "#/backend/entities/Match"
+          },
+          "description": "Collection of match documents, each containing match information such as startTime and durationSeconds.",
+          "params": [
+            {
+              "name": "matchId",
+              "description": "Unique identifier for the match."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/player_match_stats/{playerMatchStatsId}",
+        "definition": {
+          "entityName": "PlayerMatchStats",
+          "schema": {
+            "$ref": "#/backend/entities/PlayerMatchStats"
+          },
+          "description": "Collection of player match statistics documents, each containing statistics for a player in a specific match, such as kills, deaths, and score. Includes playerId and matchId to reference Player and Match entities, respectively.",
+          "params": [
+            {
+              "name": "playerMatchStatsId",
+              "description": "Unique identifier for the player match statistics."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/ranking_filters/{rankingFilterId}",
+        "definition": {
+          "entityName": "RankingFilter",
+          "schema": {
+            "$ref": "#/backend/entities/RankingFilter"
+          },
+          "description": "Collection of ranking filter documents, each containing filter information such as filterName, filterValue, and metric.",
+          "params": [
+            {
+              "name": "rankingFilterId",
+              "description": "Unique identifier for the ranking filter."
+            }
+          ]
+        }
+      }
+    ],
+    "reasoning": "To efficiently manage player data, match statistics, and rankings in the Hell Let Loose BR application, I recommend the following Firestore structure. This structure prioritizes clear data separation, scalability, and efficient querying. It is designed to support the core features of the application, including global player rankings, detailed player profiles, ranking filters, and leaderboard data extraction. This approach uses denormalization to avoid complex queries and authorization independence.\n\n*   **Authorization Independence**: Achieved by avoiding hierarchical authorization dependencies, ensuring that access control can be determined directly from the document or collection being accessed, without needing to fetch parent documents. For example, no `get()` calls are required in the security rules to validate player data. Security rules rely solely on `request.auth.uid`.\n\n*   **Segregation for QAPs:** Different collections for `players`, `matches`, and `player_match_stats` enable QAPs. Each collection has a homogeneous security posture, allowing for simple and secure `list` operations. The `ranking_filters` collection is also separated to allow easy management of filters.\n\n    *   `/players`: Stores player information. Publicly readable, writeable only by backend processes that ingest data from game servers.\n    *   `/matches`: Stores match information. Publicly readable, writeable only by backend processes.\n    *   `/player_match_stats`: Stores statistics for each player in each match. Publicly readable, writeable only by backend processes.\n    *   `/ranking_filters`: Stores ranking filter configurations. Publicly readable, writeable only by admin users (backend processes).\n\nThis structure supports the required features:\n\n*   **Global Player Rankings**: Can be implemented via Cloud Functions triggered by updates to `player_match_stats`. These functions aggregate data to compute rankings, storing the results in a separate, read-optimized collection.\n*   **Detailed Player Profiles**: Easily retrieved from the `/players` collection using the `playerId`.\n*   **Ranking Filters**: Stored in the `/ranking_filters` collection and used by the application to dynamically query and display rankings."
+  }
+}
