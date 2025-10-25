@@ -32,7 +32,7 @@ const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 export async function importServerData(
   apiUrl: string
-): Promise<{ success: boolean; matchesProcessed?: number; error?: string }> {
+): Promise<{ success: boolean; matchesProcessed?: number; totalFound?: number; error?: string }> {
   console.log(`[LOG INICIAL] Função importServerData iniciada.`);
   console.log(`[LOG INICIAL] Recebido apiUrl: ${apiUrl}`);
   
@@ -138,7 +138,7 @@ export async function importServerData(
     }
 
 
-    return { success: true, matchesProcessed };
+    return { success: true, matchesProcessed, totalFound: totalMatches };
   } catch (error: any) {
     console.error('Erro na importação de dados do servidor:', error);
     return { success: false, error: error.message };

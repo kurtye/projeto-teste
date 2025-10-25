@@ -65,19 +65,27 @@ export default function AdminPage() {
     }
 
     setIsImporting(true);
-    setImportProgress(50);
-    setProgressMessage(`Iniciando importação do servidor ${selectedServer.name}... Isso pode levar vários minutos.`);
+    setImportProgress(25);
+    setProgressMessage(`Iniciando importação do servidor ${selectedServer.name}... Buscando total de partidas.`);
 
     try {
       const result = await importServerData(selectedServer.apiUrl);
 
       if (result.success) {
-        toast({
-          title: 'Importação Concluída!',
-          description: `Total de ${result.matchesProcessed} partidas processadas do servidor ${selectedServer.name}.`,
-        });
-        setProgressMessage(`Importação concluída! ${result.matchesProcessed} partidas processadas.`);
-        setImportProgress(100);
+        setImportProgress(50);
+        setProgressMessage(`${result.totalFound} partidas encontradas. Processando...`);
+        
+        // Simular o progresso final, pois o processamento real já aconteceu
+        setTimeout(() => {
+            toast({
+              title: 'Importação Concluída!',
+              description: `Total de ${result.matchesProcessed} partidas processadas de ${result.totalFound} encontradas no servidor ${selectedServer.name}. (Limitado a 10 para teste)`,
+            });
+            setProgressMessage(`Importação concluída! ${result.matchesProcessed} partidas processadas.`);
+            setImportProgress(100);
+        }, 1000);
+
+
       } else {
         throw new Error(result.error || 'Ocorreu um erro desconhecido.');
       }
@@ -88,13 +96,14 @@ export default function AdminPage() {
         description: error.message,
       });
       setProgressMessage(`Falha na importação: ${error.message}`);
-      setImportProgress(100);
+      setImportProgress(0); // Resetar em caso de falha inicial
     } finally {
+        // Atraso para o usuário poder ler a mensagem final antes de resetar a UI
       setTimeout(() => {
         setIsImporting(false);
         setImportProgress(0);
         setProgressMessage('');
-      }, 5000);
+      }, 8000);
     }
   };
 
