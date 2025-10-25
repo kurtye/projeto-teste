@@ -1,5 +1,3 @@
-'use server';
-
 // Usaremos o SDK do cliente para consistência, pois a importação é executada no servidor
 // mas dentro do contexto de uma Server Action do Next.js.
 import { initializeApp, getApps, getApp } from 'firebase/app';
