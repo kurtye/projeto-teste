@@ -97,10 +97,10 @@ export default function PlayerProfilePage({ params }: PlayerProfilePageProps) {
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
             <StatCard title="K/D Ratio" value={player.kdRatio.toFixed(2)} icon={Target} />
             <StatCard title="Win Rate" value={`${player.winRate}%`} icon={Percent} />
-            <StatCard title="Kills" value={player.kills.toLocaleString()} icon={Swords} change={`${Math.abs(killsChange)}`} changeType={killsChange >= 0 ? 'increase' : 'decrease'}/>
-            <StatCard title="Deaths" value={player.deaths.toLocaleString()} icon={Shield} change={`${Math.abs(deathsChange)}`} changeType={deathsChange >= 0 ? 'increase' : 'decrease'}/>
-            <StatCard title="Assists" value={player.assists.toLocaleString()} icon={Users} />
-            <StatCard title="Revives" value={player.revives.toLocaleString()} icon={HeartPulse} />
+            <StatCard title="Kills" value={player.kills} icon={Swords} change={`${Math.abs(killsChange)}`} changeType={killsChange >= 0 ? 'increase' : 'decrease'}/>
+            <StatCard title="Deaths" value={player.deaths} icon={Shield} change={`${Math.abs(deathsChange)}`} changeType={deathsChange >= 0 ? 'increase' : 'decrease'}/>
+            <StatCard title="Assists" value={player.assists} icon={Users} />
+            <StatCard title="Revives" value={player.revives} icon={HeartPulse} />
           </div>
           <Card className="mt-6">
             <CardHeader>

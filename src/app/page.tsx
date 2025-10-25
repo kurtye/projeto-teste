@@ -165,8 +165,8 @@ export default function Home() {
                             <span className="font-medium group-hover:text-accent transition-colors">{player.name}</span>
                           </Link>
                         </TableCell>
-                        <TableCell className="text-center">{player.kills.toLocaleString()}</TableCell>
-                        <TableCell className="text-center">{player.deaths.toLocaleString()}</TableCell>
+                        <TableCell className="text-center">{player.kills}</TableCell>
+                        <TableCell className="text-center">{player.deaths}</TableCell>
                         <TableCell className="text-center">
                           <Badge variant={player.kdRatio > 2.0 ? 'destructive' : player.kdRatio > 1.0 ? 'default' : 'secondary'} className="bg-accent/20 text-accent-foreground border-accent/30">
                             {player.kdRatio.toFixed(2)}
