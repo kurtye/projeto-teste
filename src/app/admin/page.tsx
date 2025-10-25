@@ -61,23 +61,22 @@ export default function AdminPage() {
     }
 
     setIsImporting(true);
-    setImportProgress(0);
-    setProgressMessage('Iniciando importação...');
+    setImportProgress(50); // Indica que o processo começou
+    setProgressMessage('Iniciando importação... Isso pode levar vários minutos. Você será notificado ao final.');
 
     try {
         const server = servers.find(s => s.id === selectedServer);
         if (!server) throw new Error('Servidor não encontrado');
 
-        const result = await importServerData(server.apiUrl, (progress, message) => {
-            setImportProgress(progress);
-            setProgressMessage(message);
-        });
+        const result = await importServerData(server.apiUrl);
 
       if (result.success) {
         toast({
           title: 'Importação Concluída!',
           description: `Total de ${result.matchesProcessed} partidas processadas do servidor ${selectedServer}.`,
         });
+        setProgressMessage(`Importação concluída! ${result.matchesProcessed} partidas processadas.`);
+        setImportProgress(100);
       } else {
         throw new Error(result.error || 'Ocorreu um erro desconhecido.');
       }
@@ -87,10 +86,15 @@ export default function AdminPage() {
         title: 'Falha na Importação',
         description: error.message,
       });
+       setProgressMessage(`Falha na importação: ${error.message}`);
+       setImportProgress(100); // Para indicar que terminou (com erro)
     } finally {
-      setIsImporting(false);
-      setImportProgress(0);
-      setProgressMessage('');
+      // Delay to allow user to see the final message
+      setTimeout(() => {
+        setIsImporting(false);
+        setImportProgress(0);
+        setProgressMessage('');
+      }, 5000);
     }
   };
 
@@ -133,7 +137,7 @@ export default function AdminPage() {
           {isImporting && (
             <div className="space-y-2">
               <Progress value={importProgress} />
-              <p className="text-sm text-muted-foreground">{progressMessage} ({importProgress.toFixed(0)}%)</p>
+              <p className="text-sm text-muted-foreground">{progressMessage}</p>
             </div>
           )}
         </CardContent>

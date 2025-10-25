@@ -31,12 +31,10 @@ interface MapScoreboardResponse {
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 export async function importServerData(
-  apiUrl: string,
-  onProgress: (progress: number, message: string) => void
+  apiUrl: string
 ): Promise<{ success: boolean; matchesProcessed?: number; error?: string }> {
   try {
     console.log(`Iniciando importação para: ${apiUrl}`);
-    onProgress(0, `Buscando total de partidas de ${apiUrl}...`);
     
     // 1. Obter o número total de partidas
     const totalMapsResponse = await fetch(`${apiUrl}/get_scoreboard_maps`);
@@ -46,15 +44,13 @@ export async function importServerData(
     const totalMapsData: ScoreboardMapsResponse = await totalMapsResponse.json();
     const totalMatches = totalMapsData.result.total;
     console.log(`Total de partidas encontradas: ${totalMatches}`);
-    onProgress(5, `Encontrado um total de ${totalMatches} partidas. Iniciando busca...`);
 
 
     let matchesProcessed = 0;
-    const batchSize = 100; // Processar em lotes de 100 para não sobrecarregar o Firestore
 
     for (let i = 0; i < totalMatches; i++) {
       try {
-        await delay(100); // Adiciona um pequeno delay para não sobrecarregar a API de origem
+        await delay(150); // Adiciona um pequeno delay para não sobrecarregar a API de origem
 
         const mapResponse = await fetch(`${apiUrl}/get_map_scoreboard?map_id=${i}`);
         if (!mapResponse.ok) {
@@ -84,6 +80,9 @@ export async function importServerData(
         // 3. Salvar dados dos jogadores e estatísticas da partida
         for (const playerStat of matchInfo.player_stats) {
             const playerId = playerStat.steam_id_64;
+            // Pular jogadores sem steamId
+            if (!playerId) continue;
+
             const playerDocRef = doc(db, 'players', playerId);
             const playerMatchStatsDocRef = doc(collection(db, 'player_match_stats'));
 
@@ -109,8 +108,7 @@ export async function importServerData(
         await batch.commit();
         matchesProcessed++;
         
-        const progress = (i + 1) / totalMatches * 100;
-        onProgress(progress, `Processando partida ${i + 1} de ${totalMatches}...`);
+        console.log(`Processando partida ${i + 1} de ${totalMatches}...`);
 
       } catch (innerError: any) {
         console.error(`Erro processando partida ID ${i}:`, innerError.message);
