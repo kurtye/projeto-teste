@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Select,
@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { importServerData } from './actions';
 import { Progress } from '@/components/ui/progress';
-import { Database, DownloadCloud } from 'lucide-react';
+import { Database, DownloadCloud, LinkIcon } from 'lucide-react';
 
 const servers = [
   {
@@ -44,11 +44,15 @@ const servers = [
 ];
 
 export default function AdminPage() {
-  const [selectedServer, setSelectedServer] = useState<string | null>(null);
+  const [selectedServerId, setSelectedServerId] = useState<string | null>(null);
   const [isImporting, setIsImporting] = useState(false);
   const [importProgress, setImportProgress] = useState(0);
   const [progressMessage, setProgressMessage] = useState('');
   const { toast } = useToast();
+
+  const selectedServer = useMemo(() => {
+    return servers.find(s => s.id === selectedServerId) || null;
+  }, [selectedServerId]);
 
   const handleImport = async () => {
     if (!selectedServer) {
@@ -61,19 +65,16 @@ export default function AdminPage() {
     }
 
     setIsImporting(true);
-    setImportProgress(50); // Indica que o processo começou
-    setProgressMessage('Iniciando importação... Isso pode levar vários minutos. Você será notificado ao final.');
+    setImportProgress(50);
+    setProgressMessage(`Iniciando importação do servidor ${selectedServer.name}... Isso pode levar vários minutos.`);
 
     try {
-        const server = servers.find(s => s.id === selectedServer);
-        if (!server) throw new Error('Servidor não encontrado');
-
-        const result = await importServerData(server.apiUrl);
+      const result = await importServerData(selectedServer.apiUrl);
 
       if (result.success) {
         toast({
           title: 'Importação Concluída!',
-          description: `Total de ${result.matchesProcessed} partidas processadas do servidor ${selectedServer}.`,
+          description: `Total de ${result.matchesProcessed} partidas processadas do servidor ${selectedServer.name}.`,
         });
         setProgressMessage(`Importação concluída! ${result.matchesProcessed} partidas processadas.`);
         setImportProgress(100);
@@ -86,10 +87,9 @@ export default function AdminPage() {
         title: 'Falha na Importação',
         description: error.message,
       });
-       setProgressMessage(`Falha na importação: ${error.message}`);
-       setImportProgress(100); // Para indicar que terminou (com erro)
+      setProgressMessage(`Falha na importação: ${error.message}`);
+      setImportProgress(100);
     } finally {
-      // Delay to allow user to see the final message
       setTimeout(() => {
         setIsImporting(false);
         setImportProgress(0);
@@ -113,7 +113,7 @@ export default function AdminPage() {
               Selecione o Servidor
             </label>
             <Select
-              onValueChange={setSelectedServer}
+              onValueChange={setSelectedServerId}
               disabled={isImporting}
             >
               <SelectTrigger id="server" className="w-full md:w-1/3">
@@ -128,6 +128,20 @@ export default function AdminPage() {
               </SelectContent>
             </Select>
           </div>
+
+          {selectedServer && (
+            <Card className="bg-muted/30">
+              <CardContent className="pt-6">
+                <p className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                  <LinkIcon className="h-4 w-4" />
+                  API URL a ser chamada:
+                </p>
+                <code className="text-sm text-accent font-mono break-all">
+                  {selectedServer.apiUrl}/get_scoreboard_maps
+                </code>
+              </CardContent>
+            </Card>
+          )}
 
           <Button onClick={handleImport} disabled={isImporting || !selectedServer}>
             <DownloadCloud className={`mr-2 h-4 w-4 ${isImporting ? 'animate-spin' : ''}`} />
