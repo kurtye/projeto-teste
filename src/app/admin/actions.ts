@@ -20,8 +20,8 @@ interface PlayerStats {
 interface MapScoreboardResponse {
   result: {
     id: number;
-    start_time: string; // "YYYY-MM-DD HH:mm:ss"
-    end_time: string; // "YYYY-MM-DD HH:mm:ss"
+    start: string; // "YYYY-MM-DD HH:mm:ss"
+    end: string; // "YYYY-MM-DD HH:mm:ss"
     player_stats: PlayerStats[];
     // Adicione outros campos da partida que você precisar
   }
@@ -92,10 +92,10 @@ export async function importServerData(
 
         // 2. Salvar dados da partida
         const matchDocRef = doc(db, 'matches', matchInfo.id.toString());
-        const matchDuration = new Date(matchInfo.end_time).getTime() - new Date(matchInfo.start_time).getTime();
+        const matchDuration = new Date(matchInfo.end).getTime() - new Date(matchInfo.start).getTime();
         batch.set(matchDocRef, {
             id: matchInfo.id.toString(),
-            startTime: matchInfo.start_time,
+            startTime: matchInfo.start,
             durationSeconds: Math.round(matchDuration / 1000),
         });
 
