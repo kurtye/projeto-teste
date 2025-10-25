@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useTransition } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Select,
@@ -11,9 +11,9 @@ import {
 } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
-import { importServerData } from './actions';
+import { importServerData, getLastImportedMatchId } from './actions';
 import { Progress } from '@/components/ui/progress';
-import { Database, DownloadCloud, LinkIcon } from 'lucide-react';
+import { Database, DownloadCloud, LinkIcon, History, ServerIcon } from 'lucide-react';
 
 const servers = [
   {
@@ -48,11 +48,27 @@ export default function AdminPage() {
   const [isImporting, setIsImporting] = useState(false);
   const [importProgress, setImportProgress] = useState(0);
   const [progressMessage, setProgressMessage] = useState('');
+  const [lastImportedId, setLastImportedId] = useState<number | null>(null);
+  const [isFetchingLastId, startFetchingLastId] = useTransition();
+
   const { toast } = useToast();
 
   const selectedServer = useMemo(() => {
     return servers.find(s => s.id === selectedServerId) || null;
   }, [selectedServerId]);
+
+  useEffect(() => {
+    if (selectedServer) {
+      startFetchingLastId(async () => {
+        setLastImportedId(null); // Reset while fetching
+        const id = await getLastImportedMatchId(selectedServer.name);
+        setLastImportedId(id);
+      });
+    } else {
+      setLastImportedId(null);
+    }
+  }, [selectedServer]);
+
 
   const handleImport = async () => {
     if (!selectedServer) {
@@ -81,6 +97,10 @@ export default function AdminPage() {
           title: 'Importação Concluída!',
           description: `Total de ${result.matchesProcessed} novas partidas processadas do servidor ${selectedServer.name}.`,
         });
+
+        // Atualiza o último ID importado na UI
+        const newLastId = await getLastImportedMatchId(selectedServer.name);
+        setLastImportedId(newLastId);
 
       } else {
         throw new Error(result.error || 'Ocorreu um erro desconhecido na importação.');
@@ -134,12 +154,19 @@ export default function AdminPage() {
           </div>
 
           {selectedServer && (
+            <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
             <Card className="bg-muted/30">
-              <CardContent className="pt-6 space-y-4">
+              <CardHeader className='pb-2'>
+                <CardTitle className='text-base flex items-center gap-2'>
+                  <ServerIcon className="h-4 w-4 text-muted-foreground" />
+                  <span>Informações do Servidor</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="pt-2 space-y-4">
                 <div>
                   <p className="text-sm font-medium text-muted-foreground flex items-center gap-2">
                     <LinkIcon className="h-4 w-4" />
-                    API URL a ser chamada para obter o total:
+                    API URL (get_scoreboard_maps):
                   </p>
                   <code className="text-sm text-accent font-mono break-all">
                     {selectedServer.apiUrl}/get_scoreboard_maps
@@ -148,7 +175,7 @@ export default function AdminPage() {
                 <div>
                    <p className="text-sm font-medium text-muted-foreground flex items-center gap-2">
                     <LinkIcon className="h-4 w-4" />
-                    API URL a ser chamada para obter detalhes da partida (ex: ID 1):
+                    API URL (get_map_scoreboard):
                   </p>
                   <code className="text-sm text-accent font-mono break-all">
                     {selectedServer.apiUrl}/get_map_scoreboard?map_id=1
@@ -156,6 +183,28 @@ export default function AdminPage() {
                 </div>
               </CardContent>
             </Card>
+
+            <Card className="bg-muted/30">
+              <CardHeader className='pb-2'>
+                <CardTitle className='text-base flex items-center gap-2'>
+                  <History className="h-4 w-4 text-muted-foreground" />
+                  <span>Status da Importação</span>
+                </CardTitle>
+              </CardHeader>
+               <CardContent className="pt-2">
+                  <p className="text-sm font-medium text-muted-foreground">
+                    Última partida importada:
+                  </p>
+                  {isFetchingLastId ? (
+                     <p className="text-lg font-bold text-accent">Buscando...</p>
+                  ): (
+                    <p className="text-lg font-bold text-accent">
+                      {lastImportedId !== null ? `ID #${lastImportedId}` : 'Nenhuma importação encontrada.'}
+                    </p>
+                  )}
+               </CardContent>
+            </Card>
+            </div>
           )}
 
           <Button onClick={handleImport} disabled={isImporting || !selectedServer}>

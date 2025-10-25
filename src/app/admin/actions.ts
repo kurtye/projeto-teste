@@ -85,6 +85,32 @@ async function fetchAllMatchIds(apiUrl: string, fetchOptions: RequestInit): Prom
     }
 }
 
+export async function getLastImportedMatchId(serverName: string): Promise<number> {
+  if (!serverName) {
+    return 0;
+  }
+  
+  console.log(`[LOG] Buscando último ID de partida para o servidor: ${serverName}`);
+  try {
+    const matchesRef = collection(db, 'servers', serverName, 'matches');
+    const q = query(matchesRef, orderBy('numeric_id', 'desc'), limit(1));
+    const querySnapshot = await getDocs(q);
+
+    if (!querySnapshot.empty) {
+      const lastId = querySnapshot.docs[0].data().numeric_id;
+      console.log(`[LOG] Último ID encontrado: ${lastId}`);
+      return lastId;
+    }
+  } catch (error) {
+    console.error(`Erro ao buscar último ID de partida para ${serverName}:`, error);
+    // Retorna 0 em caso de erro para não quebrar a UI
+    return 0;
+  }
+
+  console.log(`[LOG] Nenhum ID de partida encontrado para ${serverName}.`);
+  return 0;
+}
+
 
 export async function importServerData(
   serverName: string,
@@ -100,14 +126,7 @@ export async function importServerData(
     };
     
     // 1. Obter o último ID de partida salvo para este servidor
-    const matchesRef = collection(db, 'servers', serverName, 'matches');
-    const q = query(matchesRef, orderBy('numeric_id', 'desc'), limit(1));
-    const querySnapshot = await getDocs(q);
-    
-    let lastImportedId = 0;
-    if (!querySnapshot.empty) {
-      lastImportedId = querySnapshot.docs[0].data().numeric_id;
-    }
+    const lastImportedId = await getLastImportedMatchId(serverName);
     console.log(`[LOG] Último ID de partida importado para ${serverName}: ${lastImportedId}`);
 
 
