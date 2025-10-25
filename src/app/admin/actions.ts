@@ -33,9 +33,10 @@ const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 export async function importServerData(
   apiUrl: string
 ): Promise<{ success: boolean; matchesProcessed?: number; error?: string }> {
+  console.log(`[LOG INICIAL] Função importServerData iniciada.`);
+  console.log(`[LOG INICIAL] Recebido apiUrl: ${apiUrl}`);
+  
   try {
-    console.log(`Iniciando importação para: ${apiUrl}`);
-    
     const fetchOptions = {
         headers: {
             'Content-Type': 'application/json',
@@ -60,9 +61,13 @@ export async function importServerData(
 
     let matchesProcessed = 0;
 
-    for (let i = 0; i < totalMatches; i++) {
+    // Limita a 10 para teste inicial
+    const loopLimit = Math.min(totalMatches, 10);
+    console.log(`Iniciando loop de importação para as primeiras ${loopLimit} partidas.`);
+
+    for (let i = 0; i < loopLimit; i++) {
       try {
-        await delay(150); // Adiciona um pequeno delay para não sobrecarregar a API de origem
+        await delay(200); // Adiciona um delay para não sobrecarregar a API
         
         const mapUrl = `${apiUrl}/get_map_scoreboard?map_id=${i}`;
         console.log(`Buscando dados da partida de: ${mapUrl}`);
@@ -124,7 +129,7 @@ export async function importServerData(
         await batch.commit();
         matchesProcessed++;
         
-        console.log(`Processando partida ${i + 1} de ${totalMatches}...`);
+        console.log(`Processando partida ${i + 1} de ${loopLimit}...`);
 
       } catch (innerError: any) {
         console.error(`Erro processando partida ID ${i}:`, innerError.message);
