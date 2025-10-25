@@ -72,19 +72,19 @@ export default function AdminPage() {
       const result = await importServerData(selectedServer.apiUrl);
 
       if (result.success) {
-        setImportProgress(50);
-        const totalToProcess = Math.min(result.totalFound || 0, 10);
-        setProgressMessage(`${result.totalFound} partidas encontradas. Processando as primeiras ${totalToProcess}...`);
+        const totalFound = result.totalFound || 0;
+        const totalToProcess = Math.min(totalFound, 10);
         
-        // Simular o progresso final. O trabalho real já foi feito no servidor.
+        setProgressMessage(`${totalFound} partidas encontradas. Processando as primeiras ${totalToProcess}... (Buscando partida ${result.matchesProcessed || 0} de ${totalToProcess})`);
+
         setTimeout(() => {
             setImportProgress(100);
             toast({
               title: 'Importação Concluída!',
-              description: `Total de ${result.matchesProcessed} partidas processadas de ${result.totalFound} encontradas no servidor ${selectedServer.name}. (Limitado a 10 para teste)`,
+              description: `Total de ${result.matchesProcessed} partidas processadas de ${totalFound} encontradas no servidor ${selectedServer.name}. (Limitado a 10 para teste)`,
             });
             setProgressMessage(`Importação concluída! ${result.matchesProcessed} partidas processadas.`);
-        }, 1500); // Atraso para o usuário ver a mensagem intermediária
+        }, 1500); 
 
       } else {
         throw new Error(result.error || 'Ocorreu um erro desconhecido na importação.');
@@ -96,9 +96,8 @@ export default function AdminPage() {
         description: error.message,
       });
       setProgressMessage(`Falha na importação: ${error.message}`);
-      setImportProgress(0); // Resetar progresso em caso de falha
+      setImportProgress(0);
     } finally {
-        // Atraso para o usuário poder ler a mensagem final antes de resetar a UI
       setTimeout(() => {
         setIsImporting(false);
         setImportProgress(0);
@@ -140,14 +139,25 @@ export default function AdminPage() {
 
           {selectedServer && (
             <Card className="bg-muted/30">
-              <CardContent className="pt-6">
-                <p className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                  <LinkIcon className="h-4 w-4" />
-                  API URL a ser chamada para obter o total:
-                </p>
-                <code className="text-sm text-accent font-mono break-all">
-                  {selectedServer.apiUrl}/get_scoreboard_maps
-                </code>
+              <CardContent className="pt-6 space-y-4">
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                    <LinkIcon className="h-4 w-4" />
+                    API URL a ser chamada para obter o total:
+                  </p>
+                  <code className="text-sm text-accent font-mono break-all">
+                    {selectedServer.apiUrl}/get_scoreboard_maps
+                  </code>
+                </div>
+                <div>
+                   <p className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                    <LinkIcon className="h-4 w-4" />
+                    API URL a ser chamada para obter detalhes da partida (ex: ID 1):
+                  </p>
+                  <code className="text-sm text-accent font-mono break-all">
+                    {selectedServer.apiUrl}/get_map_scoreboard?map_id=1
+                  </code>
+                </div>
               </CardContent>
             </Card>
           )}
