@@ -1,7 +1,7 @@
 'use server';
 
 import { db } from '@/firebase/server';
-import { collection, writeBatch, doc } from 'firebase/firestore';
+import { collection, writeBatch, doc, query, orderBy, limit, getDocs } from 'firebase/firestore';
 
 interface ScoreboardMapsResponse {
   result: {
@@ -43,8 +43,7 @@ export async function importServerData(
   serverName: string,
   apiUrl: string
 ): Promise<{ success: boolean; matchesProcessed?: number; totalFound?: number; error?: string }> {
-  console.log(`[LOG INICIAL] Função importServerData iniciada.`);
-  console.log(`[LOG INICIAL] Recebido serverName: ${serverName}, apiUrl: ${apiUrl}`);
+  console.log(`[LOG INICIAL] Função importServerData iniciada para o servidor: ${serverName}`);
   
   try {
     const fetchOptions = {
@@ -53,36 +52,54 @@ export async function importServerData(
         }
     };
     
-    // 1. Obter o número total de partidas e a lista de IDs
+    // 1. Obter o último ID de partida salvo para este servidor
+    const matchesRef = collection(db, 'servers', serverName, 'matches');
+    const q = query(matchesRef, orderBy('numeric_id', 'desc'), limit(1));
+    const querySnapshot = await getDocs(q);
+    
+    let lastImportedId = 0;
+    if (!querySnapshot.empty) {
+      lastImportedId = querySnapshot.docs[0].data().numeric_id;
+    }
+    console.log(`Último ID de partida importado para ${serverName}: ${lastImportedId}`);
+
+
+    // 2. Obter a lista completa de IDs de partidas da API
     const totalMapsUrl = `${apiUrl}/get_scoreboard_maps`;
-    console.log(`Buscando total de mapas de: ${totalMapsUrl}`);
+    console.log(`Buscando lista de partidas de: ${totalMapsUrl}`);
     const totalMapsResponse = await fetch(totalMapsUrl, fetchOptions);
 
     if (!totalMapsResponse.ok) {
         const errorText = await totalMapsResponse.text();
-        console.error(`Falha ao buscar total de mapas. Status: ${totalMapsResponse.status}, Corpo: ${errorText}`);
-        throw new Error(`Falha ao buscar o total de mapas: ${totalMapsResponse.statusText} - ${errorText}`);
+        console.error(`Falha ao buscar lista de mapas. Status: ${totalMapsResponse.status}, Corpo: ${errorText}`);
+        throw new Error(`Falha ao buscar a lista de mapas: ${totalMapsResponse.statusText} - ${errorText}`);
     }
 
     const totalMapsData: ScoreboardMapsResponse = await totalMapsResponse.json();
-    const totalMatches = totalMapsData.result.total;
-    const matchIds = totalMapsData.result.maps.map(m => m.id);
-    console.log(`Total de partidas encontradas: ${totalMatches}`);
+    const allMatchIds = totalMapsData.result.maps.map(m => m.id);
+    const totalMatchesApi = totalMapsData.result.total;
+    
+    // 3. Filtrar para obter apenas os IDs de partidas que ainda não foram importados
+    const matchIdsToImport = allMatchIds.filter(id => id > lastImportedId);
+    console.log(`Total de partidas na API: ${totalMatchesApi}. Novas partidas a importar: ${matchIdsToImport.length}`);
 
+    if (matchIdsToImport.length === 0) {
+      return { success: true, matchesProcessed: 0, totalFound: totalMatchesApi };
+    }
 
     let matchesProcessed = 0;
 
-    // Limita a 10 para teste inicial
-    const loopLimit = Math.min(matchIds.length, 10);
-    console.log(`Iniciando loop de importação para as primeiras ${loopLimit} partidas.`);
+    // Limita a 500 por execução
+    const loopLimit = Math.min(matchIdsToImport.length, 500);
+    console.log(`Iniciando loop de importação para as próximas ${loopLimit} partidas.`);
 
     for (let i = 0; i < loopLimit; i++) {
-      const matchId = matchIds[i];
+      const matchId = matchIdsToImport[i];
       try {
         await delay(200); // Adiciona um delay para não sobrecarregar a API
         
         const mapUrl = `${apiUrl}/get_map_scoreboard?map_id=${matchId}`;
-        console.log(`Buscando dados da partida de: ${mapUrl}`);
+        
         const mapResponse = await fetch(mapUrl, fetchOptions);
 
         if (!mapResponse.ok) {
@@ -101,11 +118,12 @@ export async function importServerData(
 
         const batch = writeBatch(db);
 
-        // 2. Salvar dados da partida na subcoleção do servidor
+        // 4. Salvar dados da partida na subcoleção do servidor
         const matchDocRef = doc(db, 'servers', serverName, 'matches', matchInfo.id.toString());
-        batch.set(matchDocRef, matchInfo); // Salva o objeto inteiro da partida
+        // Adicionamos o `numeric_id` para facilitar a ordenação
+        batch.set(matchDocRef, { ...matchInfo, numeric_id: matchInfo.id });
 
-        // 3. Salvar dados dos jogadores e estatísticas da partida
+        // 5. Salvar dados dos jogadores e estatísticas da partida
         for (const playerStat of matchInfo.player_stats) {
             const playerId = playerStat.steam_id_64;
             // Pular jogadores sem steamId
@@ -130,7 +148,6 @@ export async function importServerData(
                 kills: playerStat.kills,
                 deaths: playerStat.deaths,
                 kdRatio: playerStat.deaths > 0 ? playerStat.kills / playerStat.deaths : playerStat.kills,
-                // Adicione outros campos de stats se disponíveis
             });
         }
         
@@ -141,12 +158,11 @@ export async function importServerData(
 
       } catch (innerError: any) {
         console.error(`Erro processando partida ID ${matchId}:`, innerError.message);
-        // Continua para a próxima partida mesmo se uma falhar
       }
     }
 
 
-    return { success: true, matchesProcessed, totalFound: totalMatches };
+    return { success: true, matchesProcessed, totalFound: totalMatchesApi };
   } catch (error: any) {
     console.error('Erro na importação de dados do servidor:', error);
     return { success: false, error: error.message };

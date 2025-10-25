@@ -74,12 +74,12 @@ export default function AdminPage() {
       if (result.success) {
         const totalFound = result.totalFound || 0;
         
-        setProgressMessage(`${totalFound} partidas encontradas. Foram processadas ${result.matchesProcessed} partidas.`);
+        setProgressMessage(`${totalFound} partidas encontradas na API. Foram processadas ${result.matchesProcessed} novas partidas.`);
 
         setImportProgress(100);
         toast({
           title: 'Importação Concluída!',
-          description: `Total de ${result.matchesProcessed} partidas processadas de ${totalFound} encontradas no servidor ${selectedServer.name}.`,
+          description: `Total de ${result.matchesProcessed} novas partidas processadas do servidor ${selectedServer.name}.`,
         });
 
       } else {
