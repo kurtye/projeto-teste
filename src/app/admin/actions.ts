@@ -6,6 +6,7 @@ import { collection, writeBatch, doc, query, orderBy, limit, getDocs } from 'fir
 interface ScoreboardMapsResponse {
   result: {
     total: number;
+    page_size: number;
     maps: { id: number }[];
   };
 }
@@ -39,6 +40,52 @@ interface PlayerStats {
 // Função para fazer uma pausa
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
+async function fetchAllMatchIds(apiUrl: string, fetchOptions: RequestInit): Promise<number[]> {
+    let allIds: number[] = [];
+    let currentPage = 1;
+    let totalPages = 1;
+
+    console.log('[LOG] Iniciando busca de todos os IDs de partida...');
+
+    try {
+        do {
+            const url = `${apiUrl}/get_scoreboard_maps?page=${currentPage}&limit=100`;
+            console.log(`[LOG] Buscando página ${currentPage} de IDs de: ${url}`);
+            const response = await fetch(url, fetchOptions);
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error(`Falha ao buscar a página ${currentPage} de mapas. Status: ${response.status}, Corpo: ${errorText}`);
+                throw new Error(`Falha ao buscar a lista de mapas na página ${currentPage}: ${response.statusText}`);
+            }
+
+            const data: ScoreboardMapsResponse = await response.json();
+            
+            if (currentPage === 1) {
+                const totalMatches = data.result.total;
+                const pageSize = data.result.page_size;
+                totalPages = Math.ceil(totalMatches / pageSize);
+                console.log(`[LOG] Total de partidas encontrado: ${totalMatches}. Total de páginas a buscar: ${totalPages}.`);
+            }
+
+            const pageIds = data.result.maps.map(m => m.id);
+            allIds = allIds.concat(pageIds);
+            console.log(`[LOG] ${pageIds.length} IDs adicionados. Total de IDs acumulados: ${allIds.length}`);
+            
+            currentPage++;
+            await delay(200); // Pequeno delay entre as chamadas de página
+
+        } while (currentPage <= totalPages);
+
+        console.log(`[LOG] Busca de IDs concluída. Total de IDs encontrados: ${allIds.length}`);
+        return allIds;
+    } catch (error) {
+        console.error("Erro ao buscar todos os IDs de partida:", error);
+        throw error; // Re-throw the error to be caught by the main function
+    }
+}
+
+
 export async function importServerData(
   serverName: string,
   apiUrl: string
@@ -61,29 +108,19 @@ export async function importServerData(
     if (!querySnapshot.empty) {
       lastImportedId = querySnapshot.docs[0].data().numeric_id;
     }
-    console.log(`Último ID de partida importado para ${serverName}: ${lastImportedId}`);
+    console.log(`[LOG] Último ID de partida importado para ${serverName}: ${lastImportedId}`);
 
 
-    // 2. Obter a lista completa de IDs de partidas da API
-    const totalMapsUrl = `${apiUrl}/get_scoreboard_maps`;
-    console.log(`Buscando lista de partidas de: ${totalMapsUrl}`);
-    const totalMapsResponse = await fetch(totalMapsUrl, fetchOptions);
-
-    if (!totalMapsResponse.ok) {
-        const errorText = await totalMapsResponse.text();
-        console.error(`Falha ao buscar lista de mapas. Status: ${totalMapsResponse.status}, Corpo: ${errorText}`);
-        throw new Error(`Falha ao buscar a lista de mapas: ${totalMapsResponse.statusText} - ${errorText}`);
-    }
-
-    const totalMapsData: ScoreboardMapsResponse = await totalMapsResponse.json();
-    const allMatchIds = totalMapsData.result.maps.map(m => m.id);
-    const totalMatchesApi = totalMapsData.result.total;
+    // 2. Obter a lista completa de IDs de partidas da API, paginando
+    const allMatchIds = await fetchAllMatchIds(apiUrl, fetchOptions);
+    const totalMatchesApi = allMatchIds.length;
     
     // 3. Filtrar para obter apenas os IDs de partidas que ainda não foram importados e ordenar em ordem crescente
     const matchIdsToImport = allMatchIds.filter(id => id > lastImportedId).sort((a, b) => a - b);
-    console.log(`Total de partidas na API: ${totalMatchesApi}. Novas partidas a importar: ${matchIdsToImport.length}`);
+    console.log(`[LOG] Total de partidas na API: ${totalMatchesApi}. Novas partidas a importar: ${matchIdsToImport.length}`);
 
     if (matchIdsToImport.length === 0) {
+      console.log("[LOG] Nenhuma partida nova para importar.");
       return { success: true, matchesProcessed: 0, totalFound: totalMatchesApi };
     }
 
@@ -91,7 +128,7 @@ export async function importServerData(
 
     // Limita a 500 por execução
     const loopLimit = Math.min(matchIdsToImport.length, 500);
-    console.log(`Iniciando loop de importação para as próximas ${loopLimit} partidas.`);
+    console.log(`[LOG] Iniciando loop de importação para as próximas ${loopLimit} partidas (do ID ${matchIdsToImport[0]} ao ID ${matchIdsToImport[loopLimit - 1]}).`);
 
     for (let i = 0; i < loopLimit; i++) {
       const matchId = matchIdsToImport[i];
@@ -100,6 +137,8 @@ export async function importServerData(
         
         const mapUrl = `${apiUrl}/get_map_scoreboard?map_id=${matchId}`;
         
+        console.log(`[LOG] Processando partida ${i + 1} de ${loopLimit} (ID: ${matchId}). URL: ${mapUrl}`);
+
         const mapResponse = await fetch(mapUrl, fetchOptions);
 
         if (!mapResponse.ok) {
@@ -153,18 +192,16 @@ export async function importServerData(
         
         await batch.commit();
         matchesProcessed++;
-        
-        console.log(`Processando partida ${i + 1} de ${loopLimit} (ID: ${matchId})...`);
 
       } catch (innerError: any) {
         console.error(`Erro processando partida ID ${matchId}:`, innerError.message);
       }
     }
 
-
+    console.log(`[LOG FINAL] Importação concluída. ${matchesProcessed} partidas processadas.`);
     return { success: true, matchesProcessed, totalFound: totalMatchesApi };
   } catch (error: any) {
-    console.error('Erro na importação de dados do servidor:', error);
+    console.error('[ERRO GERAL] Erro na importação de dados do servidor:', error);
     return { success: false, error: error.message };
   }
 }
