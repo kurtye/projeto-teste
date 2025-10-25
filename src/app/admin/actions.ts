@@ -65,7 +65,8 @@ export async function importServerData(
     const loopLimit = Math.min(totalMatches, 10);
     console.log(`Iniciando loop de importação para as primeiras ${loopLimit} partidas.`);
 
-    for (let i = 0; i < loopLimit; i++) {
+    // Ajustado para começar de 1, como solicitado
+    for (let i = 1; i <= loopLimit; i++) {
       try {
         await delay(200); // Adiciona um delay para não sobrecarregar a API
         
@@ -129,7 +130,7 @@ export async function importServerData(
         await batch.commit();
         matchesProcessed++;
         
-        console.log(`Processando partida ${i + 1} de ${loopLimit}...`);
+        console.log(`Processando partida ${i} de ${loopLimit}...`);
 
       } catch (innerError: any) {
         console.error(`Erro processando partida ID ${i}:`, innerError.message);

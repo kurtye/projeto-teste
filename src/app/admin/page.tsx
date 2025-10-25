@@ -73,9 +73,18 @@ export default function AdminPage() {
 
       if (result.success) {
         setImportProgress(50);
-        setProgressMessage(`${result.totalFound} partidas encontradas. Processando...`);
         
-        // Simular o progresso final, pois o processamento real já aconteceu
+        const totalToProcess = Math.min(result.totalFound || 0, 10);
+        setProgressMessage(`${result.totalFound} partidas encontradas. Processando as primeiras ${totalToProcess}...`);
+        
+        // Simular o progresso final com base nos dados processados
+        // A lógica real já ocorreu no servidor
+        setTimeout(() => {
+            const processedPercentage = totalToProcess > 0 ? ( (result.matchesProcessed || 0) / totalToProcess ) * 50 : 0;
+            setImportProgress(50 + processedPercentage);
+            setProgressMessage(`Buscando partida ${result.matchesProcessed || 0} de ${totalToProcess}... URL: ${selectedServer.apiUrl}/get_map_scoreboard?map_id=${result.matchesProcessed}`);
+        }, 500);
+
         setTimeout(() => {
             toast({
               title: 'Importação Concluída!',
@@ -83,7 +92,7 @@ export default function AdminPage() {
             });
             setProgressMessage(`Importação concluída! ${result.matchesProcessed} partidas processadas.`);
             setImportProgress(100);
-        }, 1000);
+        }, 1000 + (totalToProcess * 250)); // Simula um delay por partida
 
 
       } else {
