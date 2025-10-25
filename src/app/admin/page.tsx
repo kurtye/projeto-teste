@@ -80,9 +80,14 @@ export default function AdminPage() {
         // Simular o progresso final com base nos dados processados
         // A lógica real já ocorreu no servidor
         setTimeout(() => {
-            const processedPercentage = totalToProcess > 0 ? ( (result.matchesProcessed || 0) / totalToProcess ) * 50 : 0;
+            const processedCount = result.matchesProcessed || 0;
+            const processedPercentage = totalToProcess > 0 ? (processedCount / totalToProcess) * 50 : 0;
             setImportProgress(50 + processedPercentage);
-            setProgressMessage(`Buscando partida ${result.matchesProcessed || 0} de ${totalToProcess}... URL: ${selectedServer.apiUrl}/get_map_scoreboard?map_id=${result.matchesProcessed}`);
+            // Mostra o ID da partida que está sendo buscada (o próximo a ser buscado seria `processedCount + 1`)
+            const nextMatchId = processedCount + 1;
+            if (nextMatchId <= totalToProcess) {
+              setProgressMessage(`Buscando partida ${nextMatchId} de ${totalToProcess}... URL: ${selectedServer.apiUrl}/get_map_scoreboard?map_id=${nextMatchId}`);
+            }
         }, 500);
 
         setTimeout(() => {
