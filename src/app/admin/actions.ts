@@ -6,8 +6,27 @@ import { collection, writeBatch, doc } from 'firebase/firestore';
 interface ScoreboardMapsResponse {
   result: {
     total: number;
+    maps: { id: number }[];
   };
 }
+
+// Interface para o objeto de partida retornado pela API
+interface MatchDetails {
+    id: number;
+    creation_time: string;
+    start: string;
+    end: string;
+    server_number: number;
+    map_name: string;
+    player_stats: PlayerStats[];
+    // Incluímos todos os outros campos que podem vir no objeto
+    [key: string]: any;
+}
+
+interface MapScoreboardResponse {
+  result: MatchDetails;
+}
+
 
 interface PlayerStats {
     steam_id_64: string;
@@ -17,24 +36,15 @@ interface PlayerStats {
     // Adicione outros campos que você precisar
 }
 
-interface MapScoreboardResponse {
-  result: {
-    id: number;
-    start: string; // "YYYY-MM-DD HH:mm:ss"
-    end: string; // "YYYY-MM-DD HH:mm:ss"
-    player_stats: PlayerStats[];
-    // Adicione outros campos da partida que você precisar
-  }
-}
-
 // Função para fazer uma pausa
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 export async function importServerData(
+  serverName: string,
   apiUrl: string
 ): Promise<{ success: boolean; matchesProcessed?: number; totalFound?: number; error?: string }> {
   console.log(`[LOG INICIAL] Função importServerData iniciada.`);
-  console.log(`[LOG INICIAL] Recebido apiUrl: ${apiUrl}`);
+  console.log(`[LOG INICIAL] Recebido serverName: ${serverName}, apiUrl: ${apiUrl}`);
   
   try {
     const fetchOptions = {
@@ -43,7 +53,7 @@ export async function importServerData(
         }
     };
     
-    // 1. Obter o número total de partidas
+    // 1. Obter o número total de partidas e a lista de IDs
     const totalMapsUrl = `${apiUrl}/get_scoreboard_maps`;
     console.log(`Buscando total de mapas de: ${totalMapsUrl}`);
     const totalMapsResponse = await fetch(totalMapsUrl, fetchOptions);
@@ -56,27 +66,28 @@ export async function importServerData(
 
     const totalMapsData: ScoreboardMapsResponse = await totalMapsResponse.json();
     const totalMatches = totalMapsData.result.total;
+    const matchIds = totalMapsData.result.maps.map(m => m.id);
     console.log(`Total de partidas encontradas: ${totalMatches}`);
 
 
     let matchesProcessed = 0;
 
     // Limita a 10 para teste inicial
-    const loopLimit = Math.min(totalMatches, 10);
+    const loopLimit = Math.min(matchIds.length, 10);
     console.log(`Iniciando loop de importação para as primeiras ${loopLimit} partidas.`);
 
-    // Ajustado para começar de 1, como solicitado
-    for (let i = 1; i <= loopLimit; i++) {
+    for (let i = 0; i < loopLimit; i++) {
+      const matchId = matchIds[i];
       try {
         await delay(200); // Adiciona um delay para não sobrecarregar a API
         
-        const mapUrl = `${apiUrl}/get_map_scoreboard?map_id=${i}`;
+        const mapUrl = `${apiUrl}/get_map_scoreboard?map_id=${matchId}`;
         console.log(`Buscando dados da partida de: ${mapUrl}`);
         const mapResponse = await fetch(mapUrl, fetchOptions);
 
         if (!mapResponse.ok) {
           const errorText = await mapResponse.text();
-          console.warn(`Falha ao buscar partida ID ${i}. Status: ${mapResponse.status}. Corpo: ${errorText}. Pulando.`);
+          console.warn(`Falha ao buscar partida ID ${matchId}. Status: ${mapResponse.status}. Corpo: ${errorText}. Pulando.`);
           continue;
         }
 
@@ -84,20 +95,15 @@ export async function importServerData(
         const matchInfo = mapData.result;
 
         if (!matchInfo || !matchInfo.player_stats) {
-            console.warn(`Dados da partida ID ${i} estão incompletos ou nulos. Pulando.`);
+            console.warn(`Dados da partida ID ${matchId} estão incompletos ou nulos. Pulando.`);
             continue;
         }
 
         const batch = writeBatch(db);
 
-        // 2. Salvar dados da partida
-        const matchDocRef = doc(db, 'matches', matchInfo.id.toString());
-        const matchDuration = new Date(matchInfo.end).getTime() - new Date(matchInfo.start).getTime();
-        batch.set(matchDocRef, {
-            id: matchInfo.id.toString(),
-            startTime: matchInfo.start,
-            durationSeconds: Math.round(matchDuration / 1000),
-        });
+        // 2. Salvar dados da partida na subcoleção do servidor
+        const matchDocRef = doc(db, 'servers', serverName, 'matches', matchInfo.id.toString());
+        batch.set(matchDocRef, matchInfo); // Salva o objeto inteiro da partida
 
         // 3. Salvar dados dos jogadores e estatísticas da partida
         for (const playerStat of matchInfo.player_stats) {
@@ -108,32 +114,33 @@ export async function importServerData(
             const playerDocRef = doc(db, 'players', playerId);
             const playerMatchStatsDocRef = doc(collection(db, 'player_match_stats'));
 
-            // Salva/Atualiza dados do jogador
+            // Salva/Atualiza dados do jogador (coleção global)
             batch.set(playerDocRef, {
                 id: playerId,
                 playerName: playerStat.name,
                 steamId: playerId,
             }, { merge: true });
 
-            // Salva estatísticas da partida
+            // Salva estatísticas da partida (coleção global para facilitar queries)
             batch.set(playerMatchStatsDocRef, {
                 id: playerMatchStatsDocRef.id,
                 playerId: playerId,
                 matchId: matchInfo.id.toString(),
+                server: serverName, // Adiciona o nome do servidor para referência
                 kills: playerStat.kills,
                 deaths: playerStat.deaths,
                 kdRatio: playerStat.deaths > 0 ? playerStat.kills / playerStat.deaths : playerStat.kills,
-                score: 0, // O score não está disponível, então definimos como 0
+                // Adicione outros campos de stats se disponíveis
             });
         }
         
         await batch.commit();
         matchesProcessed++;
         
-        console.log(`Processando partida ${i} de ${loopLimit}...`);
+        console.log(`Processando partida ${i + 1} de ${loopLimit} (ID: ${matchId})...`);
 
       } catch (innerError: any) {
-        console.error(`Erro processando partida ID ${i}:`, innerError.message);
+        console.error(`Erro processando partida ID ${matchId}:`, innerError.message);
         // Continua para a próxima partida mesmo se uma falhar
       }
     }

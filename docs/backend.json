@@ -33,26 +33,31 @@
       "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "Match",
       "type": "object",
-      "description": "Represents a single match in Hell Let Loose.",
+      "description": "Represents a single match in Hell Let Loose. Contains the full data object from the external API.",
       "properties": {
         "id": {
           "type": "string",
           "description": "Unique identifier for the Match entity."
         },
-        "startTime": {
+        "start": {
           "type": "string",
           "description": "The date and time when the match started.",
           "format": "date-time"
         },
-        "durationSeconds": {
-          "type": "number",
-          "description": "The duration of the match in seconds."
+        "end": {
+          "type": "string",
+          "description": "The date and time when the match ended.",
+          "format": "date-time"
+        },
+        "player_stats": {
+            "type": "array",
+            "description": "Statistics for each player in the match."
         }
       },
       "required": [
         "id",
-        "startTime",
-        "durationSeconds"
+        "start",
+        "end"
       ]
     },
     "PlayerMatchStats": {
@@ -85,9 +90,9 @@
           "type": "number",
           "description": "Kill/Death ratio of the player in the match."
         },
-        "score": {
-          "type": "number",
-          "description": "The player's score in the match."
+        "server": {
+          "type": "string",
+          "description": "The server where the match was played."
         }
       },
       "required": [
@@ -142,29 +147,33 @@
           "schema": {
             "$ref": "#/backend/entities/Player"
           },
-          "description": "Collection of player documents, each containing player information such as playerName, steamId, and matchesPlayed.",
+          "description": "Global collection of player documents, each containing player information such as playerName and steamId.",
           "params": [
             {
               "name": "playerId",
-              "description": "Unique identifier for the player."
+              "description": "Unique identifier for the player (SteamID64)."
             }
           ]
         }
       },
       {
-        "path": "/matches/{matchId}",
+        "path": "/servers/{serverName}/matches/{matchId}",
         "definition": {
-          "entityName": "Match",
-          "schema": {
-            "$ref": "#/backend/entities/Match"
-          },
-          "description": "Collection of match documents, each containing match information such as startTime and durationSeconds.",
-          "params": [
-            {
-              "name": "matchId",
-              "description": "Unique identifier for the match."
-            }
-          ]
+            "entityName": "Match",
+            "schema": {
+                "$ref": "#/backend/entities/Match"
+            },
+            "description": "Collection of match documents for a specific server, containing the full match data from the external API.",
+            "params": [
+                {
+                    "name": "serverName",
+                    "description": "The name of the server (e.g., '3LPZ')."
+                },
+                {
+                    "name": "matchId",
+                    "description": "Unique identifier for the match."
+                }
+            ]
         }
       },
       {
@@ -174,7 +183,7 @@
           "schema": {
             "$ref": "#/backend/entities/PlayerMatchStats"
           },
-          "description": "Collection of player match statistics documents, each containing statistics for a player in a specific match, such as kills, deaths, and score. Includes playerId and matchId to reference Player and Match entities, respectively.",
+          "description": "Global collection of player match statistics documents, each containing aggregated statistics for a player in a specific match.",
           "params": [
             {
               "name": "playerMatchStatsId",
@@ -200,6 +209,6 @@
         }
       }
     ],
-    "reasoning": "To efficiently manage player data, match statistics, and rankings in the Hell Let Loose BR application, I recommend the following Firestore structure. This structure prioritizes clear data separation, scalability, and efficient querying. It is designed to support the core features of the application, including global player rankings, detailed player profiles, ranking filters, and leaderboard data extraction. This approach uses denormalization to avoid complex queries and authorization independence.\n\n*   **Authorization Independence**: Achieved by avoiding hierarchical authorization dependencies, ensuring that access control can be determined directly from the document or collection being accessed, without needing to fetch parent documents. For example, no `get()` calls are required in the security rules to validate player data. Security rules rely solely on `request.auth.uid`.\n\n*   **Segregation for QAPs:** Different collections for `players`, `matches`, and `player_match_stats` enable QAPs. Each collection has a homogeneous security posture, allowing for simple and secure `list` operations. The `ranking_filters` collection is also separated to allow easy management of filters.\n\n    *   `/players`: Stores player information. Publicly readable, writeable only by backend processes that ingest data from game servers.\n    *   `/matches`: Stores match information. Publicly readable, writeable only by backend processes.\n    *   `/player_match_stats`: Stores statistics for each player in each match. Publicly readable, writeable only by backend processes.\n    *   `/ranking_filters`: Stores ranking filter configurations. Publicly readable, writeable only by admin users (backend processes).\n\nThis structure supports the required features:\n\n*   **Global Player Rankings**: Can be implemented via Cloud Functions triggered by updates to `player_match_stats`. These functions aggregate data to compute rankings, storing the results in a separate, read-optimized collection.\n*   **Detailed Player Profiles**: Easily retrieved from the `/players` collection using the `playerId`.\n*   **Ranking Filters**: Stored in the `/ranking_filters` collection and used by the application to dynamically query and display rankings."
+    "reasoning": "To efficiently manage player data, match statistics, and rankings in the Hell Let Loose BR application, I recommend the following Firestore structure. This structure prioritizes clear data separation, scalability, and efficient querying. \n\n*   **Hierarchical Match Data**: Match data is stored hierarchically under `/servers/{serverName}/matches/{matchId}`. This isolates data per server, which can be useful for server-specific analytics and simplifies data management if a server is decommissioned. Each match document stores the complete, raw data object from the external API for future flexibility.\n\n*   **Global Player Data**: The `/players` collection is kept global to serve as a single source of truth for all players across all servers, preventing data duplication. Player documents are updated with their latest known name upon import.\n\n*   **Global Player Stats**: The `/player_match_stats` collection is also global. This denormalized, flat structure is optimized for efficient querying of player performance across all servers, which is essential for building global leaderboards. Each document links a player to a specific match and includes the server name for filtering.\n\n*   **Authorization Independence**: The structure maintains authorization independence. Security rules can be written to control access without needing to read parent documents. For example, rules for `/player_match_stats` can be based on the user's auth token without needing to fetch data from `/servers` or `/players`."
   }
 }

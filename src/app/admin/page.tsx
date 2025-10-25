@@ -69,22 +69,18 @@ export default function AdminPage() {
     setProgressMessage(`Iniciando importação do servidor ${selectedServer.name}... Buscando total de partidas.`);
 
     try {
-      const result = await importServerData(selectedServer.apiUrl);
+      const result = await importServerData(selectedServer.name, selectedServer.apiUrl);
 
       if (result.success) {
         const totalFound = result.totalFound || 0;
-        const totalToProcess = Math.min(totalFound, 10);
         
-        setProgressMessage(`${totalFound} partidas encontradas. Processando as primeiras ${totalToProcess}... (Buscando partida ${result.matchesProcessed || 0} de ${totalToProcess})`);
+        setProgressMessage(`${totalFound} partidas encontradas. Foram processadas ${result.matchesProcessed} partidas.`);
 
-        setTimeout(() => {
-            setImportProgress(100);
-            toast({
-              title: 'Importação Concluída!',
-              description: `Total de ${result.matchesProcessed} partidas processadas de ${totalFound} encontradas no servidor ${selectedServer.name}. (Limitado a 10 para teste)`,
-            });
-            setProgressMessage(`Importação concluída! ${result.matchesProcessed} partidas processadas.`);
-        }, 1500); 
+        setImportProgress(100);
+        toast({
+          title: 'Importação Concluída!',
+          description: `Total de ${result.matchesProcessed} partidas processadas de ${totalFound} encontradas no servidor ${selectedServer.name}.`,
+        });
 
       } else {
         throw new Error(result.error || 'Ocorreu um erro desconhecido na importação.');
