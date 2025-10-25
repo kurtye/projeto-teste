@@ -43,10 +43,16 @@ export async function importServerData(
     };
     
     // 1. Obter o número total de partidas
-    const totalMapsResponse = await fetch(`${apiUrl}/get_scoreboard_maps`, fetchOptions);
+    const totalMapsUrl = `${apiUrl}/get_scoreboard_maps`;
+    console.log(`Buscando total de mapas de: ${totalMapsUrl}`);
+    const totalMapsResponse = await fetch(totalMapsUrl, fetchOptions);
+
     if (!totalMapsResponse.ok) {
-        throw new Error(`Falha ao buscar o total de mapas: ${totalMapsResponse.statusText}`);
+        const errorText = await totalMapsResponse.text();
+        console.error(`Falha ao buscar total de mapas. Status: ${totalMapsResponse.status}, Corpo: ${errorText}`);
+        throw new Error(`Falha ao buscar o total de mapas: ${totalMapsResponse.statusText} - ${errorText}`);
     }
+
     const totalMapsData: ScoreboardMapsResponse = await totalMapsResponse.json();
     const totalMatches = totalMapsData.result.total;
     console.log(`Total de partidas encontradas: ${totalMatches}`);
@@ -57,10 +63,14 @@ export async function importServerData(
     for (let i = 0; i < totalMatches; i++) {
       try {
         await delay(150); // Adiciona um pequeno delay para não sobrecarregar a API de origem
+        
+        const mapUrl = `${apiUrl}/get_map_scoreboard?map_id=${i}`;
+        console.log(`Buscando dados da partida de: ${mapUrl}`);
+        const mapResponse = await fetch(mapUrl, fetchOptions);
 
-        const mapResponse = await fetch(`${apiUrl}/get_map_scoreboard?map_id=${i}`, fetchOptions);
         if (!mapResponse.ok) {
-          console.warn(`Falha ao buscar partida ID ${i}. Status: ${mapResponse.statusText}. Pulando.`);
+          const errorText = await mapResponse.text();
+          console.warn(`Falha ao buscar partida ID ${i}. Status: ${mapResponse.status}. Corpo: ${errorText}. Pulando.`);
           continue;
         }
 
@@ -68,7 +78,7 @@ export async function importServerData(
         const matchInfo = mapData.result;
 
         if (!matchInfo || !matchInfo.player_stats) {
-            console.warn(`Dados da partida ID ${i} estão incompletos. Pulando.`);
+            console.warn(`Dados da partida ID ${i} estão incompletos ou nulos. Pulando.`);
             continue;
         }
 
