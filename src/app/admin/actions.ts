@@ -36,8 +36,14 @@ export async function importServerData(
   try {
     console.log(`Iniciando importação para: ${apiUrl}`);
     
+    const fetchOptions = {
+        headers: {
+            'Content-Type': 'application/json',
+        }
+    };
+    
     // 1. Obter o número total de partidas
-    const totalMapsResponse = await fetch(`${apiUrl}/get_scoreboard_maps`);
+    const totalMapsResponse = await fetch(`${apiUrl}/get_scoreboard_maps`, fetchOptions);
     if (!totalMapsResponse.ok) {
         throw new Error(`Falha ao buscar o total de mapas: ${totalMapsResponse.statusText}`);
     }
@@ -52,7 +58,7 @@ export async function importServerData(
       try {
         await delay(150); // Adiciona um pequeno delay para não sobrecarregar a API de origem
 
-        const mapResponse = await fetch(`${apiUrl}/get_map_scoreboard?map_id=${i}`);
+        const mapResponse = await fetch(`${apiUrl}/get_map_scoreboard?map_id=${i}`, fetchOptions);
         if (!mapResponse.ok) {
           console.warn(`Falha ao buscar partida ID ${i}. Status: ${mapResponse.statusText}. Pulando.`);
           continue;
