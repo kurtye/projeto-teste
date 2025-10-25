@@ -79,8 +79,8 @@ export async function importServerData(
     const allMatchIds = totalMapsData.result.maps.map(m => m.id);
     const totalMatchesApi = totalMapsData.result.total;
     
-    // 3. Filtrar para obter apenas os IDs de partidas que ainda não foram importados
-    const matchIdsToImport = allMatchIds.filter(id => id > lastImportedId);
+    // 3. Filtrar para obter apenas os IDs de partidas que ainda não foram importados e ordenar em ordem crescente
+    const matchIdsToImport = allMatchIds.filter(id => id > lastImportedId).sort((a, b) => a - b);
     console.log(`Total de partidas na API: ${totalMatchesApi}. Novas partidas a importar: ${matchIdsToImport.length}`);
 
     if (matchIdsToImport.length === 0) {
@@ -120,7 +120,7 @@ export async function importServerData(
 
         // 4. Salvar dados da partida na subcoleção do servidor
         const matchDocRef = doc(db, 'servers', serverName, 'matches', matchInfo.id.toString());
-        // Adicionamos o `numeric_id` para facilitar a ordenação
+        // Adicionamos o `numeric_id` para facilitar a ordenação e busca do último ID
         batch.set(matchDocRef, { ...matchInfo, numeric_id: matchInfo.id });
 
         // 5. Salvar dados dos jogadores e estatísticas da partida
