@@ -1,20 +1,18 @@
 'use server';
 
-import { initializeApp, getApps, getApp, type FirebaseOptions } from 'firebase-admin/app';
-import { getFirestore } from 'firebase-admin/firestore';
+// Usaremos o SDK do cliente para consistência, pois a importação é executada no servidor
+// mas dentro do contexto de uma Server Action do Next.js.
+import { initializeApp, getApps, getApp } from 'firebase/app';
+import { getFirestore } from 'firebase/firestore';
 import { firebaseConfig } from './config';
 
-const firebaseAdminConfig: FirebaseOptions = {
-    credential: undefined, // Deixado como undefined para usar as credenciais do ambiente
-    projectId: firebaseConfig.projectId,
-};
 
-function getFirebaseAdminApp() {
+function getClientApp() {
     if (getApps().length > 0) {
         return getApp();
     }
-    return initializeApp(firebaseAdminConfig);
+    return initializeApp(firebaseConfig);
 }
 
-export const adminApp = getFirebaseAdminApp();
-export const db = getFirestore(adminApp);
+export const app = getClientApp();
+export const db = getFirestore(app);
