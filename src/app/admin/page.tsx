@@ -65,7 +65,7 @@ export default function AdminPage() {
     }
 
     setIsImporting(true);
-    setImportProgress(25);
+    setImportProgress(10);
     setProgressMessage(`Iniciando importação do servidor ${selectedServer.name}... Buscando total de partidas.`);
 
     try {
@@ -73,35 +73,21 @@ export default function AdminPage() {
 
       if (result.success) {
         setImportProgress(50);
-        
         const totalToProcess = Math.min(result.totalFound || 0, 10);
         setProgressMessage(`${result.totalFound} partidas encontradas. Processando as primeiras ${totalToProcess}...`);
         
-        // Simular o progresso final com base nos dados processados
-        // A lógica real já ocorreu no servidor
+        // Simular o progresso final. O trabalho real já foi feito no servidor.
         setTimeout(() => {
-            const processedCount = result.matchesProcessed || 0;
-            const processedPercentage = totalToProcess > 0 ? (processedCount / totalToProcess) * 50 : 0;
-            setImportProgress(50 + processedPercentage);
-            // Mostra o ID da partida que está sendo buscada (o próximo a ser buscado seria `processedCount + 1`)
-            const nextMatchId = processedCount + 1;
-            if (nextMatchId <= totalToProcess) {
-              setProgressMessage(`Buscando partida ${nextMatchId} de ${totalToProcess}... URL: ${selectedServer.apiUrl}/get_map_scoreboard?map_id=${nextMatchId}`);
-            }
-        }, 500);
-
-        setTimeout(() => {
+            setImportProgress(100);
             toast({
               title: 'Importação Concluída!',
               description: `Total de ${result.matchesProcessed} partidas processadas de ${result.totalFound} encontradas no servidor ${selectedServer.name}. (Limitado a 10 para teste)`,
             });
             setProgressMessage(`Importação concluída! ${result.matchesProcessed} partidas processadas.`);
-            setImportProgress(100);
-        }, 1000 + (totalToProcess * 250)); // Simula um delay por partida
-
+        }, 1500); // Atraso para o usuário ver a mensagem intermediária
 
       } else {
-        throw new Error(result.error || 'Ocorreu um erro desconhecido.');
+        throw new Error(result.error || 'Ocorreu um erro desconhecido na importação.');
       }
     } catch (error: any) {
       toast({
@@ -110,7 +96,7 @@ export default function AdminPage() {
         description: error.message,
       });
       setProgressMessage(`Falha na importação: ${error.message}`);
-      setImportProgress(0); // Resetar em caso de falha inicial
+      setImportProgress(0); // Resetar progresso em caso de falha
     } finally {
         // Atraso para o usuário poder ler a mensagem final antes de resetar a UI
       setTimeout(() => {
@@ -157,7 +143,7 @@ export default function AdminPage() {
               <CardContent className="pt-6">
                 <p className="text-sm font-medium text-muted-foreground flex items-center gap-2">
                   <LinkIcon className="h-4 w-4" />
-                  API URL a ser chamada:
+                  API URL a ser chamada para obter o total:
                 </p>
                 <code className="text-sm text-accent font-mono break-all">
                   {selectedServer.apiUrl}/get_scoreboard_maps
