@@ -73,6 +73,10 @@
         "latestPlayerName": {
           "type": "string"
         },
+        "searchablePlayerName": {
+          "type": "string",
+          "description": "Lowercase version of the player's name for case-insensitive searching."
+        },
         "processedServers": {
           "type": "object",
           "description": "A map where each key is a server name and the value is the ID of the last match processed for that player on that server."
@@ -113,7 +117,8 @@
       },
       "required": [
         "playerId",
-        "latestPlayerName"
+        "latestPlayerName",
+        "searchablePlayerName"
       ]
     },
      "PlayerInteraction": {

@@ -157,12 +157,13 @@ export default function Home() {
     if (!firestore) return null;
 
     if (clanFilter) {
-      // Query for a specific clan using a prefix-like range query.
+      const lowerCaseClan = clanFilter.toLowerCase();
+      // Query for a specific clan using the searchable lowercase name
       return query(
-          collection(firestore, 'playerAggregates'),
-          where("latestPlayerName", ">=", clanFilter),
-          where("latestPlayerName", "<=", clanFilter + '\uf8ff'),
-          orderBy('latestPlayerName', 'asc') // Initial sort for Firestore, will be re-sorted on client.
+        collection(firestore, 'playerAggregates'),
+        where("searchablePlayerName", ">=", lowerCaseClan),
+        where("searchablePlayerName", "<=", lowerCaseClan + '\uf8ff'),
+        orderBy("searchablePlayerName", "asc")
       );
     } else {
       // Default query: top 200 players by total kills.
@@ -199,7 +200,7 @@ export default function Home() {
   const sortedAndFilteredPlayers = useMemo(() => {
     let sortablePlayers = [...processedPlayers];
 
-    // Always sort by the selected stat
+    // Always sort by the selected stat, regardless of clan filter
     sortablePlayers.sort((a, b) => {
         const valA = a[sortConfig.key] || 0;
         const valB = b[sortConfig.key] || 0;

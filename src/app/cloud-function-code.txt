@@ -126,6 +126,7 @@ export const aggregatePlayerStats = onDocumentCreated(
             longestLifeSecs: newLongestLife,
             playerId: playerStat.player_id,
             latestPlayerName: playerStat.player,
+            searchablePlayerName: playerStat.player.toLowerCase(),
             [`processedServers.${serverName}`]: matchNumericId,
           };
 

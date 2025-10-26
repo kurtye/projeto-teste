@@ -2,6 +2,7 @@ export interface PlayerAggregates {
   id: string; // This will be the document ID (player_id)
   playerId: string;
   latestPlayerName: string;
+  searchablePlayerName?: string; // For case-insensitive search
   processedServers?: { [key: string]: number }; // Map of serverName to lastProcessedMatchId
   matchesPlayed?: number;
   totalTimeSeconds?: number;
