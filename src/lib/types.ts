@@ -1,3 +1,4 @@
+
 export interface PlayerAggregates {
   id: string; // This will be the document ID (player_id)
   playerId: string;
@@ -31,4 +32,13 @@ export interface WeaponUsage {
   id: string; // Will be the weapon name (or its Base64 representation)
   name: string;
   count: number;
+}
+
+export interface GlobalStats {
+  id: string; // Should be 'summary'
+  maxTotalKills?: number;
+  maxTotalCombat?: number;
+  maxTotalOffense?: number;
+  maxTotalDefense?: number;
+  maxTotalSupport?: number;
 }

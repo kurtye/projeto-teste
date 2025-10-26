@@ -1,8 +1,9 @@
+
 'use client';
 
 import { useMemoFirebase, useDoc, useFirestore, useCollection } from '@/firebase';
 import { notFound } from 'next/navigation';
-import type { PlayerAggregates, PlayerInteraction, WeaponUsage } from '@/lib/types';
+import type { PlayerAggregates, PlayerInteraction, WeaponUsage, GlobalStats } from '@/lib/types';
 import { doc, collection, query, orderBy, limit } from 'firebase/firestore';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -106,56 +107,62 @@ export default function PlayerProfilePage({ params }: PlayerProfilePageProps) {
   const resolvedParams = use(params);
   const playerId = decodeURIComponent(resolvedParams.playerId);
 
+  // Fetch player data
   const playerDocRef = useMemoFirebase(() => {
     if (!firestore || !playerId) return null;
     return doc(firestore, 'playerAggregates', playerId);
   }, [firestore, playerId]);
-
   const { data: player, isLoading: isLoadingPlayer, error } = useDoc<PlayerAggregates>(playerDocRef);
+
+  // Fetch global stats
+  const globalStatsDocRef = useMemoFirebase(() => {
+    if (!firestore) return null;
+    return doc(firestore, 'globalStats', 'summary');
+  }, [firestore]);
+  const { data: globalStats, isLoading: isLoadingGlobalStats } = useDoc<GlobalStats>(globalStatsDocRef);
 
   // Queries for subcollections
   const killedByQuery = useMemoFirebase(() => {
       if (!playerDocRef) return null;
       return query(collection(playerDocRef, 'killedBy'), orderBy('count', 'desc'), limit(5));
   }, [playerDocRef]);
+  const { data: mostKilledBy, isLoading: isLoadingKilledBy } = useCollection<PlayerInteraction>(killedByQuery);
 
   const killedPlayersQuery = useMemoFirebase(() => {
       if (!playerDocRef) return null;
       return query(collection(playerDocRef, 'killedPlayers'), orderBy('count', 'desc'), limit(5));
   }, [playerDocRef]);
+  const { data: mostKilledPlayers, isLoading: isLoadingKilledPlayers } = useCollection<PlayerInteraction>(killedPlayersQuery);
   
   const weaponUsageQuery = useMemoFirebase(() => {
     if (!playerDocRef) return null;
     return query(collection(playerDocRef, 'weaponUsage'), orderBy('count', 'desc'), limit(5));
   }, [playerDocRef]);
-
-  const { data: mostKilledBy, isLoading: isLoadingKilledBy } = useCollection<PlayerInteraction>(killedByQuery);
-  const { data: mostKilledPlayers, isLoading: isLoadingKilledPlayers } = useCollection<PlayerInteraction>(killedPlayersQuery);
   const { data: topWeapons, isLoading: isLoadingTopWeapons } = useCollection<WeaponUsage>(weaponUsageQuery);
 
   const chartData = useMemo(() => {
-      if (!player) return [];
-      // To make the chart readable, we need to normalize the values or find a common scale.
-      // For now, let's use them directly but this can be improved.
-      // A simple approach is to use percentages of a player's own max stat, or a global max stat.
-      // For simplicity, we use raw values. Kills might dominate the chart.
+      if (!player || !globalStats) return [];
+      
+      const getPercentage = (value: number | undefined, max: number | undefined) => {
+        if (!value || !max || max === 0) return 0;
+        return Math.round((value / max) * 100);
+      };
+
       return [
-        { stat: 'Combat', value: player.totalCombat || 0 },
-        { stat: 'Offense', value: player.totalOffense || 0 },
-        { stat: 'Defense', value: player.totalDefense || 0 },
-        { stat: 'Support', value: player.totalSupport || 0 },
-        { stat: 'Kills', value: player.totalKills || 0 },
+        { stat: 'Kills', value: getPercentage(player.totalKills, globalStats.maxTotalKills), full: player.totalKills || 0 },
+        { stat: 'Combat', value: getPercentage(player.totalCombat, globalStats.maxTotalCombat), full: player.totalCombat || 0 },
+        { stat: 'Offense', value: getPercentage(player.totalOffense, globalStats.maxTotalOffense), full: player.totalOffense || 0 },
+        { stat: 'Defense', value: getPercentage(player.totalDefense, globalStats.maxTotalDefense), full: player.totalDefense || 0 },
+        { stat: 'Support', value: getPercentage(player.totalSupport, globalStats.maxTotalSupport), full: player.totalSupport || 0 },
       ];
-  }, [player]);
+  }, [player, globalStats]);
 
   const chartConfig = {
-      value: {
-          label: 'Points',
-          color: 'hsl(var(--accent))',
-      },
+      value: { label: 'Performance (%)' },
+      full: { label: 'Raw Value' },
   };
 
-  if (isLoadingPlayer) {
+  if (isLoadingPlayer || isLoadingGlobalStats) {
     return (
         <div className="container mx-auto px-4 py-8">
             <Skeleton className="h-10 w-48 mb-6" />
@@ -239,14 +246,27 @@ export default function PlayerProfilePage({ params }: PlayerProfilePageProps) {
 
           <Card>
             <CardHeader>
-                <CardTitle className="text-lg flex items-center gap-2"><LineChart className="w-5 h-5"/> Player Style</CardTitle>
+                <CardTitle className="text-lg flex items-center gap-2">
+                    <LineChart className="w-5 h-5"/> 
+                    Player Style (vs. Global Max)
+                </CardTitle>
             </CardHeader>
             <CardContent>
                 <ChartContainer config={chartConfig} className="mx-auto w-full max-w-sm h-64">
                     <RadarChart data={chartData}>
-                    <ChartTooltip cursor={false} content={<ChartTooltipContent indicator="dot" />} />
+                    <ChartTooltip 
+                        cursor={false} 
+                        content={<ChartTooltipContent 
+                            formatter={(value, name, item) => (
+                                <div className="flex flex-col">
+                                    <span className="font-bold">{`${item.payload.stat}: ${item.payload.full.toLocaleString()}`}</span>
+                                    <span className="text-xs text-muted-foreground">{`(${value}% of record)`}</span>
+                                </div>
+                            )}
+                        />} 
+                    />
                         <PolarAngleAxis dataKey="stat" />
-                        <PolarRadiusAxis angle={30} domain={[0, 'dataMax + 100']} display="none" />
+                        <PolarRadiusAxis angle={30} domain={[0, 100]} display={false} />
                         <PolarGrid />
                         <Radar
                             name="Player Stats"

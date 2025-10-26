@@ -121,7 +121,7 @@
         "searchablePlayerName"
       ]
     },
-     "PlayerInteraction": {
+    "PlayerInteraction": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "PlayerInteraction",
       "type": "object",
@@ -154,6 +154,19 @@
         }
       },
       "required": ["name", "count"]
+    },
+    "GlobalStats": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "title": "GlobalStats",
+        "type": "object",
+        "description": "Stores the maximum values for key statistics across all players, used for relative rankings and visualizations.",
+        "properties": {
+            "maxTotalKills": { "type": "number" },
+            "maxTotalCombat": { "type": "number" },
+            "maxTotalOffense": { "type": "number" },
+            "maxTotalDefense": { "type": "number" },
+            "maxTotalSupport": { "type": "number" }
+        }
     }
   },
   "auth": {
@@ -186,6 +199,10 @@
     "/playerAggregates/{playerId}/weaponUsage/{weaponId}": {
         "schema": { "$ref": "#/entities/WeaponUsage" },
         "description": "Subcollection tracking the kill count for each weapon used by the player. The document ID is a Base64 encoding of the weapon's name."
+    },
+    "/globalStats/summary": {
+        "schema": { "$ref": "#/entities/GlobalStats"},
+        "description": "A single document that holds the all-time maximum values for key player stats."
     }
   }
 }

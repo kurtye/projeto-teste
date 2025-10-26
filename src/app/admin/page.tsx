@@ -1,12 +1,13 @@
+
 'use client';
 
 import { useState, useMemo, useEffect, useTransition } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
-import { importServerData, getServerSyncStatus, getPlayerCount, importSpecificMatches } from './actions';
+import { importServerData, getServerSyncStatus, getPlayerCount, importSpecificMatches, updateGlobalStats } from './actions';
 import { Progress } from '@/components/ui/progress';
-import { Database, DownloadCloud, History, ServerIcon, Users, Edit } from 'lucide-react';
+import { Database, DownloadCloud, History, ServerIcon, Users, Edit, RefreshCw, BarChart } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -64,6 +65,7 @@ export default function AdminPage() {
   const [serverStatus, setServerStatus] = useState<Record<string, ServerSyncStatus> | null>(null);
   const [playerCount, setPlayerCount] = useState<number | null>(null);
   const [isFetchingStats, startFetchingStats] = useTransition();
+  const [isUpdatingGlobalStats, startUpdatingGlobalStats] = useTransition();
   
   const [manualImportIds, setManualImportIds] = useState('');
   const [manualImportServer, setManualImportServer] = useState<string>('');
@@ -88,7 +90,27 @@ export default function AdminPage() {
     fetchStats();
   }, []);
   
-  const anyImportInProgress = Object.values(importStates).some(s => s.isImporting) || isManualImporting;
+  const anyImportInProgress = Object.values(importStates).some(s => s.isImporting) || isManualImporting || isUpdatingGlobalStats;
+
+  const handleUpdateGlobalStats = () => {
+    startUpdatingGlobalStats(async () => {
+        toast({ title: 'Iniciando cálculo de recordes globais...', description: 'Isso pode levar alguns instantes.' });
+        const result = await updateGlobalStats();
+        if (result.success) {
+            toast({
+                title: 'Recordes Globais Atualizados!',
+                description: 'O gráfico de perfil dos jogadores agora usará os novos valores máximos.',
+            });
+            console.log("Max stats updated:", result.maxStats);
+        } else {
+            toast({
+                variant: 'destructive',
+                title: 'Falha ao Atualizar Recordes',
+                description: result.error || 'Ocorreu um erro desconhecido.',
+            });
+        }
+    });
+  };
 
   const handleImport = async (server: Server) => {
     if (!server) return;
@@ -185,17 +207,17 @@ export default function AdminPage() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-xl font-headline md:text-2xl">
             <Database className="h-6 w-6 text-accent" />
-            <span>Painel de Importação</span>
+            <span>Painel de Administração</span>
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-6">
           
-           <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
-             <Card className="bg-muted/30">
+           <div className='grid grid-cols-1 md:grid-cols-3 gap-4'>
+             <Card className="bg-muted/30 md:col-span-2">
                 <CardHeader className='pb-2'>
                     <CardTitle className='text-base flex items-center gap-2'>
                         <History className="h-4 w-4 text-muted-foreground" />
-                        <span>Status de Sincronização</span>
+                        <span>Status de Sincronização de Partidas</span>
                     </CardTitle>
                 </CardHeader>
                 <CardContent className="pt-2 space-y-3">
@@ -229,30 +251,49 @@ export default function AdminPage() {
                 </CardContent>
             </Card>
 
-            <Card className="bg-muted/30">
-              <CardHeader className='pb-2'>
-                <CardTitle className='text-base flex items-center gap-2'>
-                  <Users className="h-4 w-4 text-muted-foreground" />
-                  <span>Jogadores na Base</span>
-                </CardTitle>
-              </CardHeader>
-               <CardContent className="pt-2">
-                  <p className="text-sm font-medium text-muted-foreground mb-2">
-                    Total de jogadores únicos:
-                  </p>
-                  {isFetchingStats ? (
-                     <Skeleton className="h-7 w-24" />
-                  ): (
-                    <p className="text-2xl font-bold text-accent">
-                      {playerCount !== null ? playerCount.toLocaleString() : 'N/A'}
+            <div className="space-y-4">
+              <Card className="bg-muted/30">
+                <CardHeader className='pb-2'>
+                  <CardTitle className='text-base flex items-center gap-2'>
+                    <Users className="h-4 w-4 text-muted-foreground" />
+                    <span>Jogadores na Base</span>
+                  </CardTitle>
+                </CardHeader>
+                 <CardContent className="pt-2">
+                    <p className="text-sm font-medium text-muted-foreground mb-2">
+                      Total de jogadores únicos:
                     </p>
-                  )}
-               </CardContent>
-            </Card>
+                    {isFetchingStats ? (
+                       <Skeleton className="h-7 w-24" />
+                    ): (
+                      <p className="text-2xl font-bold text-accent">
+                        {playerCount !== null ? playerCount.toLocaleString() : 'N/A'}
+                      </p>
+                    )}
+                 </CardContent>
+              </Card>
+               <Card className="bg-card">
+                  <CardHeader className='pb-2'>
+                      <CardTitle className="flex items-center gap-2 text-base">
+                          <BarChart className="h-4 w-4 text-muted-foreground" />
+                          Recordes Globais
+                      </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                      <p className="text-sm text-muted-foreground mb-4">
+                        Calcule os valores máximos para as estatísticas usadas no gráfico de perfil do jogador.
+                      </p>
+                      <Button onClick={handleUpdateGlobalStats} disabled={anyImportInProgress}>
+                          <RefreshCw className={`mr-2 h-4 w-4 ${isUpdatingGlobalStats ? 'animate-spin' : ''}`} />
+                          {isUpdatingGlobalStats ? 'Calculando...' : 'Atualizar Recordes'}
+                      </Button>
+                  </CardContent>
+              </Card>
+            </div>
           </div>
 
           <div>
-            <h3 className="text-lg font-semibold font-headline mb-4">Importação em Massa</h3>
+            <h3 className="text-lg font-semibold font-headline mb-4">Importação em Massa por Servidor</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {servers.map(server => {
                 const state = importStates[server.id];

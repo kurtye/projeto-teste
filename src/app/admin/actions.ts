@@ -1,7 +1,8 @@
+
 'use server';
 
 import { db } from '@/firebase/server';
-import { collection, writeBatch, doc, query, getDocs, where,getCountFromServer } from 'firebase/firestore';
+import { collection, writeBatch, doc, query, getDocs, where, getCountFromServer, orderBy, limit, setDoc } from 'firebase/firestore';
 
 interface ScoreboardMapsResponse {
   result: {
@@ -285,6 +286,49 @@ export async function importSpecificMatches(
 
   } catch (error: any) {
     console.error('[ERRO GERAL] Erro na importação manual:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+export async function updateGlobalStats(): Promise<{ success: boolean; error?: string; maxStats?: any }> {
+  console.log('[LOG] Iniciando a atualização das estatísticas globais...');
+  try {
+    const statsToQuery: (keyof import('@/lib/types').PlayerAggregates)[] = [
+      'totalKills',
+      'totalCombat',
+      'totalOffense',
+      'totalDefense',
+      'totalSupport',
+    ];
+
+    let maxStats: any = {};
+
+    for (const stat of statsToQuery) {
+      console.log(`[LOG] Buscando valor máximo para: ${stat}`);
+      const q = query(
+        collection(db, 'playerAggregates'),
+        orderBy(stat, 'desc'),
+        limit(1)
+      );
+      const querySnapshot = await getDocs(q);
+
+      if (!querySnapshot.empty) {
+        const topPlayer = querySnapshot.docs[0].data();
+        maxStats[`max${stat.charAt(0).toUpperCase() + stat.slice(1)}`] = topPlayer[stat] || 0;
+      } else {
+        maxStats[`max${stat.charAt(0).toUpperCase() + stat.slice(1)}`] = 0;
+      }
+      console.log(`[LOG] Valor máximo para ${stat}: ${maxStats[`max${stat.charAt(0).toUpperCase() + stat.slice(1)}`]}`);
+    }
+
+    const globalStatsRef = doc(db, 'globalStats', 'summary');
+    await setDoc(globalStatsRef, maxStats, { merge: true });
+
+    console.log('[LOG] Estatísticas globais atualizadas com sucesso:', maxStats);
+    return { success: true, maxStats };
+
+  } catch (error: any) {
+    console.error('[ERRO GERAL] Falha ao atualizar estatísticas globais:', error);
     return { success: false, error: error.message };
   }
 }
