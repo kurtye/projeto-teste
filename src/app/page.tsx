@@ -157,11 +157,12 @@ export default function Home() {
     if (!firestore) return null;
 
     if (clanFilter) {
+      const lowerCaseClan = clanFilter.toLowerCase();
       return query(
         collection(firestore, 'playerAggregates'),
-        where("latestPlayerName", ">=", clanFilter),
-        where("latestPlayerName", "<=", clanFilter + '\uf8ff'),
-        orderBy("latestPlayerName", "asc")
+        where("searchablePlayerName", ">=", lowerCaseClan),
+        where("searchablePlayerName", "<=", lowerCaseClan + '\uf8ff')
+        // We will sort client-side for clan view
       );
     } else {
       // Default query: top 200 players by total kills.
@@ -308,16 +309,16 @@ export default function Home() {
                                 <TableHeader>
                                   <TableRow>
                                     <TableHead className="p-2 md:p-4">Player</TableHead>
-                                    <SortableHeader sortKey="totalScore" sortConfig={sortConfig} requestSort={requestSort} className="hidden md:table-cell">
+                                    <SortableHeader sortKey="totalScore" sortConfig={sortConfig} requestSort={requestSort} className="hidden md:table-cell" disabled={!!clanFilter}>
                                         <Award className="h-5 w-5 inline-block" /> <span className="hidden md:inline">Score</span>
                                     </SortableHeader>
-                                    <SortableHeader sortKey="totalKills" sortConfig={sortConfig} requestSort={requestSort}>
+                                    <SortableHeader sortKey="totalKills" sortConfig={sortConfig} requestSort={requestSort} disabled={!!clanFilter}>
                                       <Crosshair className="h-5 w-5 inline-block" /> <span className="hidden md:inline">Kills</span>
                                     </SortableHeader>
-                                    <SortableHeader sortKey="totalDeaths" sortConfig={sortConfig} requestSort={requestSort} className="hidden md:table-cell">
+                                    <SortableHeader sortKey="totalDeaths" sortConfig={sortConfig} requestSort={requestSort} className="hidden md:table-cell" disabled={!!clanFilter}>
                                       <Skull className="h-5 w-5 inline-block" /> <span className="hidden md:inline">Deaths</span>
                                     </SortableHeader>
-                                    <SortableHeader sortKey="kdRatio" sortConfig={sortConfig} requestSort={requestSort}>
+                                    <SortableHeader sortKey="kdRatio" sortConfig={sortConfig} requestSort={requestSort} disabled={!!clanFilter}>
                                       <Target className="h-5 w-5 inline-block" /> <span className="hidden md:inline">K/D Ratio</span>
                                     </SortableHeader>
                                   </TableRow>
