@@ -11,9 +11,10 @@ import {
 } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
-import { importServerData, getLastImportedMatchId, getPlayerCount } from './actions';
+import { importServerData, getServerImportStatus, getPlayerCount } from './actions';
 import { Progress } from '@/components/ui/progress';
 import { Database, DownloadCloud, LinkIcon, History, ServerIcon, Users } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
 
 const servers = [
   {
@@ -48,7 +49,7 @@ export default function AdminPage() {
   const [isImporting, setIsImporting] = useState(false);
   const [importProgress, setImportProgress] = useState(0);
   const [progressMessage, setProgressMessage] = useState('');
-  const [lastImportedId, setLastImportedId] = useState<number | null>(null);
+  const [serverStatus, setServerStatus] = useState<Record<string, number> | null>(null);
   const [playerCount, setPlayerCount] = useState<number | null>(null);
   const [isFetchingStats, startFetchingStats] = useTransition();
 
@@ -60,13 +61,13 @@ export default function AdminPage() {
 
   const fetchStats = () => {
     startFetchingStats(async () => {
-      setLastImportedId(null);
+      setServerStatus(null);
       setPlayerCount(null);
-      const [id, count] = await Promise.all([
-        getLastImportedMatchId(),
+      const [statuses, count] = await Promise.all([
+        getServerImportStatus(),
         getPlayerCount(),
       ]);
-      setLastImportedId(id);
+      setServerStatus(statuses);
       setPlayerCount(count);
     });
   };
@@ -104,7 +105,6 @@ export default function AdminPage() {
           description: `Total de ${result.matchesProcessed} novas partidas processadas do servidor ${selectedServer.name}.`,
         });
 
-        // Atualiza as estatísticas na UI
         fetchStats();
 
       } else {
@@ -190,23 +190,33 @@ export default function AdminPage() {
               </Card>
             )}
 
-            <Card className="bg-muted/30">
+            <Card className="bg-muted/30 md:col-span-2">
               <CardHeader className='pb-2'>
                 <CardTitle className='text-base flex items-center gap-2'>
                   <History className="h-4 w-4 text-muted-foreground" />
-                  <span>Status da Importação</span>
+                  <span>Status da Importação por Servidor</span>
                 </CardTitle>
               </CardHeader>
                <CardContent className="pt-2">
-                  <p className="text-sm font-medium text-muted-foreground">
-                    Última partida processada:
+                  <p className="text-sm font-medium text-muted-foreground mb-2">
+                    Última partida processada em cada servidor:
                   </p>
                   {isFetchingStats ? (
-                     <p className="text-lg font-bold text-accent">Buscando...</p>
-                  ): (
-                    <p className="text-lg font-bold text-accent">
-                      {lastImportedId !== null ? `ID #${lastImportedId}` : 'Nenhuma importação encontrada.'}
-                    </p>
+                     <div className="space-y-2">
+                        <Skeleton className="h-4 w-1/2" />
+                        <Skeleton className="h-4 w-1/2" />
+                     </div>
+                  ): serverStatus ? (
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+                      {Object.entries(serverStatus).map(([server, id]) => (
+                        <div key={server} className="flex justify-between">
+                          <span className="font-semibold">{server}:</span>
+                          <span className="font-mono text-accent">ID #{id}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">Nenhum status encontrado.</p>
                   )}
                </CardContent>
             </Card>

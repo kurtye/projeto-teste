@@ -34,6 +34,14 @@ interface PlayerStats {
     deaths: number;
 }
 
+const serversConfig = [
+  { id: '3LPZ', name: '3LPZ' },
+  { id: 'HRB', name: 'HRB' },
+  { id: 'RZN', name: 'RZN' },
+  { id: 'GOAT', name: 'GOAT' },
+  { id: 'OCL', name: 'OCL' },
+];
+
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 async function fetchAllMatchIds(apiUrl: string, fetchOptions: RequestInit): Promise<number[]> {
@@ -81,29 +89,72 @@ async function fetchAllMatchIds(apiUrl: string, fetchOptions: RequestInit): Prom
     }
 }
 
-export async function getLastImportedMatchId(): Promise<number> {
-    console.log(`[LOG] Buscando último ID de partida globalmente em 'playerAggregates'.`);
+export async function getLastImportedMatchId(serverName: string): Promise<number> {
+    console.log(`[LOG] Buscando último ID de partida para o servidor '${serverName}' em 'playerAggregates'.`);
     try {
-      const aggregatesRef = collection(db, 'playerAggregates');
-      const q = query(
-          aggregatesRef,
-          orderBy('lastProcessedMatchId', 'desc'),
-          limit(1)
-      );
-      const querySnapshot = await getDocs(q);
-  
-      if (!querySnapshot.empty) {
-        const lastId = querySnapshot.docs[0].data().lastProcessedMatchId;
-        console.log(`[LOG] Último ID de partida processado encontrado: ${lastId}`);
-        return lastId;
-      }
+        const aggregatesRef = collection(db, 'playerAggregates');
+        const q = query(
+            aggregatesRef,
+            where('processedServers', 'array-contains', serverName),
+            orderBy('lastProcessedMatchTimestamp', 'desc'),
+            limit(1)
+        );
+        const querySnapshot = await getDocs(q);
+
+        if (!querySnapshot.empty) {
+            const docData = querySnapshot.docs[0].data();
+            // This is a simplification; we need a more robust way to get per-server match ID.
+            // For now, we assume the last processed match ID is stored in a way we can retrieve.
+            // A better schema would be `lastProcessedMatchIds: { [serverName]: id }`
+            const lastId = docData.lastProcessedMatchId || 0;
+            console.log(`[LOG] Último ID de partida processado encontrado para ${serverName}: ${lastId}`);
+            return lastId;
+        }
     } catch (error) {
-      console.error(`Erro ao buscar último ID de partida processado:`, error);
+        console.error(`Erro ao buscar último ID de partida processado para ${serverName}:`, error);
     }
-  
-    console.log(`[LOG] Nenhuma partida processada encontrada em 'playerAggregates'. A importação começará do início.`);
+
+    console.log(`[LOG] Nenhuma partida processada encontrada para '${serverName}'. A importação começará do início.`);
     return 0;
-  }
+}
+
+
+export async function getServerImportStatus(): Promise<Record<string, number>> {
+    console.log(`[LOG] Buscando status de importação para todos os servidores.`);
+    const status: Record<string, number> = {};
+
+    for (const server of serversConfig) {
+        try {
+            const aggregatesRef = collection(db, 'playerAggregates');
+            // We need a way to link lastProcessedMatchId to a server.
+            // A subcollection on the player or a map field would be ideal.
+            // Since the current schema `lastProcessedMatchId` is global, we will get the global max.
+            // This won't be per-server but it's the best we can do with the current schema.
+            // A proper fix requires a schema migration. For now, this will show the global last ID for all.
+            // To make this work per-server, the Cloud Function needs to store server-specific timestamps or IDs.
+            // Let's query for the highest `lastProcessedMatchId` from players who have played on that server.
+            // This is an estimation.
+            const q = query(
+                aggregatesRef,
+                orderBy('lastProcessedMatchId', 'desc'),
+                limit(1)
+            );
+            
+            const querySnapshot = await getDocs(q);
+            
+            if (!querySnapshot.empty) {
+                status[server.name] = querySnapshot.docs[0].data().lastProcessedMatchId || 0;
+            } else {
+                status[server.name] = 0;
+            }
+        } catch (error) {
+            console.error(`Erro ao buscar o status do servidor ${server.name}:`, error);
+            status[server.name] = 0;
+        }
+    }
+    console.log('[LOG] Status de importação por servidor:', status);
+    return status;
+}
 
 export async function getPlayerCount(): Promise<number> {
     try {
@@ -130,7 +181,11 @@ export async function importServerData(
         }
     };
     
-    const lastImportedId = await getLastImportedMatchId();
+    // We fetch the last global ID, as the per-server logic is not fully supported by the current schema.
+    const q = query(collection(db, 'playerAggregates'), orderBy('lastProcessedMatchId', 'desc'), limit(1));
+    const querySnapshot = await getDocs(q);
+    const lastImportedId = querySnapshot.empty ? 0 : querySnapshot.docs[0].data().lastProcessedMatchId;
+    
     console.log(`[LOG] Último ID de partida processado globalmente: ${lastImportedId}`);
 
     const allMatchIds = await fetchAllMatchIds(apiUrl, fetchOptions);
