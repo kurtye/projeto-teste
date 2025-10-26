@@ -2,15 +2,10 @@
  * =================================================================
  * CÓDIGO DA CLOUD FUNCTION - COPIE PARA 'functions/src/index.ts'
  * =================================================================
- *
- * Dependências necessárias (adicione ao seu `functions/package.json`):
- * "firebase-admin": "^12.0.0",
- * "firebase-functions": "^5.0.0"
- *
- * Após copiar, execute `npm install` dentro da pasta `functions`.
  */
 
-import * as functions from "firebase-functions";
+import {logger} from "firebase-functions";
+import {onDocumentCreated} from "firebase-functions/v2/firestore";
 import * as admin from "firebase-admin";
 
 // Inicializa o Firebase Admin SDK para ter acesso ao Firestore no back-end.
@@ -19,127 +14,130 @@ const db = admin.firestore();
 
 /**
  * Interface para os dados brutos de estatísticas de um jogador em uma partida.
+ * Corresponde aos dados da API.
  */
 interface PlayerStats {
-  steam_id_64: string;
-  name: string;
-  kills: number;
-  deaths: number;
-  combat: number;
-  offense: number;
-  defense: number;
-  support: number;
-  time_seconds: number;
-  longest_life_secs: number;
-  teamkills: number;
-  deaths_by_tk: number;
-  weapons: { [key: string]: number };
-  death_by: { [key: string]: number };
-  most_killed: { [key: string]: number };
+    steam_id_64: string;
+    name: string;
+    kills: number;
+    deaths: number;
+    combat: number;
+    offense: number;
+    defense: number;
+    support: number;
+    time_seconds: number;
+    longest_life_secs: number;
+    teamkills: number;
+    deaths_by_tk: number;
+    weapons: { [key: string]: number };
+    death_by: { [key: string]: number };
+    most_killed: { [key: string]: number };
 }
 
 /**
  * Interface para a estrutura do documento da partida em `rawMatchResults`.
  */
 interface MatchData {
-  id: number;
-  player_stats: PlayerStats[];
-  // Adicione outros campos da partida se precisar deles na função.
+    id: number;
+    player_stats: PlayerStats[];
 }
 
 /**
- * Gatilho do Firestore que é acionado na criação de um novo documento de partida
- * na coleção `rawMatchResults`.
- *
- * Esta função processa os dados da partida, agrega as estatísticas para cada jogador
- * e, ao final, exclui o documento da partida bruta para evitar reprocessamento.
- */
-exports.aggregatePlayerStats = functions
-  .region("southamerica-east1")
-  .runWith({ memory: "512MB", timeoutSeconds: 60 })
-  .firestore.document("rawMatchResults/{matchId}")
-  .onCreate(async (snapshot, context) => {
-    const { matchId } = context.params;
+* Gatilho do Firestore que é acionado na criação de um novo documento de partida.
+* Esta função processa os dados da partida, agrega as estatísticas para cada jogador
+* e, ao final, exclui o documento para evitar reprocessamento.
+*/
+export const aggregatePlayerStats = onDocumentCreated(
+  {
+    document: "rawMatchResults/{matchId}",
+    region: "southamerica-east1",
+    memory: "512MiB",
+    timeoutSeconds: 60,
+  },
+  async (event) => {
+    const {matchId} = event.params;
+    const snapshot = event.data;
+    if (!snapshot) {
+      logger.log(`No data associated with event for matchId: ${matchId}. Exiting.`);
+      return;
+    }
     const matchData = snapshot.data() as MatchData;
 
-    functions.logger.log(`Iniciando agregação para a partida ID: ${matchId}`);
+    logger.log(`Iniciando agregação para a partida ID: ${matchId}`);
 
     if (!matchData.player_stats || matchData.player_stats.length === 0) {
-      functions.logger.log(`Partida ${matchId} não contém 'player_stats'. Excluindo documento.`);
+      logger.log(`Partida ${matchId} não contém 'player_stats'. Excluindo documento.`);
       await snapshot.ref.delete();
       return;
     }
-    
+
     try {
-      // Usaremos transações para garantir a consistência dos dados complexos.
-      // Promise.all para rodar as atualizações de todos os jogadores em paralelo.
-      await Promise.all(matchData.player_stats.map(async (playerStat) => {
+      const playerUpdatePromises = matchData.player_stats.map((playerStat) => {
         if (!playerStat.steam_id_64) {
-          functions.logger.warn("Encontrado um jogador sem 'steam_id_64' na partida:", playerStat);
-          return; // Pula este jogador
+          logger.warn("Encontrado um jogador sem 'steam_id_64' na partida, pulando:", playerStat);
+          return Promise.resolve();
         }
 
         const playerAggregatesRef = db.collection("playerAggregates").doc(playerStat.steam_id_64);
 
-        // A transação garante que a leitura e a escrita ocorram de forma atômica.
         return db.runTransaction(async (transaction) => {
           const playerDoc = await transaction.get(playerAggregatesRef);
           const currentData = playerDoc.data() || {};
-          
-          // IDEMPOTÊNCIA: Verifica se esta partida já foi processada para este jogador.
-          // Isso previne que os dados sejam somados duas vezes.
+
+          // =================================================================
+          // VERIFICAÇÃO DE IDEMPOTÊNCIA (A CORREÇÃO PRINCIPAL)
+          // Previne que a mesma partida seja somada múltiplas vezes.
+          // =================================================================
           if ((currentData.lastProcessedMatchId || 0) >= matchData.id) {
-             functions.logger.log(`Partida ${matchId} já processada para o jogador ${playerStat.steam_id_64}. Pulando.`);
-             return;
+            logger.log(`Partida ${matchData.id} já processada para o jogador ${playerStat.steam_id_64}. Pulando.`);
+            return; // Sai da transação para este jogador.
           }
 
-          // --- Campos de Soma (Incremento) ---
-          const updates: any = {
-            totalKills: (currentData.totalKills || 0) + (playerStat.kills || 0),
-            totalDeaths: (currentData.totalDeaths || 0) + (playerStat.deaths || 0),
-            totalCombat: (currentData.totalCombat || 0) + (playerStat.combat || 0),
-            totalOffense: (currentData.totalOffense || 0) + (playerStat.offense || 0),
-            totalDefense: (currentData.totalDefense || 0) + (playerStat.defense || 0),
-            totalSupport: (currentData.totalSupport || 0) + (playerStat.support || 0),
-            totalTimeSeconds: (currentData.totalTimeSeconds || 0) + (playerStat.time_seconds || 0),
-            totalTeamKills: (currentData.totalTeamKills || 0) + (playerStat.teamkills || 0),
-            totalDeathsByTK: (currentData.totalDeathsByTK || 0) + (playerStat.deaths_by_tk || 0),
+          const newLongestLife = Math.max(currentData.longestLifeSecs || 0, playerStat.longest_life_secs || 0);
+
+          const updates: { [key: string]: any } = {
+            totalKills: admin.firestore.FieldValue.increment(playerStat.kills || 0),
+            totalDeaths: admin.firestore.FieldValue.increment(playerStat.deaths || 0),
+            totalCombat: admin.firestore.FieldValue.increment(playerStat.combat || 0),
+            totalOffense: admin.firestore.FieldValue.increment(playerStat.offense || 0),
+            totalDefense: admin.firestore.FieldValue.increment(playerStat.defense || 0),
+            totalSupport: admin.firestore.FieldValue.increment(playerStat.support || 0),
+            totalTimeSeconds: admin.firestore.FieldValue.increment(playerStat.time_seconds || 0),
+            totalTeamKills: admin.firestore.FieldValue.increment(playerStat.teamkills || 0),
+            totalDeathsByTK: admin.firestore.FieldValue.increment(playerStat.deaths_by_tk || 0),
+            longestLifeSecs: newLongestLife,
+            playerId: playerStat.steam_id_64,
+            latestPlayerName: playerStat.name,
+            lastProcessedMatchId: matchData.id,
           };
 
-          // --- Regra do MÁXIMO para longestLifeSecs ---
-          updates.longestLifeSecs = Math.max(currentData.longestLifeSecs || 0, playerStat.longest_life_secs || 0);
+          if (playerStat.weapons) {
+            for (const [weapon, count] of Object.entries(playerStat.weapons)) {
+              updates[`weaponUsage.${weapon}`] = admin.firestore.FieldValue.increment(count);
+            }
+          }
+          if (playerStat.death_by) {
+            for (const [killer, count] of Object.entries(playerStat.death_by)) {
+              updates[`mostKilledBy.${killer}`] = admin.firestore.FieldValue.increment(count);
+            }
+          }
+          if (playerStat.most_killed) {
+            for (const [victim, count] of Object.entries(playerStat.most_killed)) {
+              updates[`mostKilledPlayers.${victim}`] = admin.firestore.FieldValue.increment(count);
+            }
+          }
 
-          // --- Campos de Atualização Simples ---
-          updates.playerId = playerStat.steam_id_64;
-          updates.latestPlayerName = playerStat.name;
-          updates.lastProcessedMatchId = matchData.id;
-
-          // --- Agregação de Mapas ---
-          const aggregateMap = (currentMap: { [key: string]: number } | undefined, newMap: { [key: string]: number } | undefined) => {
-              const result = { ...(currentMap || {}) };
-              if (newMap) {
-                  for (const [key, value] of Object.entries(newMap)) {
-                      result[key] = (result[key] || 0) + (value || 0);
-                  }
-              }
-              return result;
-          };
-
-          updates.weaponUsage = aggregateMap(currentData.weaponUsage, playerStat.weapons);
-          updates.mostKilledBy = aggregateMap(currentData.mostKilledBy, playerStat.death_by);
-          updates.mostKilledPlayers = aggregateMap(currentData.mostKilledPlayers, playerStat.most_killed);
-          
-          // Aplica todas as atualizações no documento dentro da transação.
-          transaction.set(playerAggregatesRef, updates, { merge: true });
+          transaction.set(playerAggregatesRef, updates, {merge: true});
         });
-      }));
+      });
 
-      // Após todas as transações serem concluídas com sucesso, exclui o documento da fila.
+      await Promise.all(playerUpdatePromises);
+
       await snapshot.ref.delete();
-      functions.logger.log(`Agregação da partida ${matchId} concluída com sucesso. Documento excluído.`);
+      logger.log(`Partida ${matchId} agregada e documento excluído com sucesso.`);
 
     } catch (error) {
-      functions.logger.error(`Erro ao agregar estatísticas para a partida ${matchId}:`, error);
-      // Não exclui o documento para que ele possa ser reprocessado ou inspecionado.
+      logger.error(`Erro ao agregar estatísticas para a partida ${matchId}:`, error);
     }
-});
+  }
+);
