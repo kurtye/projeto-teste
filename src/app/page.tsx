@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, ReactNode } from 'react';
+import { useState, useMemo, ReactNode, useEffect } from 'react';
 import Link from 'next/link';
 import {
   Table,
@@ -21,6 +21,9 @@ import { collection, query, limit, orderBy } from 'firebase/firestore';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { getHallOfFameStats } from './hall-of-fame/actions';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+
 
 type ViewMode = 'table' | 'card';
 type SortKey = 'totalScore' | 'totalKills' | 'totalDeaths' | 'kdRatio';
@@ -30,6 +33,21 @@ interface SortConfig {
   key: SortKey;
   direction: SortDirection;
 }
+
+interface HallOfFameMap {
+  [playerId: string]: string[];
+}
+
+const STAT_CATEGORY_NAMES: Record<string, string> = {
+  totalKills: 'Rei dos Kills',
+  totalCombat: 'Rei do Combate',
+  totalOffense: 'Rei do Ataque',
+  totalDefense: 'Rei da Defesa',
+  totalSupport: 'Rei do Suporte',
+  totalTimeSeconds: 'Mais Tempo Jogado',
+  longestLifeSecs: 'Vida Mais Longa',
+};
+
 
 const CLANS = ['SMK', 'HRB', 'RZN', 'OCL', '3LPZ', 'WRT', 'SAP', 'BOLD', 'IDG'];
 
@@ -149,7 +167,26 @@ export default function Home() {
   const [clanFilter, setClanFilter] = useState<string | null>(null);
   const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'totalKills', direction: 'descending' });
   const [viewMode, setViewMode] = useState<ViewMode>('table');
+  const [hallOfFame, setHallOfFame] = useState<HallOfFameMap>({});
   const firestore = useFirestore();
+
+  useEffect(() => {
+    async function fetchHallOfFame() {
+        const stats = await getHallOfFameStats();
+        const fameMap: HallOfFameMap = {};
+        for (const key in stats) {
+            const player = stats[key];
+            if (player && player.id) {
+                if (!fameMap[player.id]) {
+                    fameMap[player.id] = [];
+                }
+                fameMap[player.id].push(STAT_CATEGORY_NAMES[key] || key);
+            }
+        }
+        setHallOfFame(fameMap);
+    }
+    fetchHallOfFame();
+  }, []);
 
   const playersQuery = useMemoFirebase(() => {
     if (!firestore) return null;
@@ -224,6 +261,30 @@ export default function Home() {
     setClanFilter(clan);
     setSearchQuery(clan || '');
   };
+  
+  const KingBadge = ({ playerId }: { playerId: string }) => {
+    const titles = hallOfFame[playerId];
+    if (!titles) return null;
+
+    return (
+        <TooltipProvider>
+            <Tooltip>
+                <TooltipTrigger>
+                    <Badge variant="outline" className="ml-2 border-yellow-400/50 bg-yellow-400/10 text-yellow-300">
+                        <Trophy className="h-3 w-3" />
+                    </Badge>
+                </TooltipTrigger>
+                <TooltipContent>
+                    <p className="font-semibold">Recordista!</p>
+                    <ul className="list-disc list-inside">
+                        {titles.map(title => <li key={title}>{title}</li>)}
+                    </ul>
+                </TooltipContent>
+            </Tooltip>
+        </TooltipProvider>
+    );
+};
+
 
   return (
     <div className="container mx-auto px-4 py-8 mb-16 md:mb-0">
@@ -339,7 +400,10 @@ export default function Home() {
                                                     <Avatar>
                                                     <AvatarFallback>{player.latestPlayerName.charAt(0)}</AvatarFallback>
                                                     </Avatar>
-                                                    <span className="font-medium group-hover:text-accent transition-colors truncate">{player.latestPlayerName}</span>
+                                                    <div className="flex items-center">
+                                                        <span className="font-medium group-hover:text-accent transition-colors truncate">{player.latestPlayerName}</span>
+                                                        <KingBadge playerId={player.id} />
+                                                    </div>
                                                     {player.status === 'retired' && <Badge variant="secondary">Retired</Badge>}
                                                 </Link>
                                                 </TableCell>
@@ -376,7 +440,10 @@ export default function Home() {
                                                 <AvatarFallback className="text-xl">{player.latestPlayerName.charAt(0)}</AvatarFallback>
                                             </Avatar>
                                             <div className="flex-1 overflow-hidden">
-                                                <p className="font-bold text-lg truncate" title={player.latestPlayerName}>{player.latestPlayerName}</p>
+                                                <div className="flex items-center">
+                                                    <p className="font-bold text-lg truncate" title={player.latestPlayerName}>{player.latestPlayerName}</p>
+                                                    <KingBadge playerId={player.id} />
+                                                </div>
                                                 <CardRankIndicator rank={rank} />
                                             </div>
                                              {player.status === 'retired' && <Badge variant="secondary" className="absolute top-2 right-2">Retired</Badge>}
