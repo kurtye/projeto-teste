@@ -64,11 +64,8 @@ export function useCollection<T = any>(
 
   const memoizedQueryAsString = useMemo(() => {
     if (!memoizedTargetRefOrQuery) return null;
-    if (memoizedTargetRefOrQuery.type === 'collection') {
-      return (memoizedTargetRefOrQuery as CollectionReference).path;
-    }
-    // This is a simplified way to get a string representation.
-    // For more complex queries, this might need refinement.
+    // Using .toString() provides a more unique representation of the query,
+    // including its filters and ordering, which is crucial for the useEffect dependency array.
     return (memoizedTargetRefOrQuery as Query).toString();
   }, [memoizedTargetRefOrQuery]);
 
