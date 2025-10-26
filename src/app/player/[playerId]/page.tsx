@@ -349,6 +349,3 @@ export default function PlayerProfilePage({ params }: PlayerProfilePageProps) {
     </div>
   );
 }
-
-
-    
