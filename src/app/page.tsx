@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, ReactNode } from 'react';
 import Link from 'next/link';
 import {
   Table,
@@ -30,6 +30,35 @@ interface SortConfig {
   key: SortKey;
   direction: SortDirection;
 }
+
+const getRankHighlightClasses = (rank: number): string => {
+    switch (rank) {
+        case 1: return "text-yellow-400";
+        case 2: return "text-slate-400";
+        case 3: return "text-orange-400";
+        default: return "text-muted-foreground";
+    }
+}
+
+const RankIndicator = ({ rank }: { rank: number }) => {
+    if (rank <= 3) {
+        return <Trophy className={cn("h-5 w-5 inline-block", getRankHighlightClasses(rank))} />;
+    }
+    return <span className="font-bold text-sm w-6 text-center text-muted-foreground">{rank}</span>;
+}
+
+const CardRankIndicator = ({ rank }: { rank: number }) => {
+    const highlightClass = getRankHighlightClasses(rank);
+    if (rank <= 3) {
+        return (
+            <div className={cn("flex items-center gap-1", highlightClass)}>
+                <Trophy className="h-4 w-4" />
+                <span className="font-bold">#{rank}</span>
+            </div>
+        );
+    }
+    return <p className="text-sm text-muted-foreground">Rank #{rank}</p>;
+};
 
 function PlayerRowSkeleton() {
   return (
@@ -255,64 +284,78 @@ export default function Home() {
                                   </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                    {sortedAndFilteredPlayers.map((player, index) => (
-                                    <TableRow key={player.id}>
-                                        <TableCell className="p-2 md:p-4">
-                                        <Link href={`/player/${player.id}`} className="flex items-center gap-3 group">
-                                            <span className="font-bold text-sm w-6 text-center text-muted-foreground">{index + 1}</span>
-                                            <Avatar>
-                                            <AvatarFallback>{player.latestPlayerName.charAt(0)}</AvatarFallback>
-                                            </Avatar>
-                                            <span className="font-medium group-hover:text-accent transition-colors truncate">{player.latestPlayerName}</span>
-                                        </Link>
-                                        </TableCell>
-                                        <TableCell className="hidden text-center font-semibold md:table-cell">{player.totalScore?.toLocaleString()}</TableCell>
-                                        <TableCell className="text-center">{player.totalKills?.toLocaleString()}</TableCell>
-                                        <TableCell className="hidden text-center md:table-cell">{player.totalDeaths?.toLocaleString()}</TableCell>
-                                        <TableCell className="text-center">
-                                        <Badge variant={player.kdRatio && player.kdRatio > 2.0 ? 'destructive' : player.kdRatio && player.kdRatio > 1.0 ? 'default' : 'secondary'} className="bg-accent/20 text-accent-foreground border-accent/30">
-                                            {player.kdRatio?.toFixed(2)}
-                                        </Badge>
-                                        </TableCell>
-                                    </TableRow>
-                                    ))}
+                                    {sortedAndFilteredPlayers.map((player, index) => {
+                                        const rank = index + 1;
+                                        return (
+                                            <TableRow key={player.id}>
+                                                <TableCell className="p-2 md:p-4">
+                                                <Link href={`/player/${player.id}`} className="flex items-center gap-3 group">
+                                                    <div className="w-6 text-center">
+                                                        <RankIndicator rank={rank} />
+                                                    </div>
+                                                    <Avatar>
+                                                    <AvatarFallback>{player.latestPlayerName.charAt(0)}</AvatarFallback>
+                                                    </Avatar>
+                                                    <span className="font-medium group-hover:text-accent transition-colors truncate">{player.latestPlayerName}</span>
+                                                </Link>
+                                                </TableCell>
+                                                <TableCell className="hidden text-center font-semibold md:table-cell">{player.totalScore?.toLocaleString()}</TableCell>
+                                                <TableCell className="text-center">{player.totalKills?.toLocaleString()}</TableCell>
+                                                <TableCell className="hidden text-center md:table-cell">{player.totalDeaths?.toLocaleString()}</TableCell>
+                                                <TableCell className="text-center">
+                                                <Badge variant={player.kdRatio && player.kdRatio > 2.0 ? 'destructive' : player.kdRatio && player.kdRatio > 1.0 ? 'default' : 'secondary'} className="bg-accent/20 text-accent-foreground border-accent/30">
+                                                    {player.kdRatio?.toFixed(2)}
+                                                </Badge>
+                                                </TableCell>
+                                            </TableRow>
+                                        )
+                                    })}
                                 </TableBody>
                             </Table>
                         </div>
                     </Card>
                 ) : (
                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                        {sortedAndFilteredPlayers.map((player, index) => (
-                             <Link key={player.id} href={`/player/${player.id}`} className="group">
-                                <Card className="h-full transition-all duration-200 group-hover:border-accent group-hover:shadow-lg">
-                                    <CardHeader className="flex-row items-center gap-4 space-y-0 p-4">
-                                        <Avatar className="h-12 w-12 border-2 border-transparent group-hover:border-primary">
-                                            <AvatarFallback className="text-xl">{player.latestPlayerName.charAt(0)}</AvatarFallback>
-                                        </Avatar>
-                                        <div className="flex-1">
-                                            <p className="font-bold text-lg truncate" title={player.latestPlayerName}>{player.latestPlayerName}</p>
-                                            <p className="text-sm text-muted-foreground">Rank #{index + 1}</p>
-                                        </div>
-                                    </CardHeader>
-                                    <CardContent className="p-4 pt-0">
-                                        <div className="grid grid-cols-3 gap-2 text-center text-sm">
-                                            <div>
-                                                <p className="font-bold text-lg">{player.kdRatio?.toFixed(2)}</p>
-                                                <p className="text-xs text-muted-foreground">K/D Ratio</p>
+                        {sortedAndFilteredPlayers.map((player, index) => {
+                            const rank = index + 1;
+                            const cardHighlightClass = 
+                                rank === 1 ? "border-yellow-400 shadow-yellow-400/20" :
+                                rank === 2 ? "border-slate-400 shadow-slate-400/20" :
+                                rank === 3 ? "border-orange-400 shadow-orange-400/20" :
+                                "group-hover:border-accent group-hover:shadow-lg";
+
+                            return (
+                                <Link key={player.id} href={`/player/${player.id}`} className="group">
+                                    <Card className={cn("h-full transition-all duration-200", cardHighlightClass)}>
+                                        <CardHeader className="flex-row items-center gap-4 space-y-0 p-4">
+                                            <Avatar className="h-12 w-12 border-2 border-transparent group-hover:border-primary">
+                                                <AvatarFallback className="text-xl">{player.latestPlayerName.charAt(0)}</AvatarFallback>
+                                            </Avatar>
+                                            <div className="flex-1 overflow-hidden">
+                                                <p className="font-bold text-lg truncate" title={player.latestPlayerName}>{player.latestPlayerName}</p>
+                                                <CardRankIndicator rank={rank} />
                                             </div>
-                                            <div>
-                                                <p className="font-bold text-lg">{player.totalKills?.toLocaleString()}</p>
-                                                <p className="text-xs text-muted-foreground">Kills</p>
+                                        </CardHeader>
+                                        <CardContent className="p-4 pt-0">
+                                            <div className="grid grid-cols-3 gap-2 text-center text-sm">
+                                                <div>
+                                                    <p className="font-bold text-lg">{player.kdRatio?.toFixed(2)}</p>
+                                                    <p className="text-xs text-muted-foreground">K/D Ratio</p>
+                                                </div>
+                                                <div>
+                                                    <p className="font-bold text-lg">{player.totalKills?.toLocaleString()}</p>
+                                                    <p className="text-xs text-muted-foreground">Kills</p>
+                                                </div>
+                                                <div>
+                                                    <p className="font-bold text-lg">{player.totalScore?.toLocaleString()}</p>
+                                                    <p className="text-xs text-muted-foreground">Score</p>
+                                                </div>
                                             </div>
-                                            <div>
-                                                <p className="font-bold text-lg">{player.totalScore?.toLocaleString()}</p>
-                                                <p className="text-xs text-muted-foreground">Score</p>
-                                            </div>
-                                        </div>
-                                    </CardContent>
-                                </Card>
-                            </Link>
-                        ))}
+                                        </CardContent>
+                                    </Card>
+                                </Link>
+                            )
+                        })}
                     </div>
                 )
             ) : (
