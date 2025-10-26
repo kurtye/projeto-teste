@@ -332,7 +332,7 @@ export default function AdminDashboardPage() {
                   <CardTitle className="flex items-center gap-2 text-lg">
                       <Edit className="h-5 w-5 text-accent" />
                       Importação Manual de Partidas
-                  </Title>
+                  </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                   <div className="space-y-2">
