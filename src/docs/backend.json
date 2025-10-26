@@ -171,6 +171,17 @@
             "maxTotalDefense": { "type": "number" },
             "maxTotalSupport": { "type": "number" }
         }
+    },
+    "TributePlayer": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "TributePlayer",
+      "description": "A simplified player object for the tribute page.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "latestPlayerName": { "type": "string" }
+      },
+       "required": ["id", "latestPlayerName"]
     }
   },
   "auth": {
