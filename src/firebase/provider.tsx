@@ -156,11 +156,16 @@ export const useFirebaseApp = (): FirebaseApp => {
 
 type MemoFirebase <T> = T & {__memo?: boolean};
 
-export function useMemoFirebase<T>(factory: () => T, deps: DependencyList): T | (MemoFirebase<T>) {
+export function useMemoFirebase<T>(factory: () => T, deps: DependencyList): T {
   const memoized = useMemo(factory, deps);
   
-  if(typeof memoized !== 'object' || memoized === null) return memoized;
-  (memoized as MemoFirebase<T>).__memo = true;
+  if (memoized && typeof memoized === 'object' && !('__memo' in memoized)) {
+    try {
+      (memoized as MemoFirebase<T>).__memo = true;
+    } catch (e) {
+      // Cannot add property to frozen object, but that's okay.
+    }
+  }
   
   return memoized;
 }

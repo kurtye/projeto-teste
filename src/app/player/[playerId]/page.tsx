@@ -1,8 +1,7 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemoFirebase, useDoc, useFirestore } from '@/firebase';
 import { notFound } from 'next/navigation';
-import { useDoc, useFirestore } from '@/firebase';
 import type { PlayerAggregates } from '@/lib/types';
 import { doc } from 'firebase/firestore';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -68,7 +67,7 @@ export default function PlayerProfilePage({ params }: PlayerProfilePageProps) {
   const firestore = useFirestore();
   const playerId = decodeURIComponent(params.playerId);
 
-  const playerDocRef = useMemo(() => {
+  const playerDocRef = useMemoFirebase(() => {
     if (!firestore || !playerId) return null;
     return doc(firestore, 'playerAggregates', playerId);
   }, [firestore, playerId]);

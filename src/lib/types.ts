@@ -1,16 +1,23 @@
-export interface Player {
-  id: string;
-  rank: number;
-  name: string;
-  avatarUrl: string;
-  kills: number;
-  deaths: number;
-  assists: number;
-  revives: number;
-  kdRatio: number;
-  winRate: number;
-  matchesPlayed: number;
-  server: 'EU Central' | 'US East' | 'Asia Pacific';
-  performanceHistory: { month: string; kills: number; deaths: number }[];
-  isCheater?: boolean;
+export interface PlayerAggregates {
+  id: string; // This will be the document ID (steam_id_64)
+  playerId: string;
+  latestPlayerName: string;
+  lastProcessedMatchId?: number;
+  totalTimeSeconds?: number;
+  longestLifeSecs?: number;
+  totalKills?: number;
+  totalDeaths?: number;
+  totalCombat?: number;
+  totalOffense?: number;
+  totalDefense?: number;
+  totalSupport?: number;
+  totalTeamKills?: number;
+  totalDeathsByTK?: number;
+  weaponUsage?: { [key: string]: number };
+  mostKilledBy?: { [key:string]: number };
+  mostKilledPlayers?: { [key: string]: number };
+  
+  // Calculated in the frontend
+  totalScore?: number;
+  kdRatio?: number;
 }

@@ -11,6 +11,7 @@ import {
 } from 'firebase/firestore';
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
+import { useMemo } from 'react';
 
 /** Utility type to add an 'id' field to a given type T. */
 export type WithId<T> = T & { id: string };
@@ -61,6 +62,16 @@ export function useCollection<T = any>(
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<FirestoreError | Error | null>(null);
 
+  const memoizedQueryAsString = useMemo(() => {
+    if (!memoizedTargetRefOrQuery) return null;
+    if (memoizedTargetRefOrQuery.type === 'collection') {
+      return (memoizedTargetRefOrQuery as CollectionReference).path;
+    }
+    // This is a simplified way to get a string representation.
+    // For more complex queries, this might need refinement.
+    return (memoizedTargetRefOrQuery as Query).toString();
+  }, [memoizedTargetRefOrQuery]);
+
   useEffect(() => {
     if (!memoizedTargetRefOrQuery) {
       setData(null);
@@ -69,10 +80,15 @@ export function useCollection<T = any>(
       return;
     }
 
+    if (!memoizedTargetRefOrQuery.__memo) {
+      const error = new Error(`[object Object] was not properly memoized using useMemoFirebase`);
+      setError(error);
+      throw error;
+    }
+
     setIsLoading(true);
     setError(null);
 
-    // Directly use memoizedTargetRefOrQuery as it's assumed to be the final query
     const unsubscribe = onSnapshot(
       memoizedTargetRefOrQuery,
       (snapshot: QuerySnapshot<DocumentData>) => {
@@ -106,9 +122,7 @@ export function useCollection<T = any>(
     );
 
     return () => unsubscribe();
-  }, [memoizedTargetRefOrQuery]); // Re-run if the target query/reference changes.
-  if(memoizedTargetRefOrQuery && !memoizedTargetRefOrQuery.__memo) {
-    throw new Error(memoizedTargetRefOrQuery + ' was not properly memoized using useMemoFirebase');
-  }
+  }, [memoizedQueryAsString]); // Use the string representation for the dependency array
+
   return { data, isLoading, error };
 }

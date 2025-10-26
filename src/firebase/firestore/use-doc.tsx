@@ -10,6 +10,7 @@ import {
 } from 'firebase/firestore';
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
+import { useMemo } from 'react';
 
 /** Utility type to add an 'id' field to a given type T. */
 type WithId<T> = T & { id: string };
@@ -39,13 +40,16 @@ export interface UseDocResult<T> {
  * @returns {UseDocResult<T>} Object with data, isLoading, error.
  */
 export function useDoc<T = any>(
-  memoizedDocRef: DocumentReference<DocumentData> | null | undefined,
+  memoizedDocRef: (DocumentReference<DocumentData> & {__memo?: boolean}) | null | undefined,
 ): UseDocResult<T> {
   type StateDataType = WithId<T> | null;
 
   const [data, setData] = useState<StateDataType>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<FirestoreError | Error | null>(null);
+
+  const memoizedDocPath = useMemo(() => memoizedDocRef?.path, [memoizedDocRef]);
+
 
   useEffect(() => {
     if (!memoizedDocRef) {
@@ -55,9 +59,14 @@ export function useDoc<T = any>(
       return;
     }
 
+    if (!memoizedDocRef.__memo) {
+      const error = new Error(`[object Object] was not properly memoized using useMemoFirebase`);
+      setError(error);
+      throw error;
+    }
+
     setIsLoading(true);
     setError(null);
-    // Optional: setData(null); // Clear previous data instantly
 
     const unsubscribe = onSnapshot(
       memoizedDocRef,
@@ -87,7 +96,7 @@ export function useDoc<T = any>(
     );
 
     return () => unsubscribe();
-  }, [memoizedDocRef]); // Re-run if the memoizedDocRef changes.
+  }, [memoizedDocPath]); // Re-run if the document path changes.
 
   return { data, isLoading, error };
 }
