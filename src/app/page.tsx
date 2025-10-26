@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useMemo, ReactNode } from 'react';
@@ -17,7 +18,7 @@ import { Badge } from '@/components/ui/badge';
 import { Search, Trophy, Skull, Crosshair, BarChart2, ShieldAlert, Target, Award, LayoutGrid, List } from 'lucide-react';
 import { useCollection, useFirestore, useMemoFirebase } from '@/firebase';
 import type { PlayerAggregates } from '@/lib/types';
-import { collection, query, limit, orderBy, where } from 'firebase/firestore';
+import { collection, query, limit, orderBy } from 'firebase/firestore';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -118,25 +119,23 @@ const SortableHeader = ({
   sortConfig,
   requestSort,
   className,
-  disabled = false,
 }: {
   children: React.ReactNode;
   sortKey: SortKey;
   sortConfig: SortConfig;
   requestSort: (key: SortKey) => void;
   className?: string;
-  disabled?: boolean;
 }) => {
   const isActive = sortConfig.key === sortKey;
   const directionIcon = sortConfig.direction === 'ascending' ? '▲' : '▼';
 
   return (
     <TableHead className={cn("text-center", className)}>
-      <Button variant="ghost" onClick={() => requestSort(sortKey)} disabled={disabled} className="group h-auto p-2">
+      <Button variant="ghost" onClick={() => requestSort(sortKey)} className="group h-auto p-2">
         {children}
         <span className={cn(
           "ml-2 transition-opacity",
-          isActive && !disabled ? "opacity-100" : "opacity-0 group-hover:opacity-50"
+          isActive ? "opacity-100" : "opacity-0 group-hover:opacity-50"
         )}>
           {directionIcon}
         </span>
@@ -155,23 +154,16 @@ export default function Home() {
 
   const playersQuery = useMemoFirebase(() => {
     if (!firestore) return null;
+    
+    const baseQuery = query(
+      collection(firestore, 'playerAggregates'),
+      orderBy('totalKills', 'desc'),
+      limit(1000) 
+    );
+    
+    return baseQuery;
+  }, [firestore]);
 
-    if (clanFilter) {
-      return query(
-        collection(firestore, 'playerAggregates'),
-        where("latestPlayerName", ">=", clanFilter),
-        where("latestPlayerName", "<=", clanFilter + '\uf8ff'),
-        orderBy("latestPlayerName", "asc")
-      );
-    } else {
-      // Default query: top 200 players by total kills.
-      return query(
-          collection(firestore, 'playerAggregates'),
-          orderBy('totalKills', 'desc'),
-          limit(200)
-      );
-    }
-  }, [firestore, clanFilter]);
 
   const { data: rawPlayers, isLoading, error } = useCollection<PlayerAggregates>(playersQuery);
 
@@ -195,47 +187,49 @@ export default function Home() {
     setSortConfig({ key, direction });
   };
 
-  const normalizeName = (name: string) => {
-    return name.replace(/[-_\[\]\s]/g, "").toLowerCase();
-  };
-
   const sortedAndFilteredPlayers = useMemo(() => {
-    let sortablePlayers = [...processedPlayers];
+    let filterablePlayers = [...processedPlayers];
 
-    // Se houver um filtro de clã, ordena pelo nome normalizado
     if (clanFilter) {
-      sortablePlayers.sort((a, b) => {
-          return normalizeName(a.latestPlayerName).localeCompare(normalizeName(b.latestPlayerName));
-      });
-    } else {
-      // Caso contrário, usa a ordenação por estatísticas
-      sortablePlayers.sort((a, b) => {
-          const valA = a[sortConfig.key] || 0;
-          const valB = b[sortConfig.key] || 0;
-
-          if (valA < valB) {
-              return sortConfig.direction === 'ascending' ? -1 : 1;
-          }
-          if (valA > valB) {
-              return sortConfig.direction === 'ascending' ? 1 : -1;
-          }
-          return 0;
-      });
+      const lowerCaseFilter = `[${clanFilter.toLowerCase()}]`;
+      filterablePlayers = filterablePlayers.filter(player => 
+        player.latestPlayerName.toLowerCase().includes(lowerCaseFilter)
+      );
+    } else if (searchQuery) {
+      filterablePlayers = filterablePlayers.filter(player =>
+        player.latestPlayerName.toLowerCase().includes(searchQuery.toLowerCase())
+      );
     }
     
-    // O filtro de pesquisa manual é aplicado por cima de qualquer resultado
-    if (searchQuery) {
-        return sortablePlayers.filter(player =>
-            player.latestPlayerName.toLowerCase().includes(searchQuery.toLowerCase())
-        );
-    }
+    // Se um filtro de clã estiver ativo, ordenamos por 'totalKills' por padrão.
+    // Caso contrário, usamos a configuração de ordenação do estado.
+    const currentSortConfig = clanFilter ? { key: 'totalKills', direction: 'descending' } as SortConfig : sortConfig;
+    
+    filterablePlayers.sort((a, b) => {
+        const valA = a[currentSortConfig.key] || 0;
+        const valB = b[currentSortConfig.key] || 0;
 
-    return sortablePlayers;
+        if (valA < valB) {
+            return currentSortConfig.direction === 'ascending' ? -1 : 1;
+        }
+        if (valA > valB) {
+            return currentSortConfig.direction === 'ascending' ? 1 : -1;
+        }
+        return 0;
+    });
+
+    return filterablePlayers;
+
   }, [processedPlayers, searchQuery, sortConfig, clanFilter]);
 
   const handleClanFilterClick = (clan: string | null) => {
     setClanFilter(clan);
-    setSearchQuery(clan || ''); // Pre-fill search query
+    // Remove a query de pesquisa para não conflitarem
+    setSearchQuery(clan ? `[${clan}]` : '');
+    // Reseta a ordenação para o padrão ao selecionar um clã
+    if (clan) {
+      setSortConfig({ key: 'totalKills', direction: 'descending' });
+    }
   };
 
   return (
@@ -265,7 +259,11 @@ export default function Home() {
                 id="search"
                 placeholder="Search by name..."
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  // Limpa o filtro de clã se o usuário começar a digitar
+                  if (clanFilter) setClanFilter(null);
+                }}
                 className="pl-10"
               />
             </div>
@@ -320,16 +318,16 @@ export default function Home() {
                                 <TableHeader>
                                   <TableRow>
                                     <TableHead className="p-2 md:p-4">Player</TableHead>
-                                    <SortableHeader sortKey="totalScore" sortConfig={sortConfig} requestSort={requestSort} className="hidden md:table-cell" disabled={!!clanFilter}>
+                                    <SortableHeader sortKey="totalScore" sortConfig={sortConfig} requestSort={requestSort} className="hidden md:table-cell">
                                         <Award className="h-5 w-5 inline-block" /> <span className="hidden md:inline">Score</span>
                                     </SortableHeader>
-                                    <SortableHeader sortKey="totalKills" sortConfig={sortConfig} requestSort={requestSort} disabled={!!clanFilter}>
+                                    <SortableHeader sortKey="totalKills" sortConfig={sortConfig} requestSort={requestSort}>
                                       <Crosshair className="h-5 w-5 inline-block" /> <span className="hidden md:inline">Kills</span>
                                     </SortableHeader>
-                                    <SortableHeader sortKey="totalDeaths" sortConfig={sortConfig} requestSort={requestSort} className="hidden md:table-cell" disabled={!!clanFilter}>
+                                    <SortableHeader sortKey="totalDeaths" sortConfig={sortConfig} requestSort={requestSort} className="hidden md:table-cell">
                                       <Skull className="h-5 w-5 inline-block" /> <span className="hidden md:inline">Deaths</span>
                                     </SortableHeader>
-                                    <SortableHeader sortKey="kdRatio" sortConfig={sortConfig} requestSort={requestSort} disabled={!!clanFilter}>
+                                    <SortableHeader sortKey="kdRatio" sortConfig={sortConfig} requestSort={requestSort}>
                                       <Target className="h-5 w-5 inline-block" /> <span className="hidden md:inline">K/D Ratio</span>
                                     </SortableHeader>
                                   </TableRow>
@@ -421,3 +419,5 @@ export default function Home() {
     </div>
   );
 }
+
+    
