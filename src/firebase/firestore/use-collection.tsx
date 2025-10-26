@@ -62,9 +62,6 @@ export function useCollection<T = any>(
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<FirestoreError | Error | null>(null);
 
-  const queryKey = useMemo(() => memoizedTargetRefOrQuery?.toString(), [memoizedTargetRefOrQuery]);
-  console.log('[useCollection] New query key:', queryKey);
-
   useEffect(() => {
     console.log('[useCollection] useEffect triggered. Query object:', memoizedTargetRefOrQuery);
     
@@ -125,7 +122,7 @@ export function useCollection<T = any>(
       console.log('[useCollection] Unsubscribing from snapshot listener.');
       unsubscribe();
     }
-  }, [queryKey]); // Use the memoized key as the dependency.
+  }, [memoizedTargetRefOrQuery]); 
 
   return { data, isLoading, error };
 }

@@ -162,9 +162,7 @@ export default function Home() {
 
     if (clanFilter) {
       console.log(`[Home] Creating DB query for clan: ${clanFilter}`);
-      // Query for a specific clan.
-      // This is a "starts with" query. It fetches all players where latestPlayerName
-      // is between "CLAN" and "CLAN" followed by a high-value Unicode character.
+      // Query for a specific clan using a prefix-like range query.
       return query(
           collection(firestore, 'playerAggregates'),
           where("latestPlayerName", ">=", clanFilter),
