@@ -340,6 +340,7 @@ export default function Home() {
                                                     <AvatarFallback>{player.latestPlayerName.charAt(0)}</AvatarFallback>
                                                     </Avatar>
                                                     <span className="font-medium group-hover:text-accent transition-colors truncate">{player.latestPlayerName}</span>
+                                                    {player.status === 'retired' && <Badge variant="secondary">Retired</Badge>}
                                                 </Link>
                                                 </TableCell>
                                                 <TableCell className="hidden text-center font-semibold md:table-cell">{(player.totalScore || 0).toLocaleString()}</TableCell>
@@ -378,6 +379,7 @@ export default function Home() {
                                                 <p className="font-bold text-lg truncate" title={player.latestPlayerName}>{player.latestPlayerName}</p>
                                                 <CardRankIndicator rank={rank} />
                                             </div>
+                                             {player.status === 'retired' && <Badge variant="secondary" className="absolute top-2 right-2">Retired</Badge>}
                                         </CardHeader>
                                         <CardContent className="p-4 pt-0">
                                             <div className="grid grid-cols-3 gap-2 text-center text-sm">

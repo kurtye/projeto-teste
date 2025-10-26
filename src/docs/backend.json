@@ -58,8 +58,7 @@
       "required": [
         "id",
         "start",
-        "end"
-      ]
+        "end"      ]
     },
     "PlayerAggregates": {
       "$schema": "http://json-schema.org/draft-07/schema#",
@@ -76,6 +75,11 @@
         "searchablePlayerName": {
           "type": "string",
           "description": "Lowercase version of the player's name for case-insensitive searching."
+        },
+        "status": {
+          "type": "string",
+          "description": "The status of the player, e.g., 'retired'.",
+          "enum": ["retired"]
         },
         "processedServers": {
           "type": "object",

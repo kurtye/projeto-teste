@@ -16,7 +16,8 @@ export interface PlayerAggregates {
   totalSupport?: number;
   totalTeamKills?: number;
   totalDeathsByTK?: number;
-  
+  status?: 'retired'; // Field for player status
+
   // Calculated in the frontend
   totalScore?: number;
   kdRatio?: number;

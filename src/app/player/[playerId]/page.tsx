@@ -226,7 +226,10 @@ export default function PlayerProfilePage({ params }: PlayerProfilePageProps) {
           <Avatar className="h-32 w-32 border-4 border-primary">
             <AvatarFallback className="text-4xl">{player.latestPlayerName.slice(0, 2)}</AvatarFallback>
           </Avatar>
-          <h1 className="text-4xl font-bold font-headline">{player.latestPlayerName}</h1>
+          <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2">
+            <h1 className="text-4xl font-bold font-headline">{player.latestPlayerName}</h1>
+            {player.status === 'retired' && <Badge variant="default" className="text-base bg-slate-700 text-slate-100">Retired</Badge>}
+          </div>
           <Badge className="text-base" variant="outline">
             <FileText className="mr-2 h-5 w-5 text-accent" /> ID: ...{player.id.slice(-6)}
           </Badge>
