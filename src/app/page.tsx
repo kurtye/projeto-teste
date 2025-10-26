@@ -158,6 +158,7 @@ export default function Home() {
 
     if (clanFilter) {
       // Query for a specific clan using a prefix-like range query.
+      // The Firestore `orderBy` is just to get the data; we'll re-sort on the client.
       return query(
           collection(firestore, 'playerAggregates'),
           where("latestPlayerName", ">=", clanFilter),
@@ -199,9 +200,18 @@ export default function Home() {
   const sortedAndFilteredPlayers = useMemo(() => {
     let sortablePlayers = [...processedPlayers];
 
-    // If a clan filter is active, the data is pre-sorted by name from Firestore.
-    // So we only apply custom sorting if there's no clan filter.
-    if (!clanFilter) {
+    // Helper function to normalize player names for sorting
+    const normalizeName = (name: string) => {
+        return name.replace(/[\[\]\-_ ]/g, "").toLowerCase();
+    };
+
+    if (clanFilter) {
+        // For clan view, sort by normalized name
+        sortablePlayers.sort((a, b) => {
+            return normalizeName(a.latestPlayerName).localeCompare(normalizeName(b.latestPlayerName));
+        });
+    } else {
+        // For general ranking, sort by selected stat
         sortablePlayers.sort((a, b) => {
             const valA = a[sortConfig.key] || 0;
             const valB = b[sortConfig.key] || 0;
