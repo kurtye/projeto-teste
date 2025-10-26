@@ -22,9 +22,23 @@ import {
   FileText,
   Trophy,
   Target,
+  LineChart,
 } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { use } from 'react';
+import {
+  PolarGrid,
+  Radar,
+  RadarChart,
+  PolarAngleAxis,
+  PolarRadiusAxis,
+  ResponsiveContainer,
+} from 'recharts';
+import {
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+} from '@/components/ui/chart';
 
 interface PlayerProfilePageProps {
   params: {
@@ -60,7 +74,7 @@ const formatMinutes = (seconds: number): string => {
 const InteractionList = ({ title, icon: Icon, data, isLoading }: { title: string, icon: React.ElementType, data: {id: string, name: string, count: number}[] | null, isLoading: boolean }) => (
     <Card>
         <CardHeader>
-            <CardTitle className="text-lg flex items-center gap-2"><Icon /> {title}</CardTitle>
+            <CardTitle className="text-lg flex items-center gap-2"><Icon className="w-5 h-5"/> {title}</CardTitle>
         </CardHeader>
         <CardContent>
             {isLoading ? (
@@ -88,9 +102,6 @@ const InteractionList = ({ title, icon: Icon, data, isLoading }: { title: string
 
 export default function PlayerProfilePage({ params }: PlayerProfilePageProps) {
   const firestore = useFirestore();
-  // `use` is required to access `params` in Server Components, but this
-  // is a Client Component. Using it here maintains compatibility with
-  // potential future Next.js changes and is safe.
   const resolvedParams = use(params);
   const playerId = decodeURIComponent(resolvedParams.playerId);
 
@@ -121,21 +132,38 @@ export default function PlayerProfilePage({ params }: PlayerProfilePageProps) {
   const { data: mostKilledPlayers, isLoading: isLoadingKilledPlayers } = useCollection<PlayerInteraction>(killedPlayersQuery);
   const { data: topWeapons, isLoading: isLoadingTopWeapons } = useCollection<WeaponUsage>(weaponUsageQuery);
 
+  const chartData = useMemo(() => {
+      if (!player) return [];
+      return [
+        { stat: 'Combat', value: player.totalCombat || 0 },
+        { stat: 'Offense', value: player.totalOffense || 0 },
+        { stat: 'Defense', value: player.totalDefense || 0 },
+        { stat: 'Support', value: player.totalSupport || 0 },
+      ].map(item => ({...item, fullMark: 100})); // We can add a "fullMark" later if we normalize data
+  }, [player]);
+
+  const chartConfig = {
+      value: {
+          label: 'Pontos',
+          color: 'hsl(var(--accent))',
+      },
+  };
+
   if (isLoadingPlayer) {
     return (
         <div className="container mx-auto px-4 py-8">
             <Skeleton className="h-10 w-48 mb-6" />
-            <div className="flex flex-col items-center gap-4 md:flex-row md:items-start">
+            <div className="flex flex-col lg:flex-row items-center lg:items-start gap-8">
                 <div className="flex flex-col items-center gap-4">
                     <Skeleton className="h-32 w-32 rounded-full" />
                     <Skeleton className="h-10 w-64" />
                     <Skeleton className="h-8 w-24" />
                 </div>
-                <div className="flex-1 w-full mt-8 md:mt-0 md:ml-8">
+                <div className="flex-1 w-full">
                     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                         {Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-28 w-full" />)}
                     </div>
-                     <div className="grid gap-6 mt-6 md:grid-cols-3">
+                     <div className="grid gap-6 mt-6 md:grid-cols-1 lg:grid-cols-3">
                          <Skeleton className="h-80 w-full" />
                          <Skeleton className="h-80 w-full" />
                          <Skeleton className="h-80 w-full" />
@@ -180,17 +208,18 @@ export default function PlayerProfilePage({ params }: PlayerProfilePageProps) {
             </Link>
         </Button>
       </div>
-      <div className="flex flex-col items-center gap-4 md:flex-row md:items-start">
-        <div className="flex flex-col items-center gap-4">
+      <div className="flex flex-col lg:flex-row items-center lg:items-start gap-8">
+        <div className="flex flex-col items-center gap-4 text-center">
           <Avatar className="h-32 w-32 border-4 border-primary">
             <AvatarFallback className="text-4xl">{player.latestPlayerName.slice(0, 2)}</AvatarFallback>
           </Avatar>
           <h1 className="text-4xl font-bold font-headline">{player.latestPlayerName}</h1>
-          <Badge className="text-lg" variant="outline">
+          <Badge className="text-base" variant="outline">
             <FileText className="mr-2 h-5 w-5 text-accent" /> ID: ...{player.id.slice(-6)}
           </Badge>
         </div>
-        <div className="flex-1 w-full mt-8 md:mt-0 md:ml-8">
+
+        <div className="flex-1 w-full space-y-6">
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
             <StatCard title="Total Score" value={totalScore.toLocaleString()} icon={Trophy} />
             <StatCard title="K/D Ratio" value={kdRatio.toFixed(2)} icon={Target} />
@@ -202,7 +231,30 @@ export default function PlayerProfilePage({ params }: PlayerProfilePageProps) {
             <StatCard title="Deaths by TK" value={(player.totalDeathsByTK || 0).toLocaleString()} icon={UserCheck} />
           </div>
 
-          <div className="grid gap-6 mt-6 md:grid-cols-3">
+          <Card>
+            <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2"><LineChart className="w-5 h-5"/> Player Style</CardTitle>
+            </CardHeader>
+            <CardContent>
+                <ChartContainer config={chartConfig} className="mx-auto w-full max-w-sm h-64">
+                    <RadarChart data={chartData}>
+                    <ChartTooltip cursor={false} content={<ChartTooltipContent indicator="dot" />} />
+                        <PolarAngleAxis dataKey="stat" />
+                        <PolarRadiusAxis angle={30} domain={[0, 'dataMax + 100']} display="none" />
+                        <PolarGrid />
+                        <Radar
+                            name="Player Stats"
+                            dataKey="value"
+                            stroke="hsl(var(--accent))"
+                            fill="hsl(var(--accent))"
+                            fillOpacity={0.6}
+                        />
+                    </RadarChart>
+                </ChartContainer>
+            </CardContent>
+          </Card>
+
+          <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-3">
              <InteractionList title="Top Weapons" icon={Swords} data={topWeapons} isLoading={isLoadingTopWeapons} />
              <InteractionList title="Most Killed By" icon={Skull} data={mostKilledBy} isLoading={isLoadingKilledBy} />
              <InteractionList title="Top Victims" icon={Target} data={mostKilledPlayers} isLoading={isLoadingKilledPlayers} />
