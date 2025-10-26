@@ -60,76 +60,30 @@
         "end"
       ]
     },
-    "PlayerMatchStats": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
-      "title": "PlayerMatchStats",
-      "type": "object",
-      "description": "Represents the statistics of a player in a specific match.",
-      "properties": {
-        "id": {
-          "type": "string",
-          "description": "Unique identifier for the PlayerMatchStats entity."
+    "PlayerAggregates": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "title": "PlayerAggregates",
+        "type": "object",
+        "description": "Aggregated statistics for a single player across all matches.",
+        "properties": {
+            "playerId": { "type": "string" },
+            "latestPlayerName": { "type": "string" },
+            "lastProcessedMatchId": { "type": "number" },
+            "totalTimeSeconds": { "type": "number" },
+            "longestLifeSecs": { "type": "number" },
+            "totalKills": { "type": "number" },
+            "totalDeaths": { "type": "number" },
+            "totalCombat": { "type": "number" },
+            "totalOffense": { "type": "number" },
+            "totalDefense": { "type": "number" },
+            "totalSupport": { "type": "number" },
+            "totalTeamKills": { "type": "number" },
+            "totalDeathsByTK": { "type": "number" },
+            "weaponUsage": { "type": "object" },
+            "mostKilledBy": { "type": "object" },
+            "mostKilledPlayers": { "type": "object" }
         },
-        "playerId": {
-          "type": "string",
-          "description": "Reference to Player. (Relationship: Player 1:N PlayerMatchStats)"
-        },
-        "matchId": {
-          "type": "string",
-          "description": "Reference to Match. (Relationship: Match 1:N PlayerMatchStats)"
-        },
-        "kills": {
-          "type": "number",
-          "description": "Number of kills achieved by the player in the match."
-        },
-        "deaths": {
-          "type": "number",
-          "description": "Number of deaths of the player in the match."
-        },
-        "kdRatio": {
-          "type": "number",
-          "description": "Kill/Death ratio of the player in the match."
-        },
-        "server": {
-          "type": "string",
-          "description": "The server where the match was played."
-        }
-      },
-      "required": [
-        "id",
-        "playerId",
-        "matchId"
-      ]
-    },
-    "RankingFilter": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
-      "title": "RankingFilter",
-      "type": "object",
-      "description": "Represents filters used to sort leaderboard rankings, such as server, time period, and metrics.",
-      "properties": {
-        "id": {
-          "type": "string",
-          "description": "Unique identifier for the RankingFilter entity."
-        },
-        "filterName": {
-          "type": "string",
-          "description": "The name of the filter (e.g., 'Server', 'Time Period')."
-        },
-        "filterValue": {
-          "type": "string",
-          "description": "The value of the filter (e.g., 'US East', 'Last Week')."
-        },
-        "metric": {
-          "type": "string",
-          "description": "The specific in-game metric the filter applies to (e.g., 'Kills', 'Score')."
-        }
-      },
-      "required": [
-        "id",
-        "filterName",
-        "filterValue",
-        "metric"
-      ]
+        "required": ["playerId", "latestPlayerName"]
     }
   },
   "auth": {
@@ -141,13 +95,25 @@
   "firestore": {
     "structure": [
       {
-        "path": "/players/{playerId}",
+        "path": "/rawMatchResults/{matchId}",
         "definition": {
-          "entityName": "Player",
-          "schema": {
-            "$ref": "#/backend/entities/Player"
-          },
-          "description": "Global collection of player documents, each containing player information such as playerName and steamId.",
+          "entityName": "Match",
+          "schema": { "$ref": "#/backend/entities/Match" },
+          "description": "Collection to store raw match data from the external API. Documents in this collection trigger the aggregation Cloud Function and are deleted after successful processing.",
+          "params": [
+            {
+              "name": "matchId",
+              "description": "Unique identifier for the match from the API."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/playerAggregates/{playerId}",
+        "definition": {
+          "entityName": "PlayerAggregates",
+          "schema": { "$ref": "#/backend/entities/PlayerAggregates" },
+          "description": "Global collection of aggregated player statistics. Each document represents a single player and contains their consolidated stats from all processed matches.",
           "params": [
             {
               "name": "playerId",
@@ -155,60 +121,8 @@
             }
           ]
         }
-      },
-      {
-        "path": "/servers/{serverName}/matches/{matchId}",
-        "definition": {
-            "entityName": "Match",
-            "schema": {
-                "$ref": "#/backend/entities/Match"
-            },
-            "description": "Collection of match documents for a specific server, containing the full match data from the external API.",
-            "params": [
-                {
-                    "name": "serverName",
-                    "description": "The name of the server (e.g., '3LPZ')."
-                },
-                {
-                    "name": "matchId",
-                    "description": "Unique identifier for the match."
-                }
-            ]
-        }
-      },
-      {
-        "path": "/player_match_stats/{playerMatchStatsId}",
-        "definition": {
-          "entityName": "PlayerMatchStats",
-          "schema": {
-            "$ref": "#/backend/entities/PlayerMatchStats"
-          },
-          "description": "Global collection of player match statistics documents, each containing aggregated statistics for a player in a specific match.",
-          "params": [
-            {
-              "name": "playerMatchStatsId",
-              "description": "Unique identifier for the player match statistics."
-            }
-          ]
-        }
-      },
-      {
-        "path": "/ranking_filters/{rankingFilterId}",
-        "definition": {
-          "entityName": "RankingFilter",
-          "schema": {
-            "$ref": "#/backend/entities/RankingFilter"
-          },
-          "description": "Collection of ranking filter documents, each containing filter information such as filterName, filterValue, and metric.",
-          "params": [
-            {
-              "name": "rankingFilterId",
-              "description": "Unique identifier for the ranking filter."
-            }
-          ]
-        }
       }
     ],
-    "reasoning": "To efficiently manage player data, match statistics, and rankings in the Hell Let Loose BR application, I recommend the following Firestore structure. This structure prioritizes clear data separation, scalability, and efficient querying. \n\n*   **Hierarchical Match Data**: Match data is stored hierarchically under `/servers/{serverName}/matches/{matchId}`. This isolates data per server, which can be useful for server-specific analytics and simplifies data management if a server is decommissioned. Each match document stores the complete, raw data object from the external API for future flexibility.\n\n*   **Global Player Data**: The `/players` collection is kept global to serve as a single source of truth for all players across all servers, preventing data duplication. Player documents are updated with their latest known name upon import.\n\n*   **Global Player Stats**: The `/player_match_stats` collection is also global. This denormalized, flat structure is optimized for efficient querying of player performance across all servers, which is essential for building global leaderboards. Each document links a player to a specific match and includes the server name for filtering.\n\n*   **Authorization Independence**: The structure maintains authorization independence. Security rules can be written to control access without needing to read parent documents. For example, rules for `/player_match_stats` can be based on the user's auth token without needing to fetch data from `/servers` or `/players`."
+    "reasoning": "This structure is designed for an efficient data aggregation pipeline. Raw match data is ingested into the `rawMatchResults` collection, which acts as a queue. A Cloud Function, triggered by document creation in this collection, processes each match. It aggregates player statistics and updates the corresponding documents in the `playerAggregates` collection. Using a separate, global collection for `playerAggregates` is optimal for querying leaderboards and individual player stats without needing complex, nested queries. After a match is successfully processed, its document is removed from `rawMatchResults` to ensure idempotency and prevent reprocessing."
   }
 }

@@ -11,7 +11,6 @@ interface ScoreboardMapsResponse {
   };
 }
 
-// Interface para o objeto de partida retornado pela API
 interface MatchDetails {
     id: number;
     creation_time: string;
@@ -20,7 +19,6 @@ interface MatchDetails {
     server_number: number;
     map_name: string;
     player_stats: PlayerStats[];
-    // Incluímos todos os outros campos que podem vir no objeto
     [key: string]: any;
 }
 
@@ -34,10 +32,8 @@ interface PlayerStats {
     name: string;
     kills: number;
     deaths: number;
-    // Adicione outros campos que você precisar
 }
 
-// Função para fazer uma pausa
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 async function fetchAllMatchIds(apiUrl: string, fetchOptions: RequestInit): Promise<number[]> {
@@ -73,7 +69,7 @@ async function fetchAllMatchIds(apiUrl: string, fetchOptions: RequestInit): Prom
             console.log(`[LOG] ${pageIds.length} IDs adicionados. Total de IDs acumulados: ${allIds.length}`);
             
             currentPage++;
-            await delay(200); // Pequeno delay entre as chamadas de página
+            await delay(200); 
 
         } while (currentPage <= totalPages);
 
@@ -81,7 +77,7 @@ async function fetchAllMatchIds(apiUrl: string, fetchOptions: RequestInit): Prom
         return allIds;
     } catch (error) {
         console.error("Erro ao buscar todos os IDs de partida:", error);
-        throw error; // Re-throw the error to be caught by the main function
+        throw error;
     }
 }
 
@@ -92,7 +88,7 @@ export async function getLastImportedMatchId(serverName: string): Promise<number
   
   console.log(`[LOG] Buscando último ID de partida para o servidor: ${serverName}`);
   try {
-    const matchesRef = collection(db, 'servers', serverName, 'matches');
+    const matchesRef = collection(db, 'rawMatchResults');
     const q = query(matchesRef, orderBy('numeric_id', 'desc'), limit(1));
     const querySnapshot = await getDocs(q);
 
@@ -103,7 +99,6 @@ export async function getLastImportedMatchId(serverName: string): Promise<number
     }
   } catch (error) {
     console.error(`Erro ao buscar último ID de partida para ${serverName}:`, error);
-    // Retorna 0 em caso de erro para não quebrar a UI
     return 0;
   }
 
@@ -125,16 +120,12 @@ export async function importServerData(
         }
     };
     
-    // 1. Obter o último ID de partida salvo para este servidor
     const lastImportedId = await getLastImportedMatchId(serverName);
     console.log(`[LOG] Último ID de partida importado para ${serverName}: ${lastImportedId}`);
 
-
-    // 2. Obter a lista completa de IDs de partidas da API, paginando
     const allMatchIds = await fetchAllMatchIds(apiUrl, fetchOptions);
     const totalMatchesApi = allMatchIds.length;
     
-    // 3. Filtrar para obter apenas os IDs de partidas que ainda não foram importados e ordenar em ordem crescente
     const matchIdsToImport = allMatchIds.filter(id => id > lastImportedId).sort((a, b) => a - b);
     console.log(`[LOG] Total de partidas na API: ${totalMatchesApi}. Novas partidas a importar: ${matchIdsToImport.length}`);
 
@@ -144,18 +135,15 @@ export async function importServerData(
     }
 
     let matchesProcessed = 0;
-
-    // Limita a 500 por execução
     const loopLimit = Math.min(matchIdsToImport.length, 500);
     console.log(`[LOG] Iniciando loop de importação para as próximas ${loopLimit} partidas (do ID ${matchIdsToImport[0]} ao ID ${matchIdsToImport[loopLimit - 1]}).`);
 
     for (let i = 0; i < loopLimit; i++) {
       const matchId = matchIdsToImport[i];
       try {
-        await delay(200); // Adiciona um delay para não sobrecarregar a API
+        await delay(200); 
         
         const mapUrl = `${apiUrl}/get_map_scoreboard?map_id=${matchId}`;
-        
         console.log(`[LOG] Processando partida ${i + 1} de ${loopLimit} (ID: ${matchId}). URL: ${mapUrl}`);
 
         const mapResponse = await fetch(mapUrl, fetchOptions);
@@ -176,39 +164,10 @@ export async function importServerData(
 
         const batch = writeBatch(db);
 
-        // 4. Salvar dados da partida na subcoleção do servidor
-        const matchDocRef = doc(db, 'servers', serverName, 'matches', matchInfo.id.toString());
-        // Adicionamos o `numeric_id` para facilitar a ordenação e busca do último ID
-        batch.set(matchDocRef, { ...matchInfo, numeric_id: matchInfo.id });
+        // Salva a partida inteira na coleção rawMatchResults
+        const matchDocRef = doc(db, 'rawMatchResults', matchInfo.id.toString());
+        batch.set(matchDocRef, { ...matchInfo, numeric_id: matchInfo.id, server: serverName });
 
-        // 5. Salvar dados dos jogadores e estatísticas da partida
-        for (const playerStat of matchInfo.player_stats) {
-            const playerId = playerStat.steam_id_64;
-            // Pular jogadores sem steamId
-            if (!playerId) continue;
-
-            const playerDocRef = doc(db, 'players', playerId);
-            const playerMatchStatsDocRef = doc(collection(db, 'player_match_stats'));
-
-            // Salva/Atualiza dados do jogador (coleção global)
-            batch.set(playerDocRef, {
-                id: playerId,
-                playerName: playerStat.name,
-                steamId: playerId,
-            }, { merge: true });
-
-            // Salva estatísticas da partida (coleção global para facilitar queries)
-            batch.set(playerMatchStatsDocRef, {
-                id: playerMatchStatsDocRef.id,
-                playerId: playerId,
-                matchId: matchInfo.id.toString(),
-                server: serverName, // Adiciona o nome do servidor para referência
-                kills: playerStat.kills,
-                deaths: playerStat.deaths,
-                kdRatio: playerStat.deaths > 0 ? playerStat.kills / playerStat.deaths : playerStat.kills,
-            });
-        }
-        
         await batch.commit();
         matchesProcessed++;
 
