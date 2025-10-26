@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import Link from 'next/link';
 import {
   Table,
@@ -14,11 +14,21 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
-import { Search, Trophy, Swords, Shield, Target, Award, ShieldAlert, Skull, Crosshair, BarChart2 } from 'lucide-react';
+import { Search, Trophy, Skull, Crosshair, BarChart2, ShieldAlert, Target, Award, ChevronsUpDown } from 'lucide-react';
 import { useCollection, useFirestore, useMemoFirebase } from '@/firebase';
 import type { PlayerAggregates } from '@/lib/types';
 import { collection, query, limit } from 'firebase/firestore';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
+
+type SortKey = 'totalScore' | 'totalKills' | 'totalDeaths' | 'kdRatio';
+type SortDirection = 'ascending' | 'descending';
+
+interface SortConfig {
+  key: SortKey;
+  direction: SortDirection;
+}
 
 function PlayerRowSkeleton() {
   return (
@@ -40,17 +50,46 @@ function PlayerRowSkeleton() {
   )
 }
 
+const SortableHeader = ({
+  children,
+  sortKey,
+  sortConfig,
+  requestSort,
+}: {
+  children: React.ReactNode;
+  sortKey: SortKey;
+  sortConfig: SortConfig;
+  requestSort: (key: SortKey) => void;
+}) => {
+  const isActive = sortConfig.key === sortKey;
+  const directionIcon = sortConfig.direction === 'ascending' ? '▲' : '▼';
+
+  return (
+    <TableHead className="text-center">
+      <Button variant="ghost" onClick={() => requestSort(sortKey)} className="group">
+        {children}
+        <span className={cn(
+          "ml-2 transition-opacity",
+          isActive ? "opacity-100" : "opacity-0 group-hover:opacity-50"
+        )}>
+          {directionIcon}
+        </span>
+      </Button>
+    </TableHead>
+  );
+};
+
+
 export default function Home() {
   const [searchQuery, setSearchQuery] = useState('');
+  const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'totalKills', direction: 'descending' });
   const firestore = useFirestore();
 
   const playersQuery = useMemoFirebase(() => {
     if (!firestore) return null;
-    // Removida a ordenação por 'totalScore' pois ele é calculado no cliente.
-    // A ordenação será feita no useMemoFirebase abaixo.
     return query(
         collection(firestore, 'playerAggregates'),
-        limit(200) // Aumentado um pouco o limite para ter mais dados para ordenar
+        limit(200)
     );
   }, [firestore]);
 
@@ -58,32 +97,47 @@ export default function Home() {
 
   const processedPlayers = useMemoFirebase(() => {
     if (!rawPlayers) return [];
-    
     return rawPlayers.map(player => {
         const totalKills = player.totalKills || 0;
         const totalDeaths = player.totalDeaths || 1; // Avoid division by zero
         const totalScore = (player.totalCombat || 0) + (player.totalDefense || 0) + (player.totalSupport || 0) + (player.totalOffense || 0);
         const kdRatio = totalKills / totalDeaths;
         
-        return {
-            ...player,
-            id: player.id,
-            totalKills,
-            totalDeaths,
-            totalScore,
-            kdRatio
-        };
-    }).sort((a, b) => b.totalScore - a.totalScore); // A ordenação acontece aqui, no cliente.
+        return { ...player, id: player.id, totalKills, totalDeaths, totalScore, kdRatio };
+    });
   }, [rawPlayers]);
 
-  const filteredPlayers = useMemoFirebase(() => {
-     if (!searchQuery) {
-      return processedPlayers;
+  const requestSort = (key: SortKey) => {
+    let direction: SortDirection = 'descending';
+    if (sortConfig.key === key && sortConfig.direction === 'descending') {
+      direction = 'ascending';
     }
-    return processedPlayers.filter((player) =>
+    setSortConfig({ key, direction });
+  };
+
+  const sortedAndFilteredPlayers = useMemoFirebase(() => {
+    let sortablePlayers = [...processedPlayers];
+
+    sortablePlayers.sort((a, b) => {
+        const valA = a[sortConfig.key] || 0;
+        const valB = b[sortConfig.key] || 0;
+
+        if (valA < valB) {
+            return sortConfig.direction === 'ascending' ? -1 : 1;
+        }
+        if (valA > valB) {
+            return sortConfig.direction === 'ascending' ? 1 : -1;
+        }
+        return 0;
+    });
+
+    if (!searchQuery) {
+      return sortablePlayers;
+    }
+    return sortablePlayers.filter((player) =>
       player.latestPlayerName.toLowerCase().includes(searchQuery.toLowerCase())
     );
-  }, [processedPlayers, searchQuery]);
+  }, [processedPlayers, searchQuery, sortConfig]);
 
 
   return (
@@ -130,18 +184,18 @@ export default function Home() {
                       <Trophy className="h-5 w-5 inline-block" /> Rank
                     </TableHead>
                     <TableHead>Player</TableHead>
-                    <TableHead className="text-center">
-                      <Award className="h-5 w-5 inline-block" /> Score
-                    </TableHead>
-                    <TableHead className="text-center">
+                    <SortableHeader sortKey="totalScore" sortConfig={sortConfig} requestSort={requestSort}>
+                       <Award className="h-5 w-5 inline-block" /> Score
+                    </SortableHeader>
+                    <SortableHeader sortKey="totalKills" sortConfig={sortConfig} requestSort={requestSort}>
                       <Crosshair className="h-5 w-5 inline-block" /> Kills
-                    </TableHead>
-                    <TableHead className="text-center">
+                    </SortableHeader>
+                     <SortableHeader sortKey="totalDeaths" sortConfig={sortConfig} requestSort={requestSort}>
                       <Skull className="h-5 w-5 inline-block" /> Deaths
-                    </TableHead>
-                    <TableHead className="text-center">
+                    </SortableHeader>
+                    <SortableHeader sortKey="kdRatio" sortConfig={sortConfig} requestSort={requestSort}>
                       <Target className="h-5 w-5 inline-block" /> K/D Ratio
-                    </TableHead>
+                    </SortableHeader>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -154,8 +208,8 @@ export default function Home() {
                         Failed to load player data. Please check console for errors.
                       </TableCell>
                     </TableRow>
-                  ) : filteredPlayers.length > 0 ? (
-                    filteredPlayers.map((player, index) => (
+                  ) : sortedAndFilteredPlayers.length > 0 ? (
+                    sortedAndFilteredPlayers.map((player, index) => (
                       <TableRow key={player.id}>
                         <TableCell className="font-bold text-lg text-center">{index + 1}</TableCell>
                         <TableCell>
