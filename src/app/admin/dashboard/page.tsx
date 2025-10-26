@@ -5,7 +5,7 @@ import { useState, useEffect, useTransition } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
-import { importServerData, getServerSyncStatus, getPlayerCount, importSpecificMatches, updateGlobalStats } from './actions';
+import { importServerData, getServerSyncStatus, getPlayerCount, importSpecificMatches, updateGlobalStats } from '../actions';
 import { Progress } from '@/components/ui/progress';
 import { Database, DownloadCloud, History, ServerIcon, Users, Edit, RefreshCw, BarChart } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -332,7 +332,7 @@ export default function AdminDashboardPage() {
                   <CardTitle className="flex items-center gap-2 text-lg">
                       <Edit className="h-5 w-5 text-accent" />
                       Importação Manual de Partidas
-                  </CardTitle>
+                  </Title>
               </CardHeader>
               <CardContent className="space-y-4">
                   <div className="space-y-2">
@@ -377,4 +377,3 @@ export default function AdminDashboardPage() {
     </div>
   );
 }
-
