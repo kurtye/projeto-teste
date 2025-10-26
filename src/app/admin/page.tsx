@@ -4,10 +4,13 @@ import { useState, useMemo, useEffect, useTransition } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
-import { importServerData, getServerSyncStatus, getPlayerCount } from './actions';
+import { importServerData, getServerSyncStatus, getPlayerCount, importSpecificMatches } from './actions';
 import { Progress } from '@/components/ui/progress';
-import { Database, DownloadCloud, History, ServerIcon, Users } from 'lucide-react';
+import { Database, DownloadCloud, History, ServerIcon, Users, Edit } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Label } from '@/components/ui/label';
 
 const servers = [
   {
@@ -61,6 +64,10 @@ export default function AdminPage() {
   const [serverStatus, setServerStatus] = useState<Record<string, ServerSyncStatus> | null>(null);
   const [playerCount, setPlayerCount] = useState<number | null>(null);
   const [isFetchingStats, startFetchingStats] = useTransition();
+  
+  const [manualImportIds, setManualImportIds] = useState('');
+  const [manualImportServer, setManualImportServer] = useState<string>('');
+  const [isManualImporting, setIsManualImporting] = useState(false);
 
   const { toast } = useToast();
 
@@ -81,7 +88,7 @@ export default function AdminPage() {
     fetchStats();
   }, []);
   
-  const anyImportInProgress = Object.values(importStates).some(s => s.isImporting);
+  const anyImportInProgress = Object.values(importStates).some(s => s.isImporting) || isManualImporting;
 
   const handleImport = async (server: Server) => {
     if (!server) return;
@@ -129,6 +136,46 @@ export default function AdminPage() {
       setTimeout(() => {
         setServerState({ isImporting: false, progress: 0, message: '' });
       }, 8000);
+    }
+  };
+  
+  const handleManualImport = async () => {
+    if (!manualImportServer || !manualImportIds) {
+      toast({
+        variant: 'destructive',
+        title: 'Dados Incompletos',
+        description: 'Por favor, selecione um servidor e insira os IDs das partidas.',
+      });
+      return;
+    }
+
+    setIsManualImporting(true);
+    const server = servers.find(s => s.id === manualImportServer);
+    if (!server) {
+        setIsManualImporting(false);
+        toast({ variant: 'destructive', title: 'Erro', description: 'Servidor selecionado não encontrado.' });
+        return;
+    }
+
+    toast({ title: 'Iniciando Importação Manual', description: `Processando partidas para ${server.name}...` });
+
+    try {
+      const result = await importSpecificMatches(server.name, server.apiUrl, manualImportIds);
+      if (result.success) {
+        toast({
+          title: 'Importação Manual Concluída',
+          description: `${result.matchesProcessed} de ${result.totalToProcess} partidas foram processadas com sucesso.`,
+        });
+        setManualImportIds('');
+        setManualImportServer('');
+        fetchStats();
+      } else {
+        throw new Error(result.error || 'Ocorreu um erro desconhecido.');
+      }
+    } catch (error: any) {
+      toast({ variant: 'destructive', title: 'Falha na Importação Manual', description: error.message });
+    } finally {
+      setIsManualImporting(false);
     }
   };
 
@@ -205,7 +252,7 @@ export default function AdminPage() {
           </div>
 
           <div>
-            <h3 className="text-lg font-semibold font-headline mb-4">Servidores</h3>
+            <h3 className="text-lg font-semibold font-headline mb-4">Importação em Massa</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {servers.map(server => {
                 const state = importStates[server.id];
@@ -238,6 +285,51 @@ export default function AdminPage() {
               })}
             </div>
           </div>
+          
+          <Card className="bg-card">
+              <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-lg">
+                      <Edit className="h-5 w-5 text-accent" />
+                      Importação Manual de Partidas
+                  </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                  <div className="space-y-2">
+                      <Label htmlFor="manual-ids">IDs das Partidas</Label>
+                      <Textarea
+                          id="manual-ids"
+                          placeholder="Cole os IDs aqui, separados por vírgula, espaço ou nova linha"
+                          value={manualImportIds}
+                          onChange={(e) => setManualImportIds(e.target.value)}
+                          disabled={anyImportInProgress}
+                          rows={4}
+                      />
+                  </div>
+                  <div className="space-y-2">
+                      <Label htmlFor="manual-server">Servidor</Label>
+                      <Select
+                        value={manualImportServer}
+                        onValueChange={setManualImportServer}
+                        disabled={anyImportInProgress}
+                      >
+                          <SelectTrigger id="manual-server">
+                              <SelectValue placeholder="Selecione um servidor" />
+                          </SelectTrigger>
+                          <SelectContent>
+                              {servers.map(server => (
+                                  <SelectItem key={server.id} value={server.id}>
+                                      {server.name}
+                                  </SelectItem>
+                              ))}
+                          </SelectContent>
+                      </Select>
+                  </div>
+                  <Button onClick={handleManualImport} disabled={anyImportInProgress}>
+                      <DownloadCloud className={`mr-2 h-4 w-4 ${isManualImporting ? 'animate-spin' : ''}`} />
+                      {isManualImporting ? 'Importando...' : 'Importar Partidas Específicas'}
+                  </Button>
+              </CardContent>
+          </Card>
 
         </CardContent>
       </Card>

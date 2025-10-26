@@ -116,13 +116,9 @@ export async function getServerSyncStatus(): Promise<Record<string, { processed:
             const allMatchIds = await fetchAllMatchIds(server.apiUrl, fetchOptions);
             const total = allMatchIds.length;
             
-            // Contar quantos documentos em rawMatchResults são deste servidor.
-            // Isso nos dá uma contagem de partidas "processadas" ou na fila.
-            // Para uma contagem real de partidas processadas, teríamos que consultar os aggregates,
-            // que é mais caro. Vamos usar uma estimativa aqui.
             const q = query(collection(db, 'rawMatchResults'), where('server', '==', server.name));
             const processedSnapshot = await getCountFromServer(q);
-            const processed = total - processedSnapshot.data().count; // Simplificação
+            const processed = total - processedSnapshot.data().count; 
 
             status[server.name] = { processed: Math.max(0, processed), total };
             console.log(`[LOG] Status para ${server.name}: ${status[server.name].processed}/${status[server.name].total}`);
@@ -219,6 +215,76 @@ export async function importServerData(
     return { success: true, matchesProcessed, totalFound: totalMatchesApi };
   } catch (error: any) {
     console.error('[ERRO GERAL] Erro na importação de dados do servidor:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+export async function importSpecificMatches(
+  serverName: string,
+  apiUrl: string,
+  matchIdsString: string
+): Promise<{ success: boolean; matchesProcessed?: number; totalToProcess?: number; error?: string }> {
+  console.log(`[LOG INICIAL] Importação manual iniciada para o servidor: ${serverName}`);
+
+  if (!serverName || !apiUrl || !matchIdsString) {
+    return { success: false, error: "Servidor, URL da API e IDs das partidas são obrigatórios." };
+  }
+
+  // Parse a string de IDs (separados por vírgula, espaço ou nova linha) para um array de números
+  const matchIdsToImport = matchIdsString
+    .split(/[\s,]+/)
+    .map(id => parseInt(id.trim(), 10))
+    .filter(id => !isNaN(id) && id > 0);
+
+  if (matchIdsToImport.length === 0) {
+    return { success: false, error: "Nenhum ID de partida válido encontrado." };
+  }
+
+  console.log(`[LOG] Total de partidas para importar manualmente: ${matchIdsToImport.length}`);
+  
+  try {
+    const fetchOptions = { headers: { 'Content-Type': 'application/json' } };
+    let matchesProcessed = 0;
+
+    for (const matchId of matchIdsToImport) {
+      try {
+        await delay(250); // Delay para não sobrecarregar a API
+        
+        const mapUrl = `${apiUrl}/get_map_scoreboard?map_id=${matchId}`;
+        console.log(`[LOG MANUAL] Processando partida ID: ${matchId}`);
+        
+        const mapResponse = await fetch(mapUrl, fetchOptions);
+
+        if (!mapResponse.ok) {
+          const errorText = await mapResponse.text();
+          console.warn(`[LOG MANUAL] Falha ao buscar partida ID ${matchId}. Status: ${mapResponse.status}. Corpo: ${errorText}. Pulando.`);
+          continue;
+        }
+
+        const mapData: MapScoreboardResponse = await mapResponse.json();
+        const matchInfo = mapData.result;
+
+        if (!matchInfo || !matchInfo.player_stats) {
+            console.warn(`[LOG MANUAL] Dados da partida ID ${matchId} estão incompletos. Pulando.`);
+            continue;
+        }
+
+        const batch = writeBatch(db);
+        const matchDocRef = doc(db, 'rawMatchResults', matchInfo.id.toString());
+        batch.set(matchDocRef, { ...matchInfo, numeric_id: matchInfo.id, server: serverName });
+
+        await batch.commit();
+        matchesProcessed++;
+      } catch (innerError: any) {
+        console.error(`[LOG MANUAL] Erro processando partida ID ${matchId}:`, innerError.message);
+      }
+    }
+
+    console.log(`[LOG FINAL] Importação manual concluída. ${matchesProcessed} de ${matchIdsToImport.length} partidas processadas.`);
+    return { success: true, matchesProcessed, totalToProcess: matchIdsToImport.length };
+
+  } catch (error: any) {
+    console.error('[ERRO GERAL] Erro na importação manual:', error);
     return { success: false, error: error.message };
   }
 }
