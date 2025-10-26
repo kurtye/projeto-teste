@@ -42,8 +42,6 @@ import {
   ChartTooltipContent,
 } from '@/components/ui/chart';
 import { getHallOfFameStats } from '@/app/hall-of-fame/actions';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-
 
 interface PlayerProfilePageProps {
   params: {
@@ -119,6 +117,21 @@ const InteractionList = ({ title, icon: Icon, data, isLoading }: { title: string
         </CardContent>
     </Card>
 );
+
+const PlayerTrophies = ({ titles }: { titles: string[] }) => {
+    if (!titles || titles.length === 0) return null;
+
+    return (
+        <div className="mt-4 flex flex-col items-center gap-1">
+            {titles.map(title => (
+                <div key={title} className="flex items-center gap-2 text-yellow-400">
+                    <Trophy className="h-5 w-5" />
+                    <span className="font-semibold text-sm">{title}</span>
+                </div>
+            ))}
+        </div>
+    );
+};
 
 
 export default function PlayerProfilePage({ params }: PlayerProfilePageProps) {
@@ -201,30 +214,6 @@ export default function PlayerProfilePage({ params }: PlayerProfilePageProps) {
       full: { label: 'Raw Value' },
   };
 
-  const KingBadge = ({ playerId }: { playerId: string }) => {
-    const titles = hallOfFame[playerId];
-    if (!titles) return null;
-
-    return (
-        <TooltipProvider>
-            <Tooltip>
-                <TooltipTrigger>
-                    <Badge variant="outline" className="ml-2 border-yellow-400/50 bg-yellow-400/10 text-yellow-300">
-                        <Trophy className="h-4 w-4" />
-                    </Badge>
-                </TooltipTrigger>
-                <TooltipContent>
-                    <p className="font-semibold">Recordista!</p>
-                    <ul className="list-disc list-inside">
-                        {titles.map(title => <li key={title}>{title}</li>)}
-                    </ul>
-                </TooltipContent>
-            </Tooltip>
-        </TooltipProvider>
-    );
-};
-
-
   if (isLoadingPlayer || isLoadingGlobalStats) {
     return (
         <div className="container mx-auto px-4 py-8">
@@ -275,6 +264,8 @@ export default function PlayerProfilePage({ params }: PlayerProfilePageProps) {
   
   const totalScore = (player.totalCombat || 0) + (player.totalDefense || 0) + (player.totalSupport || 0) + (player.totalOffense || 0);
 
+  const playerTrophies = hallOfFame[playerId] || [];
+
   return (
     <div className="container mx-auto px-4 py-8">
       <div className="mb-6">
@@ -286,18 +277,18 @@ export default function PlayerProfilePage({ params }: PlayerProfilePageProps) {
         </Button>
       </div>
       <div className="flex flex-col lg:flex-row items-center lg:items-start gap-8">
-        <div className="flex flex-col items-center gap-4 text-center">
+        <div className="flex flex-col items-center gap-2 text-center">
           <Avatar className="h-32 w-32 border-4 border-primary">
             <AvatarFallback className="text-4xl">{player.latestPlayerName.slice(0, 2)}</AvatarFallback>
           </Avatar>
           <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2">
             <h1 className="text-4xl font-bold font-headline">{player.latestPlayerName}</h1>
-            <KingBadge playerId={playerId} />
             {player.status === 'retired' && <Badge variant="default" className="text-base bg-slate-700 text-slate-100">Retired</Badge>}
           </div>
           <Badge className="text-base" variant="outline">
             <FileText className="mr-2 h-5 w-5 text-accent" /> ID: ...{player.id.slice(-6)}
           </Badge>
+          <PlayerTrophies titles={playerTrophies} />
         </div>
 
         <div className="flex-1 w-full space-y-6">
@@ -359,3 +350,5 @@ export default function PlayerProfilePage({ params }: PlayerProfilePageProps) {
   );
 }
 
+
+    
