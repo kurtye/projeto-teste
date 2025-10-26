@@ -17,7 +17,7 @@ import { Badge } from '@/components/ui/badge';
 import { Search, Trophy, Skull, Crosshair, BarChart2, ShieldAlert, Target, Award, ChevronsUpDown } from 'lucide-react';
 import { useCollection, useFirestore, useMemoFirebase } from '@/firebase';
 import type { PlayerAggregates } from '@/lib/types';
-import { collection, query, limit } from 'firebase/firestore';
+import { collection, query, limit, orderBy } from 'firebase/firestore';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -87,8 +87,10 @@ export default function Home() {
 
   const playersQuery = useMemoFirebase(() => {
     if (!firestore) return null;
+    // Default sort by totalKills on the backend
     return query(
         collection(firestore, 'playerAggregates'),
+        orderBy('totalKills', 'desc'),
         limit(200)
     );
   }, [firestore]);
@@ -118,18 +120,21 @@ export default function Home() {
   const sortedAndFilteredPlayers = useMemoFirebase(() => {
     let sortablePlayers = [...processedPlayers];
 
-    sortablePlayers.sort((a, b) => {
-        const valA = a[sortConfig.key] || 0;
-        const valB = b[sortConfig.key] || 0;
+    // Only apply client-side sorting if it's different from the default Firestore sort
+    if (sortConfig.key !== 'totalKills' || sortConfig.direction !== 'descending') {
+        sortablePlayers.sort((a, b) => {
+            const valA = a[sortConfig.key] || 0;
+            const valB = b[sortConfig.key] || 0;
 
-        if (valA < valB) {
-            return sortConfig.direction === 'ascending' ? -1 : 1;
-        }
-        if (valA > valB) {
-            return sortConfig.direction === 'ascending' ? 1 : -1;
-        }
-        return 0;
-    });
+            if (valA < valB) {
+                return sortConfig.direction === 'ascending' ? -1 : 1;
+            }
+            if (valA > valB) {
+                return sortConfig.direction === 'ascending' ? 1 : -1;
+            }
+            return 0;
+        });
+    }
 
     if (!searchQuery) {
       return sortablePlayers;
