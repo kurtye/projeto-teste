@@ -59,11 +59,17 @@ export function useCollection<T = any>(
   type StateDataType = ResultItemType[] | null;
 
   const [data, setData] = useState<StateDataType>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<FirestoreError | Error | null>(null);
 
+  const queryKey = useMemo(() => memoizedTargetRefOrQuery?.toString(), [memoizedTargetRefOrQuery]);
+  console.log('[useCollection] New query key:', queryKey);
+
   useEffect(() => {
+    console.log('[useCollection] useEffect triggered. Query object:', memoizedTargetRefOrQuery);
+    
     if (!memoizedTargetRefOrQuery) {
+      console.log('[useCollection] Query is null/undefined. Resetting state.');
       setData(null);
       setIsLoading(false);
       setError(null);
@@ -72,16 +78,19 @@ export function useCollection<T = any>(
 
     if (!memoizedTargetRefOrQuery.__memo) {
       const error = new Error(`[object Object] was not properly memoized using useMemoFirebase`);
+      console.error('[useCollection] Memoization error:', error);
       setError(error);
       throw error;
     }
 
+    console.log('[useCollection] Setting up new snapshot listener.');
     setIsLoading(true);
     setError(null);
 
     const unsubscribe = onSnapshot(
       memoizedTargetRefOrQuery,
       (snapshot: QuerySnapshot<DocumentData>) => {
+        console.log(`[useCollection] Snapshot received. ${snapshot.docs.length} documents.`);
         const results: ResultItemType[] = [];
         for (const doc of snapshot.docs) {
           results.push({ ...(doc.data() as T), id: doc.id });
@@ -91,6 +100,7 @@ export function useCollection<T = any>(
         setIsLoading(false);
       },
       (error: FirestoreError) => {
+        console.error('[useCollection] Snapshot error:', error);
         // This logic extracts the path from either a ref or a query
         const path: string =
           memoizedTargetRefOrQuery.type === 'collection'
@@ -111,10 +121,11 @@ export function useCollection<T = any>(
       }
     );
 
-    return () => unsubscribe();
-  // Using the query's string representation as the dependency ensures
-  // that the effect re-runs whenever the query's structure (filters, ordering) changes.
-  }, [memoizedTargetRefOrQuery?.toString()]); 
+    return () => {
+      console.log('[useCollection] Unsubscribing from snapshot listener.');
+      unsubscribe();
+    }
+  }, [queryKey]); // Use the memoized key as the dependency.
 
   return { data, isLoading, error };
 }

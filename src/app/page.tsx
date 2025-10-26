@@ -153,10 +153,15 @@ export default function Home() {
   const [viewMode, setViewMode] = useState<ViewMode>('table');
   const firestore = useFirestore();
 
+  console.log('[Home] Rendering component. Current clanFilter:', clanFilter);
+
   const playersQuery = useMemoFirebase(() => {
     if (!firestore) return null;
 
+    console.log('[Home] useMemoFirebase running. clanFilter:', clanFilter);
+
     if (clanFilter) {
+      console.log(`[Home] Creating DB query for clan: ${clanFilter}`);
       // Query for a specific clan.
       // This is a "starts with" query. It fetches all players where latestPlayerName
       // is between "CLAN" and "CLAN" followed by a high-value Unicode character.
@@ -167,6 +172,7 @@ export default function Home() {
           orderBy('latestPlayerName', 'asc')
       );
     } else {
+      console.log('[Home] Creating default DB query for top 200 players.');
       // Default query: top 200 players by total kills.
       return query(
           collection(firestore, 'playerAggregates'),
@@ -176,6 +182,7 @@ export default function Home() {
     }
   }, [firestore, clanFilter]);
 
+  console.log('[Home] playersQuery object created:', playersQuery);
 
   const { data: rawPlayers, isLoading, error } = useCollection<PlayerAggregates>(playersQuery);
 
@@ -231,6 +238,10 @@ export default function Home() {
     return filteredPlayers;
   }, [processedPlayers, searchQuery, sortConfig, clanFilter]);
 
+  const handleClanFilterClick = (clan: string | null) => {
+    console.log(`[Home] Clan button clicked. Setting filter to: ${clan}`);
+    setClanFilter(clan);
+  };
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -267,7 +278,7 @@ export default function Home() {
                 <Button 
                     size="sm"
                     variant={clanFilter === null ? 'default' : 'outline'} 
-                    onClick={() => setClanFilter(null)}
+                    onClick={() => handleClanFilterClick(null)}
                 >
                     Todos
                 </Button>
@@ -276,7 +287,7 @@ export default function Home() {
                         key={clan}
                         size="sm" 
                         variant={clanFilter === clan ? 'default' : 'outline'} 
-                        onClick={() => setClanFilter(clan)}
+                        onClick={() => handleClanFilterClick(clan)}
                     >
                         {clan}
                     </Button>
