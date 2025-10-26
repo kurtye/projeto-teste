@@ -159,13 +159,21 @@ export default function AdminPage() {
                     ) : serverStatus ? (
                         Object.entries(serverStatus).map(([server, status]) => (
                             <div key={server}>
-                                <div className="flex justify-between text-sm mb-1">
-                                    <span className="font-semibold">{server}</span>
-                                    <span className="font-mono text-muted-foreground">
-                                        {status.processed.toLocaleString()} / {status.total.toLocaleString()}
-                                    </span>
-                                </div>
-                                <Progress value={status.total > 0 ? (status.processed / status.total) * 100 : 0} />
+                                {status ? (
+                                  <>
+                                    <div className="flex justify-between text-sm mb-1">
+                                        <span className="font-semibold">{server}</span>
+                                        <span className="font-mono text-muted-foreground">
+                                            {status.processed.toLocaleString()} / {status.total.toLocaleString()}
+                                        </span>
+                                    </div>
+                                    <Progress value={status.total > 0 ? (status.processed / status.total) * 100 : 0} />
+                                  </>
+                                ) : (
+                                  <div className="text-sm text-muted-foreground">
+                                    <span className="font-semibold">{server}:</span> Falha ao carregar status.
+                                  </div>
+                                )}
                             </div>
                         ))
                     ) : (
