@@ -14,7 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
-import { Search, Trophy, Skull, Crosshair, BarChart2, ShieldAlert, Target, Award, ChevronsUpDown } from 'lucide-react';
+import { Search, Trophy, Skull, Crosshair, BarChart2, ShieldAlert, Target, Award, LayoutGrid, List } from 'lucide-react';
 import { useCollection, useFirestore, useMemoFirebase } from '@/firebase';
 import type { PlayerAggregates } from '@/lib/types';
 import { collection, query, limit, orderBy } from 'firebase/firestore';
@@ -22,6 +22,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
+type ViewMode = 'table' | 'card';
 type SortKey = 'totalScore' | 'totalKills' | 'totalDeaths' | 'kdRatio';
 type SortDirection = 'ascending' | 'descending';
 
@@ -51,6 +52,34 @@ function PlayerRowSkeleton() {
     </TableRow>
   )
 }
+
+const PlayerCardSkeleton = () => (
+    <Card className="w-full">
+        <CardHeader className="flex-row items-center gap-4 space-y-0 p-4">
+            <Skeleton className="h-10 w-10 rounded-full" />
+            <div className="flex-1 space-y-2">
+                <Skeleton className="h-4 w-3/4" />
+                <Skeleton className="h-3 w-1/4" />
+            </div>
+        </CardHeader>
+        <CardContent className="p-4 pt-0">
+            <div className="grid grid-cols-3 gap-2 text-center">
+                <div>
+                    <Skeleton className="h-5 w-12 mx-auto mb-1" />
+                    <Skeleton className="h-3 w-8 mx-auto" />
+                </div>
+                <div>
+                    <Skeleton className="h-5 w-12 mx-auto mb-1" />
+                    <Skeleton className="h-3 w-8 mx-auto" />
+                </div>
+                <div>
+                   <Skeleton className="h-5 w-12 mx-auto mb-1" />
+                   <Skeleton className="h-3 w-8 mx-auto" />
+                </div>
+            </div>
+        </CardContent>
+    </Card>
+);
 
 const SortableHeader = ({
   children,
@@ -87,11 +116,11 @@ const SortableHeader = ({
 export default function Home() {
   const [searchQuery, setSearchQuery] = useState('');
   const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'totalKills', direction: 'descending' });
+  const [viewMode, setViewMode] = useState<ViewMode>('table');
   const firestore = useFirestore();
 
   const playersQuery = useMemoFirebase(() => {
     if (!firestore) return null;
-    // Default sort by totalKills on the backend
     return query(
         collection(firestore, 'playerAggregates'),
         orderBy('totalKills', 'desc'),
@@ -124,7 +153,6 @@ export default function Home() {
   const sortedAndFilteredPlayers = useMemoFirebase(() => {
     let sortablePlayers = [...processedPlayers];
 
-    // Only apply client-side sorting if it's different from the default Firestore sort
     if (sortConfig.key !== 'totalKills' || sortConfig.direction !== 'descending') {
         sortablePlayers.sort((a, b) => {
             const valA = a[sortConfig.key] || 0;
@@ -154,100 +182,147 @@ export default function Home() {
       <div className="space-y-8">
         <Card className="bg-card/50 backdrop-blur-sm">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-xl font-headline md:text-2xl">
-              <BarChart2 className="h-6 w-6 text-accent" />
-              <span>Player Rankings</span>
+            <CardTitle className="flex items-center justify-between text-xl font-headline md:text-2xl">
+              <div className="flex items-center gap-2">
+                <BarChart2 className="h-6 w-6 text-accent" />
+                <span>Player Rankings</span>
+              </div>
+               <div className="flex items-center gap-2">
+                    <Button variant={viewMode === 'table' ? 'secondary' : 'ghost'} size="icon" onClick={() => setViewMode('table')}>
+                        <List className="h-5 w-5" />
+                    </Button>
+                    <Button variant={viewMode === 'card' ? 'secondary' : 'ghost'} size="icon" onClick={() => setViewMode('card')}>
+                        <LayoutGrid className="h-5 w-5" />
+                    </Button>
+                </div>
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 gap-4">
-              <div className="space-y-2">
-                <label htmlFor="search" className="text-sm font-medium text-muted-foreground">
-                  Player Search
-                </label>
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
-                  <Input
-                    id="search"
-                    placeholder="Search by name..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-10"
-                  />
-                </div>
-              </div>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+              <Input
+                id="search"
+                placeholder="Search by name..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-10"
+              />
             </div>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="font-headline text-2xl md:text-3xl">Global Player Rankings</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Player</TableHead>
-                    <SortableHeader sortKey="totalScore" sortConfig={sortConfig} requestSort={requestSort} className="hidden md:table-cell">
-                       <Award className="h-5 w-5 inline-block" /> <span className="hidden md:inline">Score</span>
-                    </SortableHeader>
-                    <SortableHeader sortKey="totalKills" sortConfig={sortConfig} requestSort={requestSort}>
-                      <Crosshair className="h-5 w-5 inline-block" /> <span className="hidden md:inline">Kills</span>
-                    </SortableHeader>
-                     <SortableHeader sortKey="totalDeaths" sortConfig={sortConfig} requestSort={requestSort} className="hidden md:table-cell">
-                      <Skull className="h-5 w-5 inline-block" /> <span className="hidden md:inline">Deaths</span>
-                    </SortableHeader>
-                    <SortableHeader sortKey="kdRatio" sortConfig={sortConfig} requestSort={requestSort}>
-                      <Target className="h-5 w-5 inline-block" /> <span className="hidden md:inline">K/D Ratio</span>
-                    </SortableHeader>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {isLoading ? (
-                     Array.from({ length: 10 }).map((_, i) => <PlayerRowSkeleton key={i} />)
-                  ) : error ? (
-                    <TableRow>
-                      <TableCell colSpan={6} className="text-center h-24 text-destructive">
-                        <ShieldAlert className="h-6 w-6 mx-auto mb-2" />
-                        Failed to load player data. Please check console for errors.
-                      </TableCell>
-                    </TableRow>
-                  ) : sortedAndFilteredPlayers.length > 0 ? (
-                    sortedAndFilteredPlayers.map((player, index) => (
-                      <TableRow key={player.id}>
-                        <TableCell className="p-2 md:p-4">
-                           <Link href={`/player/${player.id}`} className="flex items-center gap-3 group">
-                            <span className="font-bold text-sm w-6 text-center text-muted-foreground">{index + 1}</span>
-                            <Avatar>
-                              <AvatarFallback>{player.latestPlayerName.charAt(0)}</AvatarFallback>
-                            </Avatar>
-                            <span className="font-medium group-hover:text-accent transition-colors truncate">{player.latestPlayerName}</span>
-                          </Link>
-                        </TableCell>
-                        <TableCell className="hidden text-center font-semibold md:table-cell">{player.totalScore?.toLocaleString()}</TableCell>
-                        <TableCell className="text-center">{player.totalKills?.toLocaleString()}</TableCell>
-                        <TableCell className="hidden text-center md:table-cell">{player.totalDeaths?.toLocaleString()}</TableCell>
-                        <TableCell className="text-center">
-                          <Badge variant={player.kdRatio && player.kdRatio > 2.0 ? 'destructive' : player.kdRatio && player.kdRatio > 1.0 ? 'default' : 'secondary'} className="bg-accent/20 text-accent-foreground border-accent/30">
-                            {player.kdRatio?.toFixed(2)}
-                          </Badge>
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  ) : (
-                    <TableRow>
-                      <TableCell colSpan={6} className="text-center h-24">
-                        No players found.
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
-        </Card>
+        <div>
+            {isLoading ? (
+                viewMode === 'table' ? (
+                     <Card>
+                        <Table>
+                            <TableBody>
+                                {Array.from({ length: 10 }).map((_, i) => <PlayerRowSkeleton key={i} />)}
+                            </TableBody>
+                        </Table>
+                     </Card>
+                ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                        {Array.from({ length: 12 }).map((_, i) => <PlayerCardSkeleton key={i} />)}
+                    </div>
+                )
+            ) : error ? (
+                <Card className="flex flex-col items-center justify-center p-8 text-center">
+                    <ShieldAlert className="h-12 w-12 text-destructive" />
+                    <h2 className="mt-4 text-xl font-semibold">Failed to load player data</h2>
+                    <p className="mt-2 text-muted-foreground">Please check console for errors or try again later.</p>
+                </Card>
+            ) : sortedAndFilteredPlayers.length > 0 ? (
+                viewMode === 'table' ? (
+                    <Card>
+                        <div className="overflow-x-auto">
+                            <Table>
+                                <TableHeader>
+                                  <TableRow>
+                                    <TableHead className="p-2 md:p-4">Player</TableHead>
+                                    <SortableHeader sortKey="totalScore" sortConfig={sortConfig} requestSort={requestSort} className="hidden md:table-cell">
+                                        <Award className="h-5 w-5 inline-block" /> <span className="hidden md:inline">Score</span>
+                                    </SortableHeader>
+                                    <SortableHeader sortKey="totalKills" sortConfig={sortConfig} requestSort={requestSort}>
+                                      <Crosshair className="h-5 w-5 inline-block" /> <span className="hidden md:inline">Kills</span>
+                                    </SortableHeader>
+                                    <SortableHeader sortKey="totalDeaths" sortConfig={sortConfig} requestSort={requestSort} className="hidden md:table-cell">
+                                      <Skull className="h-5 w-5 inline-block" /> <span className="hidden md:inline">Deaths</span>
+                                    </SortableHeader>
+                                    <SortableHeader sortKey="kdRatio" sortConfig={sortConfig} requestSort={requestSort}>
+                                      <Target className="h-5 w-5 inline-block" /> <span className="hidden md:inline">K/D Ratio</span>
+                                    </SortableHeader>
+                                  </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {sortedAndFilteredPlayers.map((player, index) => (
+                                    <TableRow key={player.id}>
+                                        <TableCell className="p-2 md:p-4">
+                                        <Link href={`/player/${player.id}`} className="flex items-center gap-3 group">
+                                            <span className="font-bold text-sm w-6 text-center text-muted-foreground">{index + 1}</span>
+                                            <Avatar>
+                                            <AvatarFallback>{player.latestPlayerName.charAt(0)}</AvatarFallback>
+                                            </Avatar>
+                                            <span className="font-medium group-hover:text-accent transition-colors truncate">{player.latestPlayerName}</span>
+                                        </Link>
+                                        </TableCell>
+                                        <TableCell className="hidden text-center font-semibold md:table-cell">{player.totalScore?.toLocaleString()}</TableCell>
+                                        <TableCell className="text-center">{player.totalKills?.toLocaleString()}</TableCell>
+                                        <TableCell className="hidden text-center md:table-cell">{player.totalDeaths?.toLocaleString()}</TableCell>
+                                        <TableCell className="text-center">
+                                        <Badge variant={player.kdRatio && player.kdRatio > 2.0 ? 'destructive' : player.kdRatio && player.kdRatio > 1.0 ? 'default' : 'secondary'} className="bg-accent/20 text-accent-foreground border-accent/30">
+                                            {player.kdRatio?.toFixed(2)}
+                                        </Badge>
+                                        </TableCell>
+                                    </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        </div>
+                    </Card>
+                ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                        {sortedAndFilteredPlayers.map((player, index) => (
+                             <Link key={player.id} href={`/player/${player.id}`} className="group">
+                                <Card className="h-full transition-all duration-200 group-hover:border-accent group-hover:shadow-lg">
+                                    <CardHeader className="flex-row items-center gap-4 space-y-0 p-4">
+                                        <Avatar className="h-12 w-12 border-2 border-transparent group-hover:border-primary">
+                                            <AvatarFallback className="text-xl">{player.latestPlayerName.charAt(0)}</AvatarFallback>
+                                        </Avatar>
+                                        <div className="flex-1">
+                                            <p className="font-bold text-lg truncate" title={player.latestPlayerName}>{player.latestPlayerName}</p>
+                                            <p className="text-sm text-muted-foreground">Rank #{index + 1}</p>
+                                        </div>
+                                    </CardHeader>
+                                    <CardContent className="p-4 pt-0">
+                                        <div className="grid grid-cols-3 gap-2 text-center text-sm">
+                                            <div>
+                                                <p className="font-bold text-lg">{player.kdRatio?.toFixed(2)}</p>
+                                                <p className="text-xs text-muted-foreground">K/D Ratio</p>
+                                            </div>
+                                            <div>
+                                                <p className="font-bold text-lg">{player.totalKills?.toLocaleString()}</p>
+                                                <p className="text-xs text-muted-foreground">Kills</p>
+                                            </div>
+                                            <div>
+                                                <p className="font-bold text-lg">{player.totalScore?.toLocaleString()}</p>
+                                                <p className="text-xs text-muted-foreground">Score</p>
+                                            </div>
+                                        </div>
+                                    </CardContent>
+                                </Card>
+                            </Link>
+                        ))}
+                    </div>
+                )
+            ) : (
+                 <Card className="flex flex-col items-center justify-center p-8 text-center">
+                    <Search className="h-12 w-12 text-muted-foreground" />
+                    <h2 className="mt-4 text-xl font-semibold">No Players Found</h2>
+                    <p className="mt-2 text-muted-foreground">Try refining your search query.</p>
+                </Card>
+            )}
+        </div>
       </div>
     </div>
   );
