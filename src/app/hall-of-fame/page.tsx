@@ -16,6 +16,7 @@ import {
   Award,
   Clock,
   Timer,
+  User,
 } from 'lucide-react';
 
 interface HallOfFameData {
@@ -26,11 +27,13 @@ interface HallOfFameData {
   totalSupport?: PlayerAggregates;
   totalTimeSeconds?: PlayerAggregates;
   longestLifeSecs?: PlayerAggregates;
+  loneWolf?: PlayerAggregates;
 }
 
 const statCategories = [
   { key: 'totalKills', title: 'Mais Kills', icon: Swords, formatter: (val: number) => val.toLocaleString() },
   { key: 'totalCombat', title: 'Maior Pontuação de Combate', icon: Award, formatter: (val: number) => val.toLocaleString() },
+  { key: 'loneWolf', title: 'Melhor Jogador sem Clã', icon: User, formatter: (val: number) => `${val.toLocaleString()} Kills` },
   { key: 'totalOffense', title: 'Maior Pontuação de Ataque', icon: Target, formatter: (val: number) => val.toLocaleString() },
   { key: 'totalDefense', title: 'Maior Pontuação de Defesa', icon: Shield, formatter: (val: number) => val.toLocaleString() },
   { key: 'totalSupport', title: 'Maior Pontuação de Suporte', icon: HeartPulse, formatter: (val: number) => val.toLocaleString() },
@@ -120,7 +123,10 @@ export default function HallOfFamePage() {
         ) : (
             statCategories.map(category => {
                 const player = data?.[category.key as keyof HallOfFameData];
-                const value = player?.[category.key as keyof PlayerAggregates] as number | undefined;
+                
+                // For loneWolf, the value to display is totalKills
+                const valueKey = category.key === 'loneWolf' ? 'totalKills' : (category.key as keyof PlayerAggregates);
+                const value = player?.[valueKey as keyof PlayerAggregates] as number | undefined;
 
                 return (
                     <StatRecordCard 
