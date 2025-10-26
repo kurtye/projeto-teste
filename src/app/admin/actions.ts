@@ -1,7 +1,7 @@
 'use server';
 
 import { db } from '@/firebase/server';
-import { collection, writeBatch, doc, query, orderBy, limit, getDocs } from 'firebase/firestore';
+import { collection, writeBatch, doc, query, orderBy, limit, getDocs, where } from 'firebase/firestore';
 
 interface ScoreboardMapsResponse {
   result: {
@@ -83,26 +83,33 @@ async function fetchAllMatchIds(apiUrl: string, fetchOptions: RequestInit): Prom
 
 export async function getLastImportedMatchId(serverName: string): Promise<number> {
   if (!serverName) {
+    console.warn("[WARN] Nome do servidor não fornecido para getLastImportedMatchId.");
     return 0;
   }
   
   console.log(`[LOG] Buscando último ID de partida para o servidor: ${serverName}`);
   try {
     const matchesRef = collection(db, 'rawMatchResults');
-    const q = query(matchesRef, orderBy('numeric_id', 'desc'), limit(1));
+    // Consulta chave: adicionado o 'where' para filtrar pelo servidor correto.
+    const q = query(
+        matchesRef, 
+        where('server', '==', serverName), 
+        orderBy('numeric_id', 'desc'), 
+        limit(1)
+    );
     const querySnapshot = await getDocs(q);
 
     if (!querySnapshot.empty) {
       const lastId = querySnapshot.docs[0].data().numeric_id;
-      console.log(`[LOG] Último ID encontrado: ${lastId}`);
+      console.log(`[LOG] Último ID encontrado para ${serverName}: ${lastId}`);
       return lastId;
     }
   } catch (error) {
     console.error(`Erro ao buscar último ID de partida para ${serverName}:`, error);
-    return 0;
+    // Não lança o erro, retorna 0 para permitir que a importação comece do início se a coleção não existir.
   }
 
-  console.log(`[LOG] Nenhum ID de partida encontrado para ${serverName}.`);
+  console.log(`[LOG] Nenhuma partida encontrada para ${serverName}. A importação começará do início.`);
   return 0;
 }
 
@@ -166,6 +173,7 @@ export async function importServerData(
 
         // Salva a partida inteira na coleção rawMatchResults
         const matchDocRef = doc(db, 'rawMatchResults', matchInfo.id.toString());
+        // Adiciona o campo 'server' ao documento para permitir a consulta por servidor.
         batch.set(matchDocRef, { ...matchInfo, numeric_id: matchInfo.id, server: serverName });
 
         await batch.commit();
