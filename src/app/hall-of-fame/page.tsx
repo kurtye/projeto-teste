@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -17,7 +18,11 @@ import {
   Clock,
   Timer,
   User,
+  ShieldAlert,
 } from 'lucide-react';
+import { useCollection, useFirestore, useMemoFirebase } from '@/firebase';
+import { collection, query, where } from 'firebase/firestore';
+import { Separator } from '@/components/ui/separator';
 
 interface HallOfFameData {
   totalKills?: PlayerAggregates;
@@ -85,9 +90,31 @@ const StatRecordSkeleton = () => (
     </Card>
 );
 
+const TributePlayerCardSkeleton = () => (
+    <Card className="w-full">
+        <CardHeader className="flex-row items-center gap-4 space-y-0 p-4">
+            <Skeleton className="h-12 w-12 rounded-full" />
+            <div className="flex-1 space-y-2">
+                <Skeleton className="h-5 w-3/4" />
+                <Skeleton className="h-4 w-1/4" />
+            </div>
+        </CardHeader>
+    </Card>
+);
+
 export default function HallOfFamePage() {
   const [data, setData] = useState<HallOfFameData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+
+  const firestore = useFirestore();
+
+  const tributePlayersQuery = useMemoFirebase(() => {
+    if (!firestore) return null;
+    return query(collection(firestore, 'playerAggregates'), where('status', '==', 'retired'));
+  }, [firestore]);
+
+  const { data: tributePlayers, isLoading: isLoadingTribute, error: tributeError } = useCollection<PlayerAggregates>(tributePlayersQuery);
+
 
   useEffect(() => {
     const fetchData = async () => {
@@ -140,6 +167,55 @@ export default function HallOfFamePage() {
             })
         )}
       </div>
+
+      <Separator className="my-12" />
+
+      <div className="mb-8">
+          <h2 className="text-3xl font-bold font-headline flex items-center gap-3">
+              <Award className="h-8 w-8 text-yellow-400" />
+              Sempre Lembrados
+          </h2>
+          <p className="text-muted-foreground mt-2">
+              Em memória dos membros da nossa comunidade que nos deixaram.
+          </p>
+      </div>
+      
+      {isLoadingTribute ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {Array.from({ length: 3 }).map((_, i) => <TributePlayerCardSkeleton key={i} />)}
+          </div>
+      ) : tributeError ? (
+           <Card className="flex flex-col items-center justify-center p-8 text-center">
+              <ShieldAlert className="h-12 w-12 text-destructive" />
+              <h2 className="mt-4 text-xl font-semibold">Falha ao carregar homenagens</h2>
+              <p className="mt-2 text-muted-foreground">Ocorreu um erro. Por favor, tente novamente mais tarde.</p>
+          </Card>
+      ) : tributePlayers && tributePlayers.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {tributePlayers.map((player) => (
+                   <Link key={player.id} href={`/player/${encodeURIComponent(player.id)}`} className="group">
+                      <Card className="h-full transition-all duration-200 border-transparent hover:border-accent hover:shadow-lg">
+                          <CardHeader className="flex-row items-center gap-4 space-y-0 p-4">
+                              <Avatar className="h-16 w-16 border-2 border-primary">
+                                  <AvatarFallback className="text-2xl">{player.latestPlayerName.charAt(0)}</AvatarFallback>
+                              </Avatar>
+                              <div className="flex-1 overflow-hidden">
+                                  <p className="font-bold text-xl truncate" title={player.latestPlayerName}>{player.latestPlayerName}</p>
+                                  <p className="text-sm text-muted-foreground">Em nossa memória</p>
+                              </div>
+                          </CardHeader>
+                      </Card>
+                  </Link>
+              ))}
+          </div>
+      ) : (
+          <Card className="flex flex-col items-center justify-center p-8 text-center">
+              <Award className="h-12 w-12 text-muted-foreground" />
+              <h2 className="mt-4 text-xl font-semibold">Nenhum jogador em homenagem</h2>
+              <p className="mt-2 text-muted-foreground">Ainda não há jogadores marcados com o status de homenagem.</p>
+          </Card>
+      )}
+
     </div>
   );
 }
