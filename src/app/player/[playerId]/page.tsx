@@ -205,9 +205,9 @@ export default function PlayerProfilePage({ params }: PlayerProfilePageProps) {
       return [
         { stat: 'Kills', value: getPercentage(player.totalKills, globalStats.maxTotalKills), full: player.totalKills || 0 },
         { stat: 'Combat', value: getPercentage(player.totalCombat, globalStats.maxTotalCombat), full: player.totalCombat || 0 },
+        { stat: 'Support', value: getPercentage(player.totalSupport, globalStats.maxTotalSupport), full: player.totalSupport || 0 },
         { stat: 'Offense', value: getPercentage(player.totalOffense, globalStats.maxTotalOffense), full: player.totalOffense || 0 },
         { stat: 'Defense', value: getPercentage(player.totalDefense, globalStats.maxTotalDefense), full: player.totalDefense || 0 },
-        { stat: 'Support', value: getPercentage(player.totalSupport, globalStats.maxTotalSupport), full: player.totalSupport || 0 },
       ];
   }, [player, globalStats]);
 
