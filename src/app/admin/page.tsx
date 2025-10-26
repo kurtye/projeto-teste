@@ -100,7 +100,7 @@ export default function AdminPage() {
       if (result.success) {
         setServerState({
           progress: 100,
-          message: `${result.matchesProcessed} novas partidas processadas.`,
+          message: `${result.matchesProcessed} novas partidas processadas de ${result.totalFound}.`,
         });
         toast({
           title: 'Importação Concluída!',
