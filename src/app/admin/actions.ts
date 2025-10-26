@@ -105,6 +105,17 @@ export async function getLastImportedMatchId(): Promise<number> {
     return 0;
   }
 
+export async function getPlayerCount(): Promise<number> {
+    try {
+        const aggregatesRef = collection(db, 'playerAggregates');
+        const querySnapshot = await getDocs(aggregatesRef);
+        return querySnapshot.size;
+    } catch (error) {
+        console.error("Error getting player count:", error);
+        return 0;
+    }
+}
+
 
 export async function importServerData(
   serverName: string,

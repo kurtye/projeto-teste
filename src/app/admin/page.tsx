@@ -11,9 +11,9 @@ import {
 } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
-import { importServerData, getLastImportedMatchId } from './actions';
+import { importServerData, getLastImportedMatchId, getPlayerCount } from './actions';
 import { Progress } from '@/components/ui/progress';
-import { Database, DownloadCloud, LinkIcon, History, ServerIcon } from 'lucide-react';
+import { Database, DownloadCloud, LinkIcon, History, ServerIcon, Users } from 'lucide-react';
 
 const servers = [
   {
@@ -49,7 +49,8 @@ export default function AdminPage() {
   const [importProgress, setImportProgress] = useState(0);
   const [progressMessage, setProgressMessage] = useState('');
   const [lastImportedId, setLastImportedId] = useState<number | null>(null);
-  const [isFetchingLastId, startFetchingLastId] = useTransition();
+  const [playerCount, setPlayerCount] = useState<number | null>(null);
+  const [isFetchingStats, startFetchingStats] = useTransition();
 
   const { toast } = useToast();
 
@@ -57,12 +58,21 @@ export default function AdminPage() {
     return servers.find(s => s.id === selectedServerId) || null;
   }, [selectedServerId]);
 
-  useEffect(() => {
-    startFetchingLastId(async () => {
+  const fetchStats = () => {
+    startFetchingStats(async () => {
       setLastImportedId(null);
-      const id = await getLastImportedMatchId();
+      setPlayerCount(null);
+      const [id, count] = await Promise.all([
+        getLastImportedMatchId(),
+        getPlayerCount(),
+      ]);
       setLastImportedId(id);
+      setPlayerCount(count);
     });
+  };
+
+  useEffect(() => {
+    fetchStats();
   }, []);
 
 
@@ -94,9 +104,8 @@ export default function AdminPage() {
           description: `Total de ${result.matchesProcessed} novas partidas processadas do servidor ${selectedServer.name}.`,
         });
 
-        // Atualiza o último ID importado na UI
-        const newLastId = await getLastImportedMatchId();
-        setLastImportedId(newLastId);
+        // Atualiza as estatísticas na UI
+        fetchStats();
 
       } else {
         throw new Error(result.error || 'Ocorreu um erro desconhecido na importação.');
@@ -149,9 +158,9 @@ export default function AdminPage() {
             </Select>
           </div>
 
-          <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
+          <div className='grid grid-cols-1 md:grid-cols-3 gap-4'>
             {selectedServer && (
-              <Card className="bg-muted/30">
+              <Card className="bg-muted/30 md:col-span-3">
                 <CardHeader className='pb-2'>
                   <CardTitle className='text-base flex items-center gap-2'>
                     <ServerIcon className="h-4 w-4 text-muted-foreground" />
@@ -185,18 +194,39 @@ export default function AdminPage() {
               <CardHeader className='pb-2'>
                 <CardTitle className='text-base flex items-center gap-2'>
                   <History className="h-4 w-4 text-muted-foreground" />
-                  <span>Status da Importação Global</span>
+                  <span>Status da Importação</span>
                 </CardTitle>
               </CardHeader>
                <CardContent className="pt-2">
                   <p className="text-sm font-medium text-muted-foreground">
-                    Última partida processada (todos servidores):
+                    Última partida processada:
                   </p>
-                  {isFetchingLastId ? (
+                  {isFetchingStats ? (
                      <p className="text-lg font-bold text-accent">Buscando...</p>
                   ): (
                     <p className="text-lg font-bold text-accent">
                       {lastImportedId !== null ? `ID #${lastImportedId}` : 'Nenhuma importação encontrada.'}
+                    </p>
+                  )}
+               </CardContent>
+            </Card>
+
+            <Card className="bg-muted/30">
+              <CardHeader className='pb-2'>
+                <CardTitle className='text-base flex items-center gap-2'>
+                  <Users className="h-4 w-4 text-muted-foreground" />
+                  <span>Jogadores na Base</span>
+                </CardTitle>
+              </CardHeader>
+               <CardContent className="pt-2">
+                  <p className="text-sm font-medium text-muted-foreground">
+                    Total de jogadores únicos:
+                  </p>
+                  {isFetchingStats ? (
+                     <p className="text-lg font-bold text-accent">Buscando...</p>
+                  ): (
+                    <p className="text-lg font-bold text-accent">
+                      {playerCount !== null ? playerCount.toLocaleString() : 'N/A'}
                     </p>
                   )}
                </CardContent>
