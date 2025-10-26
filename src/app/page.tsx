@@ -31,6 +31,8 @@ interface SortConfig {
   direction: SortDirection;
 }
 
+const CLANS = ['SMK', 'HRB', 'RZN', 'OCL', '3LPZ', 'WRT', 'SAP', 'BOLD', 'IDG'];
+
 const getRankHighlightClasses = (rank: number): string => {
     switch (rank) {
         case 1: return "text-yellow-400";
@@ -144,6 +146,7 @@ const SortableHeader = ({
 
 export default function Home() {
   const [searchQuery, setSearchQuery] = useState('');
+  const [clanFilter, setClanFilter] = useState<string | null>(null);
   const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'totalKills', direction: 'descending' });
   const [viewMode, setViewMode] = useState<ViewMode>('table');
   const firestore = useFirestore();
@@ -197,13 +200,22 @@ export default function Home() {
         });
     }
 
-    if (!searchQuery) {
-      return sortablePlayers;
+    let filteredPlayers = sortablePlayers;
+
+    if (clanFilter) {
+        filteredPlayers = filteredPlayers.filter(player => 
+            player.latestPlayerName.toLowerCase().includes(clanFilter.toLowerCase())
+        );
     }
-    return sortablePlayers.filter((player) =>
-      player.latestPlayerName.toLowerCase().includes(searchQuery.toLowerCase())
-    );
-  }, [processedPlayers, searchQuery, sortConfig]);
+    
+    if (searchQuery) {
+        filteredPlayers = filteredPlayers.filter(player =>
+            player.latestPlayerName.toLowerCase().includes(searchQuery.toLowerCase())
+        );
+    }
+
+    return filteredPlayers;
+  }, [processedPlayers, searchQuery, sortConfig, clanFilter]);
 
 
   return (
@@ -227,7 +239,7 @@ export default function Home() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="relative">
+            <div className="relative mb-4">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
               <Input
                 id="search"
@@ -236,6 +248,25 @@ export default function Home() {
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-10"
               />
+            </div>
+            <div className="flex flex-wrap gap-2">
+                <Button 
+                    size="sm"
+                    variant={clanFilter === null ? 'default' : 'outline'} 
+                    onClick={() => setClanFilter(null)}
+                >
+                    Todos
+                </Button>
+                {CLANS.map(clan => (
+                    <Button 
+                        key={clan}
+                        size="sm" 
+                        variant={clanFilter === clan ? 'default' : 'outline'} 
+                        onClick={() => setClanFilter(clan)}
+                    >
+                        {clan}
+                    </Button>
+                ))}
             </div>
           </CardContent>
         </Card>
