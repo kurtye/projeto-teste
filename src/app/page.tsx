@@ -17,7 +17,7 @@ import { Badge } from '@/components/ui/badge';
 import { Search, Trophy, Swords, Shield, Target, Award, ShieldAlert, Skull, Crosshair, BarChart2 } from 'lucide-react';
 import { useCollection, useFirestore, useMemoFirebase } from '@/firebase';
 import type { PlayerAggregates } from '@/lib/types';
-import { collection, query, orderBy, limit } from 'firebase/firestore';
+import { collection, query, limit } from 'firebase/firestore';
 import { Skeleton } from '@/components/ui/skeleton';
 
 function PlayerRowSkeleton() {
@@ -32,8 +32,10 @@ function PlayerRowSkeleton() {
       </TableCell>
       <TableCell className="text-center"><Skeleton className="h-4 w-12 mx-auto" /></TableCell>
       <TableCell className="text-center"><Skeleton className="h-4 w-12 mx-auto" /></TableCell>
-      <TableCell className="text-center"><Skeleton className="h-6 w-16 mx-auto rounded-full" /></TableCell>
-      <TableCell className="text-right"><Skeleton className="h-4 w-20 ml-auto" /></TableCell>
+      <TableCell className="text-center"><Skeleton className="h-4 w-12 mx-auto" /></TableCell>
+      <TableCell className="text-center">
+        <Skeleton className="h-6 w-16 mx-auto rounded-full" />
+      </TableCell>
     </TableRow>
   )
 }
@@ -44,10 +46,11 @@ export default function Home() {
 
   const playersQuery = useMemoFirebase(() => {
     if (!firestore) return null;
+    // Removida a ordenação por 'totalScore' pois ele é calculado no cliente.
+    // A ordenação será feita no useMemoFirebase abaixo.
     return query(
         collection(firestore, 'playerAggregates'),
-        orderBy('totalScore', 'desc'),
-        limit(100)
+        limit(200) // Aumentado um pouco o limite para ter mais dados para ordenar
     );
   }, [firestore]);
 
@@ -66,10 +69,11 @@ export default function Home() {
             ...player,
             id: player.id,
             totalKills,
+            totalDeaths,
             totalScore,
             kdRatio
         };
-    }).sort((a, b) => b.totalScore - a.totalScore); // Re-sort just in case, though query should handle it.
+    }).sort((a, b) => b.totalScore - a.totalScore); // A ordenação acontece aqui, no cliente.
   }, [rawPlayers]);
 
   const filteredPlayers = useMemoFirebase(() => {
