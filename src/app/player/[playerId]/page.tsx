@@ -1,9 +1,9 @@
 'use client';
 
-import { useMemoFirebase, useDoc, useFirestore } from '@/firebase';
+import { useMemoFirebase, useDoc, useFirestore, useCollection } from '@/firebase';
 import { notFound } from 'next/navigation';
-import type { PlayerAggregates } from '@/lib/types';
-import { doc } from 'firebase/firestore';
+import type { PlayerAggregates, PlayerInteraction } from '@/lib/types';
+import { doc, collection, query, orderBy, limit } from 'firebase/firestore';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
@@ -13,17 +13,15 @@ import {
   ChevronLeft,
   Swords,
   Shield,
-  HeartPulse,
-  Users,
-  Trophy,
-  Target,
   Clock,
   Timer,
   Skull,
   ShieldAlert,
   UserCheck,
   UserX,
-  FileText
+  FileText,
+  Trophy,
+  Target,
 } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 
@@ -63,6 +61,35 @@ const sortObjectByValue = (obj: { [key: string]: number } | undefined) => {
     return Object.entries(obj).sort(([, a], [, b]) => b - a);
 }
 
+const InteractionList = ({ title, icon: Icon, data, isLoading }: { title: string, icon: React.ElementType, data: PlayerInteraction[] | null, isLoading: boolean }) => (
+    <Card>
+        <CardHeader>
+            <CardTitle className="text-lg flex items-center gap-2"><Icon /> {title}</CardTitle>
+        </CardHeader>
+        <CardContent>
+            {isLoading ? (
+                <div className="space-y-2">
+                    {Array.from({length: 5}).map((_, i) => <Skeleton key={i} className="h-4 w-full" />)}
+                </div>
+            ) : (
+                <ul className="space-y-2 text-sm">
+                    {data && data.length > 0 ? (
+                      data.map((item) => (
+                          <li key={item.id} className="flex justify-between">
+                              <span className="truncate pr-4">{item.name}</span>
+                              <span className="font-bold">{item.count.toLocaleString()}</span>
+                          </li>
+                      ))
+                    ) : (
+                      <li className="text-muted-foreground">Nenhum dado.</li>
+                    )}
+                </ul>
+            )}
+        </CardContent>
+    </Card>
+);
+
+
 export default function PlayerProfilePage({ params }: PlayerProfilePageProps) {
   const firestore = useFirestore();
   const playerId = decodeURIComponent(params.playerId);
@@ -72,9 +99,28 @@ export default function PlayerProfilePage({ params }: PlayerProfilePageProps) {
     return doc(firestore, 'playerAggregates', playerId);
   }, [firestore, playerId]);
 
-  const { data: player, isLoading, error } = useDoc<PlayerAggregates>(playerDocRef);
+  const { data: player, isLoading: isLoadingPlayer, error } = useDoc<PlayerAggregates>(playerDocRef);
 
-  if (isLoading) {
+  // Queries for subcollections
+  const killedByQuery = useMemoFirebase(() => {
+      if (!playerDocRef) return null;
+      return query(collection(playerDocRef, 'killedBy'), orderBy('count', 'desc'), limit(5));
+  }, [playerDocRef]);
+
+  const killedPlayersQuery = useMemoFirebase(() => {
+      if (!playerDocRef) return null;
+      return query(collection(playerDocRef, 'killedPlayers'), orderBy('count', 'desc'), limit(5));
+  }, [playerDocRef]);
+
+  const { data: mostKilledBy, isLoading: isLoadingKilledBy } = useCollection<PlayerInteraction>(killedByQuery);
+  const { data: mostKilledPlayers, isLoading: isLoadingKilledPlayers } = useCollection<PlayerInteraction>(killedPlayersQuery);
+
+  const topWeapons = useMemoFirebase(() => {
+    if (!player?.weaponUsage) return [];
+    return sortObjectByValue(player.weaponUsage).slice(0, 5);
+  }, [player?.weaponUsage]);
+
+  if (isLoadingPlayer) {
     return (
         <div className="container mx-auto px-4 py-8">
             <Skeleton className="h-10 w-48 mb-6" />
@@ -122,10 +168,6 @@ export default function PlayerProfilePage({ params }: PlayerProfilePageProps) {
   const kdRatio = player.totalDeaths ? (player.totalKills || 0) / player.totalDeaths : 0;
   
   const totalScore = (player.totalCombat || 0) + (player.totalDefense || 0) + (player.totalSupport || 0) + (player.totalOffense || 0);
-
-  const topWeapons = sortObjectByValue(player.weaponUsage).slice(0, 5);
-  const mostKilledBy = sortObjectByValue(player.mostKilledBy).slice(0, 5);
-  const mostKilledPlayers = sortObjectByValue(player.mostKilledPlayers).slice(0, 5);
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -175,36 +217,8 @@ export default function PlayerProfilePage({ params }: PlayerProfilePageProps) {
                     </ul>
                 </CardContent>
              </Card>
-             <Card>
-                <CardHeader>
-                    <CardTitle className="text-lg flex items-center gap-2"><Skull /> Most Killed By</CardTitle>
-                </CardHeader>
-                <CardContent>
-                    <ul className="space-y-2 text-sm">
-                        {mostKilledBy.map(([name, count]) => (
-                            <li key={name} className="flex justify-between">
-                                <span className="truncate pr-4">{name}</span>
-                                <span className="font-bold">{count.toLocaleString()}</span>
-                            </li>
-                        ))}
-                    </ul>
-                </CardContent>
-             </Card>
-             <Card>
-                <CardHeader>
-                    <CardTitle className="text-lg flex items-center gap-2"><Crosshair /> Top Victims</CardTitle>
-                </CardHeader>
-                <CardContent>
-                    <ul className="space-y-2 text-sm">
-                        {mostKilledPlayers.map(([name, count]) => (
-                            <li key={name} className="flex justify-between">
-                                <span className="truncate pr-4">{name}</span>
-                                <span className="font-bold">{count.toLocaleString()}</span>
-                            </li>
-                        ))}
-                    </ul>
-                </CardContent>
-             </Card>
+             <InteractionList title="Most Killed By" icon={Skull} data={mostKilledBy} isLoading={isLoadingKilledBy} />
+             <InteractionList title="Top Victims" icon={Target} data={mostKilledPlayers} isLoading={isLoadingKilledPlayers} />
           </div>
         </div>
       </div>

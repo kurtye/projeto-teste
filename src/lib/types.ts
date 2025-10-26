@@ -14,10 +14,14 @@ export interface PlayerAggregates {
   totalTeamKills?: number;
   totalDeathsByTK?: number;
   weaponUsage?: { [key: string]: number };
-  mostKilledBy?: { [key:string]: number };
-  mostKilledPlayers?: { [key: string]: number };
   
   // Calculated in the frontend
   totalScore?: number;
   kdRatio?: number;
+}
+
+export interface PlayerInteraction {
+  id: string; // Will be the player name
+  name: string;
+  count: number;
 }

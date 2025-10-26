@@ -29,8 +29,8 @@ interface PlayerStats {
     teamkills: number;
     deaths_by_tk: number;
     weapons: { [key: string]: number };
-    death_by: { [key: string]: number };
-    most_killed: { [key: string]: number };
+    death_by: { [key: string]: number }; // Mapa de quem matou o jogador
+    most_killed: { [key: string]: number }; // Mapa de quem o jogador matou
 }
 
 /**
@@ -81,7 +81,7 @@ export const aggregatePlayerStats = onDocumentCreated(
     }
 
     try {
-      const playerUpdatePromises = matchData.player_stats.map((playerStat) => {
+      const playerUpdatePromises = matchData.player_stats.map(async (playerStat) => {
         if (!playerStat.player_id) {
           logger.warn("Encontrado um jogador sem 'player_id' na partida, pulando:", playerStat);
           return Promise.resolve();
@@ -89,7 +89,8 @@ export const aggregatePlayerStats = onDocumentCreated(
 
         const playerAggregatesRef = db.collection("playerAggregates").doc(playerStat.player_id);
 
-        return db.runTransaction(async (transaction) => {
+        // ATUALIZAÇÃO 1: Estatísticas principais na transação
+        await db.runTransaction(async (transaction) => {
           const playerDoc = await transaction.get(playerAggregatesRef);
           const currentData = playerDoc.data() || {};
           const currentProcessedServers = currentData.processedServers || {};
@@ -115,7 +116,6 @@ export const aggregatePlayerStats = onDocumentCreated(
             longestLifeSecs: newLongestLife,
             playerId: playerStat.player_id,
             latestPlayerName: playerStat.player,
-            // ATUALIZA O MAPA COM O NOVO ID PARA O SERVIDOR ESPECÍFICO
             [`processedServers.${serverName}`]: matchNumericId,
           };
 
@@ -124,18 +124,37 @@ export const aggregatePlayerStats = onDocumentCreated(
               updates[`weaponUsage.${weapon}`] = admin.firestore.FieldValue.increment(count);
             }
           }
-          if (playerStat.death_by) {
-            for (const [killer, count] of Object.entries(playerStat.death_by)) {
-              updates[`mostKilledBy.${killer}`] = admin.firestore.FieldValue.increment(count);
-            }
-          }
-          if (playerStat.most_killed) {
-            for (const [victim, count] of Object.entries(playerStat.most_killed)) {
-              updates[`mostKilledPlayers.${victim}`] = admin.firestore.FieldValue.increment(count);
-            }
-          }
+
           transaction.set(playerAggregatesRef, updates, {merge: true});
         });
+
+        const batch = db.batch();
+
+        // ATUALIZAÇÃO 2: Subcoleção 'killedBy'
+        if (playerStat.death_by) {
+            for (const [killerName, count] of Object.entries(playerStat.death_by)) {
+                if (!killerName) continue;
+                const killerRef = playerAggregatesRef.collection("killedBy").doc(killerName);
+                batch.set(killerRef, { 
+                    name: killerName, 
+                    count: admin.firestore.FieldValue.increment(count) 
+                }, { merge: true });
+            }
+        }
+        
+        // ATUALIZAÇÃO 3: Subcoleção 'killedPlayers' (vítimas)
+        if (playerStat.most_killed) {
+            for (const [victimName, count] of Object.entries(playerStat.most_killed)) {
+                if (!victimName) continue;
+                const victimRef = playerAggregatesRef.collection("killedPlayers").doc(victimName);
+                batch.set(victimRef, { 
+                    name: victimName, 
+                    count: admin.firestore.FieldValue.increment(count) 
+                }, { merge: true });
+            }
+        }
+
+        await batch.commit();
       });
 
       await Promise.all(playerUpdatePromises);

@@ -1,3 +1,4 @@
+
 {
   "entities": {
     "Player": {
@@ -108,18 +109,29 @@
         },
         "weaponUsage": {
           "type": "object"
-        },
-        "mostKilledBy": {
-          "type": "object"
-        },
-        "mostKilledPlayers": {
-          "type": "object"
         }
       },
       "required": [
         "playerId",
         "latestPlayerName"
       ]
+    },
+     "PlayerInteraction": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "PlayerInteraction",
+      "type": "object",
+      "description": "Represents an interaction (kill or death) with another player.",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "The name of the other player involved in the interaction."
+        },
+        "count": {
+          "type": "number",
+          "description": "The total number of times this interaction has occurred."
+        }
+      },
+      "required": ["name", "count"]
     }
   },
   "auth": {
@@ -140,6 +152,14 @@
         "$ref": "#/entities/PlayerAggregates"
       },
       "description": "Global collection of aggregated player statistics. Each document represents a single player and contains their consolidated stats from all processed matches."
+    },
+    "/playerAggregates/{playerId}/killedBy/{killerName}": {
+        "schema": { "$ref": "#/entities/PlayerInteraction" },
+        "description": "Subcollection tracking players who have killed this player and how many times."
+    },
+    "/playerAggregates/{playerId}/killedPlayers/{victimName}": {
+        "schema": { "$ref": "#/entities/PlayerInteraction" },
+        "description": "Subcollection tracking players this player has killed and how many times."
     }
   }
 }
