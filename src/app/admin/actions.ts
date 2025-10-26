@@ -1,7 +1,7 @@
 'use server';
 
 import { db } from '@/firebase/server';
-import { collection, writeBatch, doc, query, orderBy, limit, getDocs } from 'firebase/firestore';
+import { collection, writeBatch, doc, query, getDocs, where,getCountFromServer } from 'firebase/firestore';
 
 interface ScoreboardMapsResponse {
   result: {
@@ -55,7 +55,6 @@ async function fetchAllMatchIds(apiUrl: string, fetchOptions: RequestInit): Prom
     try {
         do {
             const url = `${apiUrl}/get_scoreboard_maps?page=${currentPage}&limit=100`;
-            console.log(`[LOG] Buscando página ${currentPage} de IDs de: ${url}`);
             const response = await fetch(url, fetchOptions);
 
             if (!response.ok) {
@@ -75,10 +74,9 @@ async function fetchAllMatchIds(apiUrl: string, fetchOptions: RequestInit): Prom
 
             const pageIds = data.result.maps.map(m => m.id);
             allIds = allIds.concat(pageIds);
-            console.log(`[LOG] ${pageIds.length} IDs adicionados. Total de IDs acumulados: ${allIds.length}`);
             
             currentPage++;
-            await delay(200); 
+            if(currentPage <= totalPages) await delay(200); 
 
         } while (currentPage <= totalPages);
 
@@ -90,45 +88,59 @@ async function fetchAllMatchIds(apiUrl: string, fetchOptions: RequestInit): Prom
     }
 }
 
-export async function getLastImportedMatchId(serverName: string): Promise<number> {
-    console.log(`[LOG] Buscando último ID de partida para o servidor '${serverName}'.`);
-    try {
-        const aggregatesRef = collection(db, 'playerAggregates');
-        // Ordena de forma descendente pelo campo do servidor específico dentro do mapa `processedServers`
-        const q = query(aggregatesRef, orderBy(`processedServers.${serverName}`, 'desc'), limit(1));
-        const querySnapshot = await getDocs(q);
+async function getLastImportedMatchIdForServer(serverName: string): Promise<number> {
+    const aggregatesRef = collection(db, 'playerAggregates');
+    const q = query(aggregatesRef, where(`processedServers.${serverName}`, '>', 0));
+    const querySnapshot = await getDocs(q);
 
-        if (!querySnapshot.empty) {
-            const docData = querySnapshot.docs[0].data();
-            const lastId = docData.processedServers[serverName] || 0;
-            console.log(`[LOG] Último ID de partida processado encontrado para ${serverName}: ${lastId}`);
-            return lastId;
+    let maxId = 0;
+    querySnapshot.forEach(doc => {
+        const serverId = doc.data().processedServers[serverName];
+        if (serverId > maxId) {
+            maxId = serverId;
         }
-    } catch (error) {
-        console.error(`Erro ao buscar último ID para ${serverName} (pode ser a primeira vez, isso é normal):`, error);
-    }
-    
-    console.log(`[LOG] Nenhuma partida processada encontrada para '${serverName}'. A importação começará do início.`);
-    return 0;
+    });
+
+    console.log(`[LOG] Último ID de partida processado encontrado para ${serverName}: ${maxId}`);
+    return maxId;
 }
 
 
-export async function getServerImportStatus(): Promise<Record<string, number>> {
-    console.log(`[LOG] Buscando status de importação para todos os servidores.`);
-    const status: Record<string, number> = {};
+export async function getServerSyncStatus(): Promise<Record<string, { processed: number; total: number }>> {
+    console.log(`[LOG] Buscando status de sincronização para todos os servidores.`);
+    const status: Record<string, { processed: number; total: number }> = {};
+    const fetchOptions = { headers: { 'Content-Type': 'application/json' } };
 
     for (const server of serversConfig) {
-       status[server.name] = await getLastImportedMatchId(server.name);
+        try {
+            const allMatchIds = await fetchAllMatchIds(server.apiUrl, fetchOptions);
+            const total = allMatchIds.length;
+            
+            // Contar quantos documentos em rawMatchResults são deste servidor.
+            // Isso nos dá uma contagem de partidas "processadas" ou na fila.
+            // Para uma contagem real de partidas processadas, teríamos que consultar os aggregates,
+            // que é mais caro. Vamos usar uma estimativa aqui.
+            const q = query(collection(db, 'rawMatchResults'), where('server', '==', server.name));
+            const processedSnapshot = await getCountFromServer(q);
+            const processed = total - processedSnapshot.data().count; // Simplificação
+
+            status[server.name] = { processed: Math.max(0, processed), total };
+            console.log(`[LOG] Status para ${server.name}: ${status[server.name].processed}/${status[server.name].total}`);
+
+        } catch (error) {
+            console.error(`Erro ao obter status para ${server.name}:`, error);
+            status[server.name] = { processed: 0, total: 0 };
+        }
     }
-    console.log('[LOG] Status de importação por servidor:', status);
+    console.log('[LOG] Status de sincronização por servidor:', status);
     return status;
 }
 
 export async function getPlayerCount(): Promise<number> {
     try {
         const aggregatesRef = collection(db, 'playerAggregates');
-        const querySnapshot = await getDocs(aggregatesRef);
-        return querySnapshot.size;
+        const querySnapshot = await getCountFromServer(aggregatesRef);
+        return querySnapshot.data().count;
     } catch (error) {
         console.error("Error getting player count:", error);
         return 0;
@@ -149,7 +161,7 @@ export async function importServerData(
         }
     };
     
-    const lastImportedId = await getLastImportedMatchId(serverName);
+    const lastImportedId = await getLastImportedMatchIdForServer(serverName);
     console.log(`[LOG] Último ID de partida processado para '${serverName}': ${lastImportedId}`);
 
     const allMatchIds = await fetchAllMatchIds(apiUrl, fetchOptions);

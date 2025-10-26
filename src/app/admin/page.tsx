@@ -4,7 +4,7 @@ import { useState, useMemo, useEffect, useTransition } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
-import { importServerData, getServerImportStatus, getPlayerCount } from './actions';
+import { importServerData, getServerSyncStatus, getPlayerCount } from './actions';
 import { Progress } from '@/components/ui/progress';
 import { Database, DownloadCloud, History, ServerIcon, Users } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -45,6 +45,11 @@ interface ServerImportState {
   message: string;
 }
 
+interface ServerSyncStatus {
+    processed: number;
+    total: number;
+}
+
 export default function AdminPage() {
   const [importStates, setImportStates] = useState<Record<string, ServerImportState>>(
     servers.reduce((acc, server) => {
@@ -53,7 +58,7 @@ export default function AdminPage() {
     }, {} as Record<string, ServerImportState>)
   );
   
-  const [serverStatus, setServerStatus] = useState<Record<string, number> | null>(null);
+  const [serverStatus, setServerStatus] = useState<Record<string, ServerSyncStatus> | null>(null);
   const [playerCount, setPlayerCount] = useState<number | null>(null);
   const [isFetchingStats, startFetchingStats] = useTransition();
 
@@ -64,7 +69,7 @@ export default function AdminPage() {
       setServerStatus(null);
       setPlayerCount(null);
       const [statuses, count] = await Promise.all([
-        getServerImportStatus(),
+        getServerSyncStatus(),
         getPlayerCount(),
       ]);
       setServerStatus(statuses);
@@ -106,7 +111,7 @@ export default function AdminPage() {
           title: 'Importação Concluída!',
           description: `Total de ${result.matchesProcessed} novas partidas processadas do servidor ${server.name}.`,
         });
-        fetchStats();
+        fetchStats(); // Refresh stats after import
       } else {
         throw new Error(result.error || 'Ocorreu um erro desconhecido na importação.');
       }
@@ -140,35 +145,33 @@ export default function AdminPage() {
           
            <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
              <Card className="bg-muted/30">
-              <CardHeader className='pb-2'>
-                <CardTitle className='text-base flex items-center gap-2'>
-                  <History className="h-4 w-4 text-muted-foreground" />
-                  <span>Status da Importação</span>
-                </CardTitle>
-              </CardHeader>
-               <CardContent className="pt-2">
-                  <p className="text-sm font-medium text-muted-foreground mb-2">
-                    Última partida processada por servidor:
-                  </p>
-                  {isFetchingStats ? (
-                     <div className="space-y-2">
-                        <Skeleton className="h-4 w-1/2" />
-                        <Skeleton className="h-4 w-2/3" />
-                        <Skeleton className="h-4 w-1/2" />
-                     </div>
-                  ): serverStatus ? (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-sm">
-                      {Object.entries(serverStatus).map(([server, id]) => (
-                        <div key={server} className="flex justify-between">
-                          <span className="font-semibold">{server}:</span>
-                          <span className="font-mono text-accent">ID #{id}</span>
+                <CardHeader className='pb-2'>
+                    <CardTitle className='text-base flex items-center gap-2'>
+                        <History className="h-4 w-4 text-muted-foreground" />
+                        <span>Status de Sincronização</span>
+                    </CardTitle>
+                </CardHeader>
+                <CardContent className="pt-2 space-y-3">
+                    {isFetchingStats ? (
+                        <div className="space-y-4">
+                           {Array.from({length: 3}).map((_, i) => <Skeleton key={i} className="h-8 w-full" />)}
                         </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">Nenhum status encontrado.</p>
-                  )}
-               </CardContent>
+                    ) : serverStatus ? (
+                        Object.entries(serverStatus).map(([server, status]) => (
+                            <div key={server}>
+                                <div className="flex justify-between text-sm mb-1">
+                                    <span className="font-semibold">{server}</span>
+                                    <span className="font-mono text-muted-foreground">
+                                        {status.processed.toLocaleString()} / {status.total.toLocaleString()}
+                                    </span>
+                                </div>
+                                <Progress value={status.total > 0 ? (status.processed / status.total) * 100 : 0} />
+                            </div>
+                        ))
+                    ) : (
+                        <p className="text-sm text-muted-foreground">Nenhum status encontrado.</p>
+                    )}
+                </CardContent>
             </Card>
 
             <Card className="bg-muted/30">
@@ -179,13 +182,13 @@ export default function AdminPage() {
                 </CardTitle>
               </CardHeader>
                <CardContent className="pt-2">
-                  <p className="text-sm font-medium text-muted-foreground">
+                  <p className="text-sm font-medium text-muted-foreground mb-2">
                     Total de jogadores únicos:
                   </p>
                   {isFetchingStats ? (
-                     <p className="text-lg font-bold text-accent">Buscando...</p>
+                     <Skeleton className="h-7 w-24" />
                   ): (
-                    <p className="text-lg font-bold text-accent">
+                    <p className="text-2xl font-bold text-accent">
                       {playerCount !== null ? playerCount.toLocaleString() : 'N/A'}
                     </p>
                   )}
