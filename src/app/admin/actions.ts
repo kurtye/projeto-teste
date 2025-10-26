@@ -1,7 +1,7 @@
 'use server';
 
 import { db } from '@/firebase/server';
-import { collection, writeBatch, doc, query, orderBy, limit, getDocs, where, collectionGroup } from 'firebase/firestore';
+import { collection, writeBatch, doc, query, orderBy, limit, getDocs } from 'firebase/firestore';
 
 interface ScoreboardMapsResponse {
   result: {
@@ -36,11 +36,11 @@ interface PlayerStats {
 }
 
 const serversConfig = [
-  { id: '3LPZ', name: '3LPZ' },
-  { id: 'HRB', name: 'HRB' },
-  { id: 'RZN', name: 'RZN' },
-  { id: 'GOAT', name: 'GOAT' },
-  { id: 'OCL', name: 'OCL' },
+  { id: '3LPZ', name: '3LPZ', apiUrl: 'https://3lpz-stats.hlladmin.com/api' },
+  { id: 'HRB', name: 'HRB', apiUrl: 'https://stats.hrb-hll.com.br/api' },
+  { id: 'RZN', name: 'RZN', apiUrl: 'https://rzn-stats.crcon.cc/api' },
+  { id: 'GOAT', name: 'GOAT', apiUrl: 'https://goat-stats.hlladmin.com/api' },
+  { id: 'OCL', name: 'OCL', apiUrl: 'https://ocabala-stats.hlladmin.com/api' },
 ];
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -164,8 +164,8 @@ export async function importServerData(
     }
 
     let matchesProcessed = 0;
-    const loopLimit = Math.min(matchIdsToImport.length, 500);
-    console.log(`[LOG] Iniciando loop de importação para as próximas ${loopLimit} partidas (do ID ${matchIdsToImport[0]} ao ID ${matchIdsToImport[loopLimit - 1]}).`);
+    const loopLimit = matchIdsToImport.length; // Processa todos os novos, em lotes
+    console.log(`[LOG] Iniciando loop de importação para ${loopLimit} partidas.`);
 
     for (let i = 0; i < loopLimit; i++) {
       const matchId = matchIdsToImport[i];
@@ -173,7 +173,7 @@ export async function importServerData(
         await delay(200); 
         
         const mapUrl = `${apiUrl}/get_map_scoreboard?map_id=${matchId}`;
-        console.log(`[LOG] Processando partida ${i + 1} de ${loopLimit} (ID: ${matchId}). URL: ${mapUrl}`);
+        console.log(`[LOG] Processando partida ${i + 1} de ${loopLimit} (ID: ${matchId}).`);
 
         const mapResponse = await fetch(mapUrl, fetchOptions);
 
@@ -192,6 +192,7 @@ export async function importServerData(
         }
 
         const batch = writeBatch(db);
+        // Usar o ID da partida como ID do documento para idempotência na origem
         const matchDocRef = doc(db, 'rawMatchResults', matchInfo.id.toString());
         batch.set(matchDocRef, { ...matchInfo, numeric_id: matchInfo.id, server: serverName });
 
