@@ -157,7 +157,7 @@ exports.aggregatePlayerStats = functions
         await snapshot.ref.delete();
         functions.logger.log(`Agregação da partida ${matchId} concluída com sucesso. Documento excluído.`);
 
-    } catch (error) => {
+    } catch (error) {
       functions.logger.error(`Erro ao agregar estatísticas para a partida ${matchId}:`, error);
       // Não exclui o documento para que ele possa ser reprocessado ou inspecionado.
     }
