@@ -25,7 +25,7 @@ import {
   LineChart,
 } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
-import { use } from 'react';
+import { use, useMemo } from 'react';
 import {
   PolarGrid,
   Radar,
