@@ -11,6 +11,14 @@ const AuthContext = createContext<{ isAuthenticated: boolean; login: (password: 
 
 export const useAuth = () => useContext(AuthContext);
 
+// A senha é carregada da variável de ambiente no momento da build.
+// Note que em um ambiente de cliente, as variáveis de ambiente precisam ser prefixadas com NEXT_PUBLIC_
+// mas como este layout é um server component que renderiza um client component,
+// o Node pode acessar process.env diretamente no momento da renderização inicial.
+// Para uma aplicação real, considere uma rota de API para validação.
+const ADMIN_PASSWORD = process.env.NEXT_PUBLIC_ADMIN_PASSWORD || 'hellletloose';
+
+
 export default function AdminLayout({ children }: { children: ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const router = useRouter();
@@ -28,8 +36,8 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   }, [pathname, router]);
 
   const login = (password: string): boolean => {
-    // In a real app, this should be a call to a server to validate the password
-    if (password === 'admin') { 
+    // Agora compara com a variável de ambiente.
+    if (password === ADMIN_PASSWORD) { 
       sessionStorage.setItem('isAdminAuthenticated', 'true');
       setIsAuthenticated(true);
       router.push('/admin/dashboard');
