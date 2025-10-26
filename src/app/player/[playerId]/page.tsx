@@ -25,6 +25,8 @@ import {
   Target,
   LineChart,
   Crosshair,
+  Award,
+  HeartPulse,
 } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { use, useMemo, useState, useEffect } from 'react';
@@ -227,7 +229,7 @@ export default function PlayerProfilePage({ params }: PlayerProfilePageProps) {
                 <div className="flex-1 w-full">
                      <Skeleton className="h-80 w-full mb-6" />
                     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                        {Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-28 w-full" />)}
+                        {Array.from({ length: 12 }).map((_, i) => <Skeleton key={i} className="h-28 w-full" />)}
                     </div>
                      <div className="grid gap-6 mt-6 md:grid-cols-1 lg:grid-cols-3">
                          <Skeleton className="h-80 w-full" />
@@ -333,6 +335,10 @@ export default function PlayerProfilePage({ params }: PlayerProfilePageProps) {
             <StatCard title="K/D Ratio" value={kdRatio.toFixed(2)} icon={Target} />
             <StatCard title="Total Kills" value={(player.totalKills || 0).toLocaleString()} icon={Swords} />
             <StatCard title="Total Deaths" value={(player.totalDeaths || 0).toLocaleString()} icon={Shield} />
+            <StatCard title="Combat Score" value={(player.totalCombat || 0).toLocaleString()} icon={Award} />
+            <StatCard title="Offense Score" value={(player.totalOffense || 0).toLocaleString()} icon={Target} />
+            <StatCard title="Defense Score" value={(player.totalDefense || 0).toLocaleString()} icon={Shield} />
+            <StatCard title="Support Score" value={(player.totalSupport || 0).toLocaleString()} icon={HeartPulse} />
             <StatCard title="Time Played" value={formatTime(player.totalTimeSeconds || 0)} icon={Clock} />
             <StatCard title="Longest Life" value={formatMinutes(player.longestLifeSecs || 0)} icon={Timer} />
             <StatCard title="Team Kills" value={(player.totalTeamKills || 0).toLocaleString()} icon={UserX} />
