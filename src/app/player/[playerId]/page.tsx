@@ -266,7 +266,7 @@ export default function PlayerProfilePage({ params }: PlayerProfilePageProps) {
                         />} 
                     />
                         <PolarAngleAxis dataKey="stat" />
-                        <PolarRadiusAxis angle={30} domain={[0, 100]} display={false} />
+                        <PolarRadiusAxis angle={30} domain={[0, 100]} />
                         <PolarGrid />
                         <Radar
                             name="Player Stats"
@@ -290,3 +290,5 @@ export default function PlayerProfilePage({ params }: PlayerProfilePageProps) {
     </div>
   );
 }
+
+    
