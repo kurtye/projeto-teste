@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useMemo, ReactNode } from 'react';
@@ -227,7 +226,7 @@ export default function Home() {
   };
 
   return (
-    <div className="container mx-auto px-4 py-8">
+    <div className="container mx-auto px-4 py-8 mb-16 md:mb-0">
       <div className="space-y-8">
         <Card className="bg-card/50 backdrop-blur-sm">
           <CardHeader>

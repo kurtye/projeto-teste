@@ -16,7 +16,7 @@ export const useAuth = () => useContext(AuthContext);
 // mas como este layout é um server component que renderiza um client component,
 // o Node pode acessar process.env diretamente no momento da renderização inicial.
 // Para uma aplicação real, considere uma rota de API para validação.
-const ADMIN_PASSWORD = process.env.NEXT_PUBLIC_ADMIN_PASSWORD || 'hellletloose';
+const ADMIN_PASSWORD = process.env.NEXT_PUBLIC_ADMIN_PASSWORD || 'hellletlooseBR';
 
 
 export default function AdminLayout({ children }: { children: ReactNode }) {
