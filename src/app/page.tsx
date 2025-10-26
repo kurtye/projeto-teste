@@ -158,12 +158,11 @@ export default function Home() {
 
     if (clanFilter) {
       // Query for a specific clan using a prefix-like range query.
-      // The Firestore `orderBy` is just to get the data; we'll re-sort on the client.
       return query(
           collection(firestore, 'playerAggregates'),
           where("latestPlayerName", ">=", clanFilter),
           where("latestPlayerName", "<=", clanFilter + '\uf8ff'),
-          orderBy('latestPlayerName', 'asc')
+          orderBy('latestPlayerName', 'asc') // Initial sort for Firestore, will be re-sorted on client.
       );
     } else {
       // Default query: top 200 players by total kills.
@@ -200,43 +199,29 @@ export default function Home() {
   const sortedAndFilteredPlayers = useMemo(() => {
     let sortablePlayers = [...processedPlayers];
 
-    // Helper function to normalize player names for sorting
-    const normalizeName = (name: string) => {
-        return name.replace(/[\[\]\-_ ]/g, "").toLowerCase();
-    };
+    // Always sort by the selected stat
+    sortablePlayers.sort((a, b) => {
+        const valA = a[sortConfig.key] || 0;
+        const valB = b[sortConfig.key] || 0;
 
-    if (clanFilter) {
-        // For clan view, sort by normalized name
-        sortablePlayers.sort((a, b) => {
-            return normalizeName(a.latestPlayerName).localeCompare(normalizeName(b.latestPlayerName));
-        });
-    } else {
-        // For general ranking, sort by selected stat
-        sortablePlayers.sort((a, b) => {
-            const valA = a[sortConfig.key] || 0;
-            const valB = b[sortConfig.key] || 0;
-
-            if (valA < valB) {
-                return sortConfig.direction === 'ascending' ? -1 : 1;
-            }
-            if (valA > valB) {
-                return sortConfig.direction === 'ascending' ? 1 : -1;
-            }
-            return 0;
-        });
-    }
-
-    let filteredPlayers = sortablePlayers;
+        if (valA < valB) {
+            return sortConfig.direction === 'ascending' ? -1 : 1;
+        }
+        if (valA > valB) {
+            return sortConfig.direction === 'ascending' ? 1 : -1;
+        }
+        return 0;
+    });
     
     // Manual search query filtering is still applied on top of any results.
     if (searchQuery) {
-        filteredPlayers = filteredPlayers.filter(player =>
+        return sortablePlayers.filter(player =>
             player.latestPlayerName.toLowerCase().includes(searchQuery.toLowerCase())
         );
     }
 
-    return filteredPlayers;
-  }, [processedPlayers, searchQuery, sortConfig, clanFilter]);
+    return sortablePlayers;
+  }, [processedPlayers, searchQuery, sortConfig]);
 
   const handleClanFilterClick = (clan: string | null) => {
     setClanFilter(clan);
@@ -325,16 +310,16 @@ export default function Home() {
                                 <TableHeader>
                                   <TableRow>
                                     <TableHead className="p-2 md:p-4">Player</TableHead>
-                                    <SortableHeader sortKey="totalScore" sortConfig={sortConfig} requestSort={requestSort} className="hidden md:table-cell" disabled={!!clanFilter}>
+                                    <SortableHeader sortKey="totalScore" sortConfig={sortConfig} requestSort={requestSort} className="hidden md:table-cell">
                                         <Award className="h-5 w-5 inline-block" /> <span className="hidden md:inline">Score</span>
                                     </SortableHeader>
-                                    <SortableHeader sortKey="totalKills" sortConfig={sortConfig} requestSort={requestSort} disabled={!!clanFilter}>
+                                    <SortableHeader sortKey="totalKills" sortConfig={sortConfig} requestSort={requestSort}>
                                       <Crosshair className="h-5 w-5 inline-block" /> <span className="hidden md:inline">Kills</span>
                                     </SortableHeader>
-                                    <SortableHeader sortKey="totalDeaths" sortConfig={sortConfig} requestSort={requestSort} className="hidden md:table-cell" disabled={!!clanFilter}>
+                                    <SortableHeader sortKey="totalDeaths" sortConfig={sortConfig} requestSort={requestSort} className="hidden md:table-cell">
                                       <Skull className="h-5 w-5 inline-block" /> <span className="hidden md:inline">Deaths</span>
                                     </SortableHeader>
-                                    <SortableHeader sortKey="kdRatio" sortConfig={sortConfig} requestSort={requestSort} disabled={!!clanFilter}>
+                                    <SortableHeader sortKey="kdRatio" sortConfig={sortConfig} requestSort={requestSort}>
                                       <Target className="h-5 w-5 inline-block" /> <span className="hidden md:inline">K/D Ratio</span>
                                     </SortableHeader>
                                   </TableRow>
