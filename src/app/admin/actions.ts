@@ -81,37 +81,29 @@ async function fetchAllMatchIds(apiUrl: string, fetchOptions: RequestInit): Prom
     }
 }
 
-export async function getLastImportedMatchId(serverName: string): Promise<number> {
-  if (!serverName) {
-    console.warn("[WARN] Nome do servidor não fornecido para getLastImportedMatchId.");
+export async function getLastImportedMatchId(): Promise<number> {
+    console.log(`[LOG] Buscando último ID de partida globalmente em 'playerAggregates'.`);
+    try {
+      const aggregatesRef = collection(db, 'playerAggregates');
+      const q = query(
+          aggregatesRef,
+          orderBy('lastProcessedMatchId', 'desc'),
+          limit(1)
+      );
+      const querySnapshot = await getDocs(q);
+  
+      if (!querySnapshot.empty) {
+        const lastId = querySnapshot.docs[0].data().lastProcessedMatchId;
+        console.log(`[LOG] Último ID de partida processado encontrado: ${lastId}`);
+        return lastId;
+      }
+    } catch (error) {
+      console.error(`Erro ao buscar último ID de partida processado:`, error);
+    }
+  
+    console.log(`[LOG] Nenhuma partida processada encontrada em 'playerAggregates'. A importação começará do início.`);
     return 0;
   }
-  
-  console.log(`[LOG] Buscando último ID de partida para o servidor: ${serverName}`);
-  try {
-    const matchesRef = collection(db, 'rawMatchResults');
-    // Consulta chave: adicionado o 'where' para filtrar pelo servidor correto.
-    const q = query(
-        matchesRef, 
-        where('server', '==', serverName), 
-        orderBy('numeric_id', 'desc'), 
-        limit(1)
-    );
-    const querySnapshot = await getDocs(q);
-
-    if (!querySnapshot.empty) {
-      const lastId = querySnapshot.docs[0].data().numeric_id;
-      console.log(`[LOG] Último ID encontrado para ${serverName}: ${lastId}`);
-      return lastId;
-    }
-  } catch (error) {
-    console.error(`Erro ao buscar último ID de partida para ${serverName}:`, error);
-    // Não lança o erro, retorna 0 para permitir que a importação comece do início se a coleção não existir.
-  }
-
-  console.log(`[LOG] Nenhuma partida encontrada para ${serverName}. A importação começará do início.`);
-  return 0;
-}
 
 
 export async function importServerData(
@@ -127,8 +119,8 @@ export async function importServerData(
         }
     };
     
-    const lastImportedId = await getLastImportedMatchId(serverName);
-    console.log(`[LOG] Último ID de partida importado para ${serverName}: ${lastImportedId}`);
+    const lastImportedId = await getLastImportedMatchId();
+    console.log(`[LOG] Último ID de partida processado globalmente: ${lastImportedId}`);
 
     const allMatchIds = await fetchAllMatchIds(apiUrl, fetchOptions);
     const totalMatchesApi = allMatchIds.length;
@@ -170,10 +162,7 @@ export async function importServerData(
         }
 
         const batch = writeBatch(db);
-
-        // Salva a partida inteira na coleção rawMatchResults
         const matchDocRef = doc(db, 'rawMatchResults', matchInfo.id.toString());
-        // Adiciona o campo 'server' ao documento para permitir a consulta por servidor.
         batch.set(matchDocRef, { ...matchInfo, numeric_id: matchInfo.id, server: serverName });
 
         await batch.commit();

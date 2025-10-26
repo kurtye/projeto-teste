@@ -58,16 +58,12 @@ export default function AdminPage() {
   }, [selectedServerId]);
 
   useEffect(() => {
-    if (selectedServer) {
-      startFetchingLastId(async () => {
-        setLastImportedId(null); // Reset while fetching
-        const id = await getLastImportedMatchId(selectedServer.name);
-        setLastImportedId(id);
-      });
-    } else {
+    startFetchingLastId(async () => {
       setLastImportedId(null);
-    }
-  }, [selectedServer]);
+      const id = await getLastImportedMatchId();
+      setLastImportedId(id);
+    });
+  }, []);
 
 
   const handleImport = async () => {
@@ -99,7 +95,7 @@ export default function AdminPage() {
         });
 
         // Atualiza o último ID importado na UI
-        const newLastId = await getLastImportedMatchId(selectedServer.name);
+        const newLastId = await getLastImportedMatchId();
         setLastImportedId(newLastId);
 
       } else {
@@ -153,47 +149,48 @@ export default function AdminPage() {
             </Select>
           </div>
 
-          {selectedServer && (
-            <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
-            <Card className="bg-muted/30">
-              <CardHeader className='pb-2'>
-                <CardTitle className='text-base flex items-center gap-2'>
-                  <ServerIcon className="h-4 w-4 text-muted-foreground" />
-                  <span>Informações do Servidor</span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="pt-2 space-y-4">
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                    <LinkIcon className="h-4 w-4" />
-                    API URL (get_scoreboard_maps):
-                  </p>
-                  <code className="text-sm text-accent font-mono break-all">
-                    {selectedServer.apiUrl}/get_scoreboard_maps
-                  </code>
-                </div>
-                <div>
-                   <p className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                    <LinkIcon className="h-4 w-4" />
-                    API URL (get_map_scoreboard):
-                  </p>
-                  <code className="text-sm text-accent font-mono break-all">
-                    {selectedServer.apiUrl}/get_map_scoreboard?map_id=1
-                  </code>
-                </div>
-              </CardContent>
-            </Card>
+          <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
+            {selectedServer && (
+              <Card className="bg-muted/30">
+                <CardHeader className='pb-2'>
+                  <CardTitle className='text-base flex items-center gap-2'>
+                    <ServerIcon className="h-4 w-4 text-muted-foreground" />
+                    <span>Informações do Servidor</span>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="pt-2 space-y-4">
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                      <LinkIcon className="h-4 w-4" />
+                      API URL (get_scoreboard_maps):
+                    </p>
+                    <code className="text-sm text-accent font-mono break-all">
+                      {selectedServer.apiUrl}/get_scoreboard_maps
+                    </code>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                      <LinkIcon className="h-4 w-4" />
+                      API URL (get_map_scoreboard):
+                    </p>
+                    <code className="text-sm text-accent font-mono break-all">
+                      {selectedServer.apiUrl}/get_map_scoreboard?map_id=1
+                    </code>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
 
             <Card className="bg-muted/30">
               <CardHeader className='pb-2'>
                 <CardTitle className='text-base flex items-center gap-2'>
                   <History className="h-4 w-4 text-muted-foreground" />
-                  <span>Status da Importação</span>
+                  <span>Status da Importação Global</span>
                 </CardTitle>
               </CardHeader>
                <CardContent className="pt-2">
                   <p className="text-sm font-medium text-muted-foreground">
-                    Última partida importada:
+                    Última partida processada (todos servidores):
                   </p>
                   {isFetchingLastId ? (
                      <p className="text-lg font-bold text-accent">Buscando...</p>
@@ -204,8 +201,7 @@ export default function AdminPage() {
                   )}
                </CardContent>
             </Card>
-            </div>
-          )}
+          </div>
 
           <Button onClick={handleImport} disabled={isImporting || !selectedServer}>
             <DownloadCloud className={`mr-2 h-4 w-4 ${isImporting ? 'animate-spin' : ''}`} />
