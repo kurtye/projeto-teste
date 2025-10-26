@@ -19,10 +19,9 @@ const db = admin.firestore();
 
 /**
  * Interface para os dados brutos de estatísticas de um jogador em uma partida.
- * Tipar os dados ajuda a evitar erros.
  */
 interface PlayerStats {
-  steam_id_64: string; // O ID correto é 'steam_id_64', não 'player_id'
+  steam_id_64: string;
   name: string;
   kills: number;
   deaths: number;
@@ -86,6 +85,13 @@ exports.aggregatePlayerStats = functions
         return db.runTransaction(async (transaction) => {
           const playerDoc = await transaction.get(playerAggregatesRef);
           const currentData = playerDoc.data() || {};
+          
+          // IDEMPOTÊNCIA: Verifica se esta partida já foi processada para este jogador.
+          // Isso previne que os dados sejam somados duas vezes.
+          if ((currentData.lastProcessedMatchId || 0) >= matchData.id) {
+             functions.logger.log(`Partida ${matchId} já processada para o jogador ${playerStat.steam_id_64}. Pulando.`);
+             return;
+          }
 
           // --- Campos de Soma (Incremento) ---
           const updates: any = {
