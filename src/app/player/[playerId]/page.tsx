@@ -27,7 +27,7 @@ import {
   Crosshair,
 } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
-import { use, useMemo } from 'react';
+import { use, useMemo, useState, useEffect } from 'react';
 import {
   PolarGrid,
   Radar,
@@ -41,12 +41,31 @@ import {
   ChartTooltip,
   ChartTooltipContent,
 } from '@/components/ui/chart';
+import { getHallOfFameStats } from '../hall-of-fame/actions';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+
 
 interface PlayerProfilePageProps {
   params: {
     playerId: string;
   };
 }
+
+interface HallOfFameMap {
+  [playerId: string]: string[];
+}
+
+const STAT_CATEGORY_NAMES: Record<string, string> = {
+  totalKills: 'Rei dos Kills',
+  totalCombat: 'Rei do Combate',
+  totalOffense: 'Rei do Ataque',
+  totalDefense: 'Rei da Defesa',
+  totalSupport: 'Rei do Suporte',
+  totalTimeSeconds: 'Mais Tempo Jogado',
+  longestLifeSecs: 'Vida Mais Longa',
+  loneWolf: 'O Lobo Solitário',
+};
+
 
 const StatCard = ({ title, value, icon: Icon, subtext }: { title: string; value: string | number; icon: React.ElementType; subtext?: string; }) => (
   <Card className="bg-muted/30">
@@ -106,6 +125,7 @@ export default function PlayerProfilePage({ params }: PlayerProfilePageProps) {
   const firestore = useFirestore();
   const resolvedParams = use(params);
   const playerId = decodeURIComponent(resolvedParams.playerId);
+  const [hallOfFame, setHallOfFame] = useState<HallOfFameMap>({});
 
   // Fetch player data
   const playerDocRef = useMemoFirebase(() => {
@@ -120,6 +140,25 @@ export default function PlayerProfilePage({ params }: PlayerProfilePageProps) {
     return doc(firestore, 'globalStats', 'summary');
   }, [firestore]);
   const { data: globalStats, isLoading: isLoadingGlobalStats } = useDoc<GlobalStats>(globalStatsDocRef);
+
+  // Fetch Hall of Fame data
+    useEffect(() => {
+        async function fetchHallOfFame() {
+            const stats = await getHallOfFameStats();
+            const fameMap: HallOfFameMap = {};
+            for (const key in stats) {
+                const recordHolder = stats[key as keyof typeof stats];
+                if (recordHolder && recordHolder.id) {
+                    if (!fameMap[recordHolder.id]) {
+                        fameMap[recordHolder.id] = [];
+                    }
+                    fameMap[recordHolder.id].push(STAT_CATEGORY_NAMES[key] || key);
+                }
+            }
+            setHallOfFame(fameMap);
+        }
+        fetchHallOfFame();
+    }, []);
 
   // Queries for subcollections
   const killedByQuery = useMemoFirebase(() => {
@@ -162,6 +201,30 @@ export default function PlayerProfilePage({ params }: PlayerProfilePageProps) {
       full: { label: 'Raw Value' },
   };
 
+  const KingBadge = ({ playerId }: { playerId: string }) => {
+    const titles = hallOfFame[playerId];
+    if (!titles) return null;
+
+    return (
+        <TooltipProvider>
+            <Tooltip>
+                <TooltipTrigger>
+                    <Badge variant="outline" className="ml-2 border-yellow-400/50 bg-yellow-400/10 text-yellow-300">
+                        <Trophy className="h-4 w-4" />
+                    </Badge>
+                </TooltipTrigger>
+                <TooltipContent>
+                    <p className="font-semibold">Recordista!</p>
+                    <ul className="list-disc list-inside">
+                        {titles.map(title => <li key={title}>{title}</li>)}
+                    </ul>
+                </TooltipContent>
+            </Tooltip>
+        </TooltipProvider>
+    );
+};
+
+
   if (isLoadingPlayer || isLoadingGlobalStats) {
     return (
         <div className="container mx-auto px-4 py-8">
@@ -173,6 +236,7 @@ export default function PlayerProfilePage({ params }: PlayerProfilePageProps) {
                     <Skeleton className="h-8 w-24" />
                 </div>
                 <div className="flex-1 w-full">
+                     <Skeleton className="h-80 w-full mb-6" />
                     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                         {Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-28 w-full" />)}
                     </div>
@@ -228,6 +292,7 @@ export default function PlayerProfilePage({ params }: PlayerProfilePageProps) {
           </Avatar>
           <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2">
             <h1 className="text-4xl font-bold font-headline">{player.latestPlayerName}</h1>
+            <KingBadge playerId={playerId} />
             {player.status === 'retired' && <Badge variant="default" className="text-base bg-slate-700 text-slate-100">Retired</Badge>}
           </div>
           <Badge className="text-base" variant="outline">
@@ -236,17 +301,6 @@ export default function PlayerProfilePage({ params }: PlayerProfilePageProps) {
         </div>
 
         <div className="flex-1 w-full space-y-6">
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-            <StatCard title="Total Score" value={totalScore.toLocaleString()} icon={Trophy} />
-            <StatCard title="K/D Ratio" value={kdRatio.toFixed(2)} icon={Target} />
-            <StatCard title="Total Kills" value={(player.totalKills || 0).toLocaleString()} icon={Swords} />
-            <StatCard title="Total Deaths" value={(player.totalDeaths || 0).toLocaleString()} icon={Shield} />
-            <StatCard title="Time Played" value={formatTime(player.totalTimeSeconds || 0)} icon={Clock} />
-            <StatCard title="Longest Life" value={formatMinutes(player.longestLifeSecs || 0)} icon={Timer} />
-            <StatCard title="Team Kills" value={(player.totalTeamKills || 0).toLocaleString()} icon={UserX} />
-            <StatCard title="Deaths by TK" value={(player.totalDeathsByTK || 0).toLocaleString()} icon={UserCheck} />
-          </div>
-
           <Card>
             <CardHeader>
                 <CardTitle className="text-lg flex items-center gap-2">
@@ -282,6 +336,17 @@ export default function PlayerProfilePage({ params }: PlayerProfilePageProps) {
                 </ChartContainer>
             </CardContent>
           </Card>
+          
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            <StatCard title="Total Score" value={totalScore.toLocaleString()} icon={Trophy} />
+            <StatCard title="K/D Ratio" value={kdRatio.toFixed(2)} icon={Target} />
+            <StatCard title="Total Kills" value={(player.totalKills || 0).toLocaleString()} icon={Swords} />
+            <StatCard title="Total Deaths" value={(player.totalDeaths || 0).toLocaleString()} icon={Shield} />
+            <StatCard title="Time Played" value={formatTime(player.totalTimeSeconds || 0)} icon={Clock} />
+            <StatCard title="Longest Life" value={formatMinutes(player.longestLifeSecs || 0)} icon={Timer} />
+            <StatCard title="Team Kills" value={(player.totalTeamKills || 0).toLocaleString()} icon={UserX} />
+            <StatCard title="Deaths by TK" value={(player.totalDeathsByTK || 0).toLocaleString()} icon={UserCheck} />
+          </div>
 
           <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-3">
              <InteractionList title="Top Weapons" icon={Crosshair} data={topWeapons} isLoading={isLoadingTopWeapons} />
@@ -293,3 +358,5 @@ export default function PlayerProfilePage({ params }: PlayerProfilePageProps) {
     </div>
   );
 }
+
+    
