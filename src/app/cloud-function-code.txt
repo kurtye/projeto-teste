@@ -44,6 +44,16 @@ interface MatchData {
 }
 
 /**
+ * Codifica uma string para ser usada como um ID de documento do Firestore seguro.
+ * Substitui caracteres inválidos.
+ * @param {string} id A string original.
+ * @return {string} A string segura para usar como ID.
+ */
+function toSafeId(id: string): string {
+    return Buffer.from(id).toString('base64url');
+}
+
+/**
 * Gatilho do Firestore que é acionado na criação de um novo documento de partida.
 * Esta função processa os dados da partida, agrega as estatísticas para cada jogador
 * e, ao final, exclui o documento para evitar reprocessamento.
@@ -128,8 +138,9 @@ export const aggregatePlayerStats = onDocumentCreated(
         // ATUALIZAÇÃO 2: Subcoleção 'killedBy'
         if (playerStat.death_by) {
             for (const [killerName, count] of Object.entries(playerStat.death_by)) {
-                if (!killerName) continue;
-                const killerRef = playerAggregatesRef.collection("killedBy").doc(killerName);
+                if (!killerName || killerName.trim() === '') continue;
+                const safeId = toSafeId(killerName);
+                const killerRef = playerAggregatesRef.collection("killedBy").doc(safeId);
                 batch.set(killerRef, { 
                     name: killerName, 
                     count: admin.firestore.FieldValue.increment(count) 
@@ -140,8 +151,9 @@ export const aggregatePlayerStats = onDocumentCreated(
         // ATUALIZAÇÃO 3: Subcoleção 'killedPlayers' (vítimas)
         if (playerStat.most_killed) {
             for (const [victimName, count] of Object.entries(playerStat.most_killed)) {
-                if (!victimName) continue;
-                const victimRef = playerAggregatesRef.collection("killedPlayers").doc(victimName);
+                if (!victimName || victimName.trim() === '') continue;
+                const safeId = toSafeId(victimName);
+                const victimRef = playerAggregatesRef.collection("killedPlayers").doc(safeId);
                 batch.set(victimRef, { 
                     name: victimName, 
                     count: admin.firestore.FieldValue.increment(count) 
@@ -152,8 +164,9 @@ export const aggregatePlayerStats = onDocumentCreated(
         // ATUALIZAÇÃO 4: Subcoleção 'weaponUsage'
         if (playerStat.weapons) {
             for (const [weaponName, count] of Object.entries(playerStat.weapons)) {
-                if (!weaponName) continue;
-                const weaponRef = playerAggregatesRef.collection("weaponUsage").doc(weaponName);
+                if (!weaponName || weaponName.trim() === '') continue;
+                const safeId = toSafeId(weaponName);
+                const weaponRef = playerAggregatesRef.collection("weaponUsage").doc(safeId);
                 batch.set(weaponRef, {
                     name: weaponName,
                     count: admin.firestore.FieldValue.increment(count)
