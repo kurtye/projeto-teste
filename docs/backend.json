@@ -93,36 +93,13 @@
     ]
   },
   "firestore": {
-    "structure": [
-      {
-        "path": "/rawMatchResults/{matchId}",
-        "definition": {
-          "entityName": "Match",
-          "schema": { "$ref": "#/backend/entities/Match" },
-          "description": "Collection to store raw match data from the external API. Documents in this collection trigger the aggregation Cloud Function and are deleted after successful processing.",
-          "params": [
-            {
-              "name": "matchId",
-              "description": "Unique identifier for the match from the API."
-            }
-          ]
-        }
-      },
-      {
-        "path": "/playerAggregates/{playerId}",
-        "definition": {
-          "entityName": "PlayerAggregates",
-          "schema": { "$ref": "#/backend/entities/PlayerAggregates" },
-          "description": "Global collection of aggregated player statistics. Each document represents a single player and contains their consolidated stats from all processed matches.",
-          "params": [
-            {
-              "name": "playerId",
-              "description": "Unique identifier for the player (SteamID64)."
-            }
-          ]
-        }
-      }
-    ],
-    "reasoning": "This structure is designed for an efficient data aggregation pipeline. Raw match data is ingested into the `rawMatchResults` collection, which acts as a queue. A Cloud Function, triggered by document creation in this collection, processes each match. It aggregates player statistics and updates the corresponding documents in the `playerAggregates` collection. Using a separate, global collection for `playerAggregates` is optimal for querying leaderboards and individual player stats without needing complex, nested queries. After a match is successfully processed, its document is removed from `rawMatchResults` to ensure idempotency and prevent reprocessing."
+    "/rawMatchResults/{matchId}": {
+      "schema": { "$ref": "#/entities/Match" },
+      "description": "Collection to store raw match data from the external API. Documents in this collection trigger the aggregation Cloud Function and are deleted after successful processing."
+    },
+    "/playerAggregates/{playerId}": {
+      "schema": { "$ref": "#/entities/PlayerAggregates" },
+      "description": "Global collection of aggregated player statistics. Each document represents a single player and contains their consolidated stats from all processed matches."
+    }
   }
 }
