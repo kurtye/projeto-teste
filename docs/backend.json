@@ -72,8 +72,9 @@
         "latestPlayerName": {
           "type": "string"
         },
-        "lastProcessedMatchId": {
-          "type": "number"
+        "processedServers": {
+          "type": "object",
+          "description": "A map where each key is a server name and the value is the ID of the last match processed for that player on that server."
         },
         "totalTimeSeconds": {
           "type": "number"

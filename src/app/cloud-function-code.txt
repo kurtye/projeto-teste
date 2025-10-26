@@ -14,7 +14,6 @@ const db = admin.firestore();
 
 /**
  * Interface para os dados brutos de estatísticas de um jogador em uma partida.
- * Tipar os dados ajuda a evitar erros.
  */
 interface PlayerStats {
     player_id: string;
@@ -39,15 +38,15 @@ interface PlayerStats {
  */
 interface MatchData {
     id: number;
+    numeric_id: number;
+    server: string;
     player_stats: PlayerStats[];
 }
 
 /**
-* Gatilho do Firestore que é acionado na criação
-* de um novo documento de partida
-* Esta função processa os dados da partida,
-* agrega as estatísticas para cada jogador
-* e, ao final, exclui o documento reprocessamento.
+* Gatilho do Firestore que é acionado na criação de um novo documento de partida.
+* Esta função processa os dados da partida, agrega as estatísticas para cada jogador
+* e, ao final, exclui o documento para evitar reprocessamento.
 */
 export const aggregatePlayerStats = onDocumentCreated(
   {
@@ -60,97 +59,79 @@ export const aggregatePlayerStats = onDocumentCreated(
     const {matchId} = event.params;
     const snapshot = event.data;
     if (!snapshot) {
-      logger.log(
-        `No data associated with event for matchId:
-         ${matchId}. Exiting.`,
-      );
+      logger.log(`No data associated with event for matchId: ${matchId}. Exiting.`);
       return;
     }
     const matchData = snapshot.data() as MatchData;
+    const serverName = matchData.server;
+    const matchNumericId = matchData.numeric_id || matchData.id;
 
-    logger.log(`Iniciando agregação para a partida ID: ${matchId}`);
+    logger.log(`Iniciando agregação para a partida ID: ${matchNumericId} do servidor: ${serverName}`);
 
     if (!matchData.player_stats || matchData.player_stats.length === 0) {
-      logger.log(
-        `Partida ${matchId} não contém 'player_stats'. Excluindo documento.`,
-      );
+      logger.log(`Partida ${matchNumericId} não contém 'player_stats'. Excluindo documento.`);
       await snapshot.ref.delete();
       return;
+    }
+    
+    if (!serverName) {
+        logger.error(`Partida ${matchNumericId} não tem 'serverName'. Impossível processar. Documento será excluído para evitar loops.`);
+        await snapshot.ref.delete();
+        return;
     }
 
     try {
       const playerUpdatePromises = matchData.player_stats.map((playerStat) => {
         if (!playerStat.player_id) {
-          logger.warn(
-            "Encontrado um jogador sem 'player_id' na partida, pulando:",
-            playerStat,
-          );
+          logger.warn("Encontrado um jogador sem 'player_id' na partida, pulando:", playerStat);
           return Promise.resolve();
         }
 
-        const playerAggregatesRef = db.collection("playerAggregates")
-          .doc(playerStat.player_id);
+        const playerAggregatesRef = db.collection("playerAggregates").doc(playerStat.player_id);
 
         return db.runTransaction(async (transaction) => {
           const playerDoc = await transaction.get(playerAggregatesRef);
           const currentData = playerDoc.data() || {};
+          const currentProcessedServers = currentData.processedServers || {};
 
-          // =================================================================
-          // VERIFICAÇÃO DE IDEMPOTÊNCIA (A CORREÇÃO PRINCIPAL)
-          // Previne que a mesma partida seja somada múltiplas vezes.
-          // =================================================================
-          if ((currentData.lastProcessedMatchId || 0) >= matchData.id) {
-            logger.log(`Partida ${matchData.id} já processada para o jogador ${playerStat.player_id}. Pulando.`);
-            return; // Sai da transação para este jogador.
+          // VERIFICAÇÃO DE IDEMPOTÊNCIA POR SERVIDOR
+          if ((currentProcessedServers[serverName] || 0) >= matchNumericId) {
+            logger.log(`Partida ${matchNumericId} do servidor ${serverName} já processada para o jogador ${playerStat.player_id}. Pulando.`);
+            return;
           }
 
-          const newLongestLife = Math.max(
-            currentData.longestLifeSecs || 0,
-            playerStat.longest_life_secs || 0,
-          );
+          const newLongestLife = Math.max(currentData.longestLifeSecs || 0, playerStat.longest_life_secs || 0);
 
           const updates: { [key: string]: any } = {
-            totalKills: admin.firestore.FieldValue
-              .increment(playerStat.kills || 0),
-            totalDeaths: admin.firestore.FieldValue
-              .increment(playerStat.deaths || 0),
-            totalCombat: admin.firestore.FieldValue
-              .increment(playerStat.combat || 0),
-            totalOffense: admin.firestore.FieldValue
-              .increment(playerStat.offense || 0),
-            totalDefense: admin.firestore.FieldValue
-              .increment(playerStat.defense || 0),
-            totalSupport: admin.firestore.FieldValue
-              .increment(playerStat.support || 0),
-            totalTimeSeconds: admin.firestore.FieldValue
-              .increment(playerStat.time_seconds || 0),
-            totalTeamKills: admin.firestore.FieldValue
-              .increment(playerStat.teamkills || 0),
-            totalDeathsByTK: admin.firestore.FieldValue
-              .increment(playerStat.deaths_by_tk || 0),
+            totalKills: admin.firestore.FieldValue.increment(playerStat.kills || 0),
+            totalDeaths: admin.firestore.FieldValue.increment(playerStat.deaths || 0),
+            totalCombat: admin.firestore.FieldValue.increment(playerStat.combat || 0),
+            totalOffense: admin.firestore.FieldValue.increment(playerStat.offense || 0),
+            totalDefense: admin.firestore.FieldValue.increment(playerStat.defense || 0),
+            totalSupport: admin.firestore.FieldValue.increment(playerStat.support || 0),
+            totalTimeSeconds: admin.firestore.FieldValue.increment(playerStat.time_seconds || 0),
+            totalTeamKills: admin.firestore.FieldValue.increment(playerStat.teamkills || 0),
+            totalDeathsByTK: admin.firestore.FieldValue.increment(playerStat.deaths_by_tk || 0),
             longestLifeSecs: newLongestLife,
             playerId: playerStat.player_id,
             latestPlayerName: playerStat.player,
-            lastProcessedMatchId: matchData.id,
+            // ATUALIZA O MAPA COM O NOVO ID PARA O SERVIDOR ESPECÍFICO
+            [`processedServers.${serverName}`]: matchNumericId,
           };
 
           if (playerStat.weapons) {
             for (const [weapon, count] of Object.entries(playerStat.weapons)) {
-              updates[`weaponUsage.${weapon}`] =
-              admin.firestore.FieldValue.increment(count);
+              updates[`weaponUsage.${weapon}`] = admin.firestore.FieldValue.increment(count);
             }
           }
           if (playerStat.death_by) {
             for (const [killer, count] of Object.entries(playerStat.death_by)) {
-              updates[`mostKilledBy.${killer}`] =
-              admin.firestore.FieldValue.increment(count);
+              updates[`mostKilledBy.${killer}`] = admin.firestore.FieldValue.increment(count);
             }
           }
           if (playerStat.most_killed) {
-            for (const [victim, count] of
-              Object.entries(playerStat.most_killed)) {
-              updates[`mostKilledPlayers.${victim}`] =
-              admin.firestore.FieldValue.increment(count);
+            for (const [victim, count] of Object.entries(playerStat.most_killed)) {
+              updates[`mostKilledPlayers.${victim}`] = admin.firestore.FieldValue.increment(count);
             }
           }
           transaction.set(playerAggregatesRef, updates, {merge: true});
@@ -158,16 +139,10 @@ export const aggregatePlayerStats = onDocumentCreated(
       });
 
       await Promise.all(playerUpdatePromises);
-
       await snapshot.ref.delete();
-      logger.log(
-        `Partida ${matchId} agregada e documento excluído com sucesso.`,
-      );
+      logger.log(`Partida ${matchNumericId} do servidor ${serverName} agregada e documento excluído com sucesso.`);
     } catch (error) {
-      logger.error(
-        `Erro ao agregar estatísticas para a partida ${matchId}:`,
-        error,
-      );
+      logger.error(`Erro ao agregar estatísticas para a partida ${matchNumericId}:`, error);
     }
   }
 );

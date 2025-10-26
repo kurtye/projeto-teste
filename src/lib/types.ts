@@ -1,8 +1,8 @@
 export interface PlayerAggregates {
-  id: string; // This will be the document ID (steam_id_64)
+  id: string; // This will be the document ID (player_id)
   playerId: string;
   latestPlayerName: string;
-  lastProcessedMatchId?: number;
+  processedServers?: { [key: string]: number }; // Map of serverName to lastProcessedMatchId
   totalTimeSeconds?: number;
   longestLifeSecs?: number;
   totalKills?: number;
