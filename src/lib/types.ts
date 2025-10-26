@@ -13,7 +13,6 @@ export interface PlayerAggregates {
   totalSupport?: number;
   totalTeamKills?: number;
   totalDeathsByTK?: number;
-  weaponUsage?: { [key: string]: number };
   
   // Calculated in the frontend
   totalScore?: number;
@@ -22,6 +21,12 @@ export interface PlayerAggregates {
 
 export interface PlayerInteraction {
   id: string; // Will be the player name
+  name: string;
+  count: number;
+}
+
+export interface WeaponUsage {
+  id: string; // Will be the weapon name
   name: string;
   count: number;
 }

@@ -119,15 +119,10 @@ export const aggregatePlayerStats = onDocumentCreated(
             [`processedServers.${serverName}`]: matchNumericId,
           };
 
-          if (playerStat.weapons) {
-            for (const [weapon, count] of Object.entries(playerStat.weapons)) {
-              updates[`weaponUsage.${weapon}`] = admin.firestore.FieldValue.increment(count);
-            }
-          }
-
           transaction.set(playerAggregatesRef, updates, {merge: true});
         });
 
+        // ATUALIZAÇÕES EM LOTE PARA SUBCOLEÇÕES
         const batch = db.batch();
 
         // ATUALIZAÇÃO 2: Subcoleção 'killedBy'
@@ -150,6 +145,18 @@ export const aggregatePlayerStats = onDocumentCreated(
                 batch.set(victimRef, { 
                     name: victimName, 
                     count: admin.firestore.FieldValue.increment(count) 
+                }, { merge: true });
+            }
+        }
+
+        // ATUALIZAÇÃO 4: Subcoleção 'weaponUsage'
+        if (playerStat.weapons) {
+            for (const [weaponName, count] of Object.entries(playerStat.weapons)) {
+                if (!weaponName) continue;
+                const weaponRef = playerAggregatesRef.collection("weaponUsage").doc(weaponName);
+                batch.set(weaponRef, {
+                    name: weaponName,
+                    count: admin.firestore.FieldValue.increment(count)
                 }, { merge: true });
             }
         }

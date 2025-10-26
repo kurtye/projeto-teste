@@ -2,7 +2,7 @@
 
 import { useMemoFirebase, useDoc, useFirestore, useCollection } from '@/firebase';
 import { notFound } from 'next/navigation';
-import type { PlayerAggregates, PlayerInteraction } from '@/lib/types';
+import type { PlayerAggregates, PlayerInteraction, WeaponUsage } from '@/lib/types';
 import { doc, collection, query, orderBy, limit } from 'firebase/firestore';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -56,12 +56,7 @@ const formatMinutes = (seconds: number): string => {
     return `${minutes}m`;
 }
 
-const sortObjectByValue = (obj: { [key: string]: number } | undefined) => {
-    if (!obj) return [];
-    return Object.entries(obj).sort(([, a], [, b]) => b - a);
-}
-
-const InteractionList = ({ title, icon: Icon, data, isLoading }: { title: string, icon: React.ElementType, data: PlayerInteraction[] | null, isLoading: boolean }) => (
+const InteractionList = ({ title, icon: Icon, data, isLoading }: { title: string, icon: React.ElementType, data: {id: string, name: string, count: number}[] | null, isLoading: boolean }) => (
     <Card>
         <CardHeader>
             <CardTitle className="text-lg flex items-center gap-2"><Icon /> {title}</CardTitle>
@@ -111,14 +106,15 @@ export default function PlayerProfilePage({ params }: PlayerProfilePageProps) {
       if (!playerDocRef) return null;
       return query(collection(playerDocRef, 'killedPlayers'), orderBy('count', 'desc'), limit(5));
   }, [playerDocRef]);
+  
+  const weaponUsageQuery = useMemoFirebase(() => {
+    if (!playerDocRef) return null;
+    return query(collection(playerDocRef, 'weaponUsage'), orderBy('count', 'desc'), limit(5));
+  }, [playerDocRef]);
 
   const { data: mostKilledBy, isLoading: isLoadingKilledBy } = useCollection<PlayerInteraction>(killedByQuery);
   const { data: mostKilledPlayers, isLoading: isLoadingKilledPlayers } = useCollection<PlayerInteraction>(killedPlayersQuery);
-
-  const topWeapons = useMemoFirebase(() => {
-    if (!player?.weaponUsage) return [];
-    return sortObjectByValue(player.weaponUsage).slice(0, 5);
-  }, [player?.weaponUsage]);
+  const { data: topWeapons, isLoading: isLoadingTopWeapons } = useCollection<WeaponUsage>(weaponUsageQuery);
 
   if (isLoadingPlayer) {
     return (
@@ -202,21 +198,7 @@ export default function PlayerProfilePage({ params }: PlayerProfilePageProps) {
           </div>
 
           <div className="grid gap-6 mt-6 md:grid-cols-3">
-             <Card>
-                <CardHeader>
-                    <CardTitle className="text-lg flex items-center gap-2"><Swords /> Top Weapons</CardTitle>
-                </CardHeader>
-                <CardContent>
-                    <ul className="space-y-2 text-sm">
-                        {topWeapons.map(([name, count]) => (
-                            <li key={name} className="flex justify-between">
-                                <span className="truncate pr-4">{name}</span>
-                                <span className="font-bold">{count.toLocaleString()}</span>
-                            </li>
-                        ))}
-                    </ul>
-                </CardContent>
-             </Card>
+             <InteractionList title="Top Weapons" icon={Swords} data={topWeapons} isLoading={isLoadingTopWeapons} />
              <InteractionList title="Most Killed By" icon={Skull} data={mostKilledBy} isLoading={isLoadingKilledBy} />
              <InteractionList title="Top Victims" icon={Target} data={mostKilledPlayers} isLoading={isLoadingKilledPlayers} />
           </div>

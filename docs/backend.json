@@ -106,9 +106,6 @@
         },
         "totalDeathsByTK": {
           "type": "number"
-        },
-        "weaponUsage": {
-          "type": "object"
         }
       },
       "required": [
@@ -129,6 +126,23 @@
         "count": {
           "type": "number",
           "description": "The total number of times this interaction has occurred."
+        }
+      },
+      "required": ["name", "count"]
+    },
+    "WeaponUsage": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "WeaponUsage",
+      "type": "object",
+      "description": "Represents the usage statistics for a single weapon.",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "The name of the weapon."
+        },
+        "count": {
+          "type": "number",
+          "description": "The total number of kills with this weapon."
         }
       },
       "required": ["name", "count"]
@@ -160,6 +174,10 @@
     "/playerAggregates/{playerId}/killedPlayers/{victimName}": {
         "schema": { "$ref": "#/entities/PlayerInteraction" },
         "description": "Subcollection tracking players this player has killed and how many times."
+    },
+    "/playerAggregates/{playerId}/weaponUsage/{weaponName}": {
+        "schema": { "$ref": "#/entities/WeaponUsage" },
+        "description": "Subcollection tracking the kill count for each weapon used by the player."
     }
   }
 }
