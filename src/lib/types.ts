@@ -3,6 +3,7 @@ export interface PlayerAggregates {
   playerId: string;
   latestPlayerName: string;
   processedServers?: { [key: string]: number }; // Map of serverName to lastProcessedMatchId
+  matchesPlayed?: number;
   totalTimeSeconds?: number;
   longestLifeSecs?: number;
   totalKills?: number;
@@ -20,13 +21,13 @@ export interface PlayerAggregates {
 }
 
 export interface PlayerInteraction {
-  id: string; // Will be the player name
+  id: string; // Will be the player name (or its Base64 representation)
   name: string;
   count: number;
 }
 
 export interface WeaponUsage {
-  id: string; // Will be the weapon name
+  id: string; // Will be the weapon name (or its Base64 representation)
   name: string;
   count: number;
 }

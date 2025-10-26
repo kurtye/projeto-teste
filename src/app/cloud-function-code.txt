@@ -45,7 +45,6 @@ interface MatchData {
 
 /**
  * Codifica uma string para ser usada como um ID de documento do Firestore seguro.
- * Substitui caracteres inválidos.
  * @param {string} id A string original.
  * @return {string} A string segura para usar como ID.
  */
@@ -114,6 +113,7 @@ export const aggregatePlayerStats = onDocumentCreated(
           const newLongestLife = Math.max(currentData.longestLifeSecs || 0, playerStat.longest_life_secs || 0);
 
           const updates: { [key: string]: any } = {
+            matchesPlayed: admin.firestore.FieldValue.increment(1),
             totalKills: admin.firestore.FieldValue.increment(playerStat.kills || 0),
             totalDeaths: admin.firestore.FieldValue.increment(playerStat.deaths || 0),
             totalCombat: admin.firestore.FieldValue.increment(playerStat.combat || 0),
@@ -182,6 +182,8 @@ export const aggregatePlayerStats = onDocumentCreated(
       logger.log(`Partida ${matchNumericId} do servidor ${serverName} agregada e documento excluído com sucesso.`);
     } catch (error) {
       logger.error(`Erro ao agregar estatísticas para a partida ${matchNumericId}:`, error);
+      // Even if an error occurs, delete the doc to prevent retries on poison-pill messages.
+      await snapshot.ref.delete();
     }
   }
 );

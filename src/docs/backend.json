@@ -1,0 +1,186 @@
+
+{
+  "entities": {
+    "Player": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Player",
+      "type": "object",
+      "description": "Represents a player in the Hell Let Loose game.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Player entity."
+        },
+        "playerName": {
+          "type": "string",
+          "description": "The player's in-game name."
+        },
+        "steamId": {
+          "type": "string",
+          "description": "The player's Steam ID."
+        },
+        "matchesPlayed": {
+          "type": "number",
+          "description": "Number of matches played by the player."
+        }
+      },
+      "required": [
+        "id",
+        "playerName",
+        "steamId"
+      ]
+    },
+    "Match": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Match",
+      "type": "object",
+      "description": "Represents a single match in Hell Let Loose. Contains the full data object from the external API.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Match entity."
+        },
+        "start": {
+          "type": "string",
+          "description": "The date and time when the match started.",
+          "format": "date-time"
+        },
+        "end": {
+          "type": "string",
+          "description": "The date and time when the match ended.",
+          "format": "date-time"
+        },
+        "player_stats": {
+          "type": "array",
+          "description": "Statistics for each player in the match."
+        }
+      },
+      "required": [
+        "id",
+        "start",
+        "end"
+      ]
+    },
+    "PlayerAggregates": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "PlayerAggregates",
+      "type": "object",
+      "description": "Aggregated statistics for a single player across all matches.",
+      "properties": {
+        "playerId": {
+          "type": "string"
+        },
+        "latestPlayerName": {
+          "type": "string"
+        },
+        "processedServers": {
+          "type": "object",
+          "description": "A map where each key is a server name and the value is the ID of the last match processed for that player on that server."
+        },
+        "matchesPlayed": {
+            "type": "number"
+        },
+        "totalTimeSeconds": {
+          "type": "number"
+        },
+        "longestLifeSecs": {
+          "type": "number"
+        },
+        "totalKills": {
+          "type": "number"
+        },
+        "totalDeaths": {
+          "type": "number"
+        },
+        "totalCombat": {
+          "type": "number"
+        },
+        "totalOffense": {
+          "type": "number"
+        },
+        "totalDefense": {
+          "type": "number"
+        },
+        "totalSupport": {
+          "type": "number"
+        },
+        "totalTeamKills": {
+          "type": "number"
+        },
+        "totalDeathsByTK": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "playerId",
+        "latestPlayerName"
+      ]
+    },
+     "PlayerInteraction": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "PlayerInteraction",
+      "type": "object",
+      "description": "Represents an interaction (kill or death) with another player.",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "The name of the other player involved in the interaction."
+        },
+        "count": {
+          "type": "number",
+          "description": "The total number of times this interaction has occurred."
+        }
+      },
+      "required": ["name", "count"]
+    },
+    "WeaponUsage": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "WeaponUsage",
+      "type": "object",
+      "description": "Represents the usage statistics for a single weapon.",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "The name of the weapon."
+        },
+        "count": {
+          "type": "number",
+          "description": "The total number of kills with this weapon."
+        }
+      },
+      "required": ["name", "count"]
+    }
+  },
+  "auth": {
+    "providers": [
+      "password",
+      "anonymous"
+    ]
+  },
+  "firestore": {
+    "/rawMatchResults/{matchId}": {
+      "schema": {
+        "$ref": "#/entities/Match"
+      },
+      "description": "Collection to store raw match data from the external API. Documents in this collection trigger the aggregation Cloud Function and are deleted after successful processing."
+    },
+    "/playerAggregates/{playerId}": {
+      "schema": {
+        "$ref": "#/entities/PlayerAggregates"
+      },
+      "description": "Global collection of aggregated player statistics. Each document represents a single player and contains their consolidated stats from all processed matches."
+    },
+    "/playerAggregates/{playerId}/killedBy/{killerId}": {
+        "schema": { "$ref": "#/entities/PlayerInteraction" },
+        "description": "Subcollection tracking players who have killed this player and how many times. The document ID is a Base64 encoding of the killer's name."
+    },
+    "/playerAggregates/{playerId}/killedPlayers/{victimId}": {
+        "schema": { "$ref": "#/entities/PlayerInteraction" },
+        "description": "Subcollection tracking players this player has killed and how many times. The document ID is a Base64 encoding of the victim's name."
+    },
+    "/playerAggregates/{playerId}/weaponUsage/{weaponId}": {
+        "schema": { "$ref": "#/entities/WeaponUsage" },
+        "description": "Subcollection tracking the kill count for each weapon used by the player. The document ID is a Base64 encoding of the weapon's name."
+    }
+  }
+}
