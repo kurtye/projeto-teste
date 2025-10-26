@@ -62,13 +62,6 @@ export function useCollection<T = any>(
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<FirestoreError | Error | null>(null);
 
-  const memoizedQueryAsString = useMemo(() => {
-    if (!memoizedTargetRefOrQuery) return null;
-    // Using .toString() provides a more unique representation of the query,
-    // including its filters and ordering, which is crucial for the useEffect dependency array.
-    return (memoizedTargetRefOrQuery as Query).toString();
-  }, [memoizedTargetRefOrQuery]);
-
   useEffect(() => {
     if (!memoizedTargetRefOrQuery) {
       setData(null);
@@ -119,7 +112,9 @@ export function useCollection<T = any>(
     );
 
     return () => unsubscribe();
-  }, [memoizedQueryAsString]); // Use the string representation for the dependency array
+  // Using the query's string representation as the dependency ensures
+  // that the effect re-runs whenever the query's structure (filters, ordering) changes.
+  }, [memoizedTargetRefOrQuery?.toString()]); 
 
   return { data, isLoading, error };
 }
