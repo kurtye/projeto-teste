@@ -164,7 +164,7 @@ export async function importServerData(
     }
 
     let matchesProcessed = 0;
-    const loopLimit = matchIdsToImport.length; // Processa todos os novos, em lotes
+    const loopLimit = matchIdsToImport.length;
     console.log(`[LOG] Iniciando loop de importação para ${loopLimit} partidas.`);
 
     for (let i = 0; i < loopLimit; i++) {
@@ -192,7 +192,6 @@ export async function importServerData(
         }
 
         const batch = writeBatch(db);
-        // Usar o ID da partida como ID do documento para idempotência na origem
         const matchDocRef = doc(db, 'rawMatchResults', matchInfo.id.toString());
         batch.set(matchDocRef, { ...matchInfo, numeric_id: matchInfo.id, server: serverName });
 
