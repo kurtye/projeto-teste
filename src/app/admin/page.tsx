@@ -2,18 +2,11 @@
 
 import { useState, useMemo, useEffect, useTransition } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { importServerData, getServerImportStatus, getPlayerCount } from './actions';
 import { Progress } from '@/components/ui/progress';
-import { Database, DownloadCloud, LinkIcon, History, ServerIcon, Users } from 'lucide-react';
+import { Database, DownloadCloud, History, ServerIcon, Users } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 
 const servers = [
@@ -44,20 +37,27 @@ const servers = [
   },
 ];
 
+type Server = (typeof servers)[0];
+
+interface ServerImportState {
+  isImporting: boolean;
+  progress: number;
+  message: string;
+}
+
 export default function AdminPage() {
-  const [selectedServerId, setSelectedServerId] = useState<string | null>(null);
-  const [isImporting, setIsImporting] = useState(false);
-  const [importProgress, setImportProgress] = useState(0);
-  const [progressMessage, setProgressMessage] = useState('');
+  const [importStates, setImportStates] = useState<Record<string, ServerImportState>>(
+    servers.reduce((acc, server) => {
+      acc[server.id] = { isImporting: false, progress: 0, message: '' };
+      return acc;
+    }, {} as Record<string, ServerImportState>)
+  );
+  
   const [serverStatus, setServerStatus] = useState<Record<string, number> | null>(null);
   const [playerCount, setPlayerCount] = useState<number | null>(null);
   const [isFetchingStats, startFetchingStats] = useTransition();
 
   const { toast } = useToast();
-
-  const selectedServer = useMemo(() => {
-    return servers.find(s => s.id === selectedServerId) || null;
-  }, [selectedServerId]);
 
   const fetchStats = () => {
     startFetchingStats(async () => {
@@ -75,54 +75,54 @@ export default function AdminPage() {
   useEffect(() => {
     fetchStats();
   }, []);
+  
+  const anyImportInProgress = Object.values(importStates).some(s => s.isImporting);
 
+  const handleImport = async (server: Server) => {
+    if (!server) return;
 
-  const handleImport = async () => {
-    if (!selectedServer) {
-      toast({
-        variant: 'destructive',
-        title: 'Erro',
-        description: 'Por favor, selecione um servidor para importar.',
-      });
-      return;
-    }
+    const setServerState = (update: Partial<ServerImportState>) => {
+      setImportStates(prev => ({
+        ...prev,
+        [server.id]: { ...prev[server.id], ...update },
+      }));
+    };
 
-    setIsImporting(true);
-    setImportProgress(10);
-    setProgressMessage(`Iniciando importação do servidor ${selectedServer.name}... Buscando total de partidas.`);
+    setServerState({
+      isImporting: true,
+      progress: 10,
+      message: `Iniciando importação de ${server.name}...`,
+    });
 
     try {
-      const result = await importServerData(selectedServer.name, selectedServer.apiUrl);
+      const result = await importServerData(server.name, server.apiUrl);
 
       if (result.success) {
-        const totalFound = result.totalFound || 0;
-        
-        setProgressMessage(`${totalFound} partidas encontradas na API. Foram processadas ${result.matchesProcessed} novas partidas.`);
-
-        setImportProgress(100);
+        setServerState({
+          progress: 100,
+          message: `${result.matchesProcessed} novas partidas processadas.`,
+        });
         toast({
           title: 'Importação Concluída!',
-          description: `Total de ${result.matchesProcessed} novas partidas processadas do servidor ${selectedServer.name}.`,
+          description: `Total de ${result.matchesProcessed} novas partidas processadas do servidor ${server.name}.`,
         });
-
         fetchStats();
-
       } else {
         throw new Error(result.error || 'Ocorreu um erro desconhecido na importação.');
       }
     } catch (error: any) {
+      setServerState({
+        progress: 0,
+        message: `Falha: ${error.message}`,
+      });
       toast({
         variant: 'destructive',
         title: 'Falha na Importação',
         description: error.message,
       });
-      setProgressMessage(`Falha na importação: ${error.message}`);
-      setImportProgress(0);
     } finally {
       setTimeout(() => {
-        setIsImporting(false);
-        setImportProgress(0);
-        setProgressMessage('');
+        setServerState({ isImporting: false, progress: 0, message: '' });
       }, 8000);
     }
   };
@@ -133,81 +133,31 @@ export default function AdminPage() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-xl font-headline md:text-2xl">
             <Database className="h-6 w-6 text-accent" />
-            <span>Importar Dados de Partidas</span>
+            <span>Painel de Importação</span>
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-6">
-          <div className="space-y-2">
-            <label htmlFor="server" className="text-sm font-medium text-muted-foreground">
-              Selecione o Servidor
-            </label>
-            <Select
-              onValueChange={setSelectedServerId}
-              disabled={isImporting}
-            >
-              <SelectTrigger id="server" className="w-full md:w-1/3">
-                <SelectValue placeholder="Selecione um servidor..." />
-              </SelectTrigger>
-              <SelectContent>
-                {servers.map((server) => (
-                  <SelectItem key={server.id} value={server.id}>
-                    {server.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className='grid grid-cols-1 md:grid-cols-3 gap-4'>
-            {selectedServer && (
-              <Card className="bg-muted/30 md:col-span-3">
-                <CardHeader className='pb-2'>
-                  <CardTitle className='text-base flex items-center gap-2'>
-                    <ServerIcon className="h-4 w-4 text-muted-foreground" />
-                    <span>Informações do Servidor</span>
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="pt-2 space-y-4">
-                  <div>
-                    <p className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                      <LinkIcon className="h-4 w-4" />
-                      API URL (get_scoreboard_maps):
-                    </p>
-                    <code className="text-sm text-accent font-mono break-all">
-                      {selectedServer.apiUrl}/get_scoreboard_maps
-                    </code>
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                      <LinkIcon className="h-4 w-4" />
-                      API URL (get_map_scoreboard):
-                    </p>
-                    <code className="text-sm text-accent font-mono break-all">
-                      {selectedServer.apiUrl}/get_map_scoreboard?map_id=1
-                    </code>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            <Card className="bg-muted/30 md:col-span-2">
+          
+           <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
+             <Card className="bg-muted/30">
               <CardHeader className='pb-2'>
                 <CardTitle className='text-base flex items-center gap-2'>
                   <History className="h-4 w-4 text-muted-foreground" />
-                  <span>Status da Importação por Servidor</span>
+                  <span>Status da Importação</span>
                 </CardTitle>
               </CardHeader>
                <CardContent className="pt-2">
                   <p className="text-sm font-medium text-muted-foreground mb-2">
-                    Última partida processada em cada servidor:
+                    Última partida processada por servidor:
                   </p>
                   {isFetchingStats ? (
                      <div className="space-y-2">
                         <Skeleton className="h-4 w-1/2" />
+                        <Skeleton className="h-4 w-2/3" />
                         <Skeleton className="h-4 w-1/2" />
                      </div>
                   ): serverStatus ? (
-                    <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-sm">
                       {Object.entries(serverStatus).map(([server, id]) => (
                         <div key={server} className="flex justify-between">
                           <span className="font-semibold">{server}:</span>
@@ -243,17 +193,41 @@ export default function AdminPage() {
             </Card>
           </div>
 
-          <Button onClick={handleImport} disabled={isImporting || !selectedServer}>
-            <DownloadCloud className={`mr-2 h-4 w-4 ${isImporting ? 'animate-spin' : ''}`} />
-            {isImporting ? 'Importando...' : 'Iniciar Importação'}
-          </Button>
-
-          {isImporting && (
-            <div className="space-y-2">
-              <Progress value={importProgress} />
-              <p className="text-sm text-muted-foreground">{progressMessage}</p>
+          <div>
+            <h3 className="text-lg font-semibold font-headline mb-4">Servidores</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {servers.map(server => {
+                const state = importStates[server.id];
+                return (
+                  <Card key={server.id} className="flex flex-col">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <ServerIcon className="h-5 w-5 text-muted-foreground" />
+                        <span>{server.name}</span>
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="flex-grow space-y-4">
+                       <Button 
+                         onClick={() => handleImport(server)} 
+                         disabled={state.isImporting || anyImportInProgress}
+                         className="w-full"
+                       >
+                        <DownloadCloud className={`mr-2 h-4 w-4 ${state.isImporting ? 'animate-spin' : ''}`} />
+                        {state.isImporting ? 'Importando...' : 'Iniciar Importação'}
+                      </Button>
+                      {state.isImporting && (
+                        <div className="space-y-2">
+                          <Progress value={state.progress} />
+                          <p className="text-sm text-muted-foreground text-center">{state.message}</p>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                )
+              })}
             </div>
-          )}
+          </div>
+
         </CardContent>
       </Card>
     </div>
