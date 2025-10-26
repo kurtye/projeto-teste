@@ -23,6 +23,7 @@ import {
   Trophy,
   Target,
   LineChart,
+  Crosshair,
 } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { use, useMemo } from 'react';
@@ -134,17 +135,22 @@ export default function PlayerProfilePage({ params }: PlayerProfilePageProps) {
 
   const chartData = useMemo(() => {
       if (!player) return [];
+      // To make the chart readable, we need to normalize the values or find a common scale.
+      // For now, let's use them directly but this can be improved.
+      // A simple approach is to use percentages of a player's own max stat, or a global max stat.
+      // For simplicity, we use raw values. Kills might dominate the chart.
       return [
         { stat: 'Combat', value: player.totalCombat || 0 },
         { stat: 'Offense', value: player.totalOffense || 0 },
         { stat: 'Defense', value: player.totalDefense || 0 },
         { stat: 'Support', value: player.totalSupport || 0 },
-      ].map(item => ({...item, fullMark: 100})); // We can add a "fullMark" later if we normalize data
+        { stat: 'Kills', value: player.totalKills || 0 },
+      ];
   }, [player]);
 
   const chartConfig = {
       value: {
-          label: 'Pontos',
+          label: 'Points',
           color: 'hsl(var(--accent))',
       },
   };
@@ -255,7 +261,7 @@ export default function PlayerProfilePage({ params }: PlayerProfilePageProps) {
           </Card>
 
           <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-3">
-             <InteractionList title="Top Weapons" icon={Swords} data={topWeapons} isLoading={isLoadingTopWeapons} />
+             <InteractionList title="Top Weapons" icon={Crosshair} data={topWeapons} isLoading={isLoadingTopWeapons} />
              <InteractionList title="Most Killed By" icon={Skull} data={mostKilledBy} isLoading={isLoadingKilledBy} />
              <InteractionList title="Top Victims" icon={Target} data={mostKilledPlayers} isLoading={isLoadingKilledPlayers} />
           </div>
