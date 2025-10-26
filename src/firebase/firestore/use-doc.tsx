@@ -1,6 +1,6 @@
 'use client';
     
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   DocumentReference,
   onSnapshot,
@@ -10,7 +10,6 @@ import {
 } from 'firebase/firestore';
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
-import { useMemo } from 'react';
 
 /** Utility type to add an 'id' field to a given type T. */
 type WithId<T> = T & { id: string };
@@ -45,7 +44,7 @@ export function useDoc<T = any>(
   type StateDataType = WithId<T> | null;
 
   const [data, setData] = useState<StateDataType>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<FirestoreError | Error | null>(null);
 
   const memoizedDocPath = useMemo(() => memoizedDocRef?.path, [memoizedDocRef]);
@@ -62,7 +61,12 @@ export function useDoc<T = any>(
     if (!memoizedDocRef.__memo) {
       const error = new Error(`[object Object] was not properly memoized using useMemoFirebase`);
       setError(error);
-      throw error;
+      setIsLoading(false); // Stop loading on error
+      // It's often better to throw in development to catch this issue early.
+      if (process.env.NODE_ENV === 'development') {
+        throw error;
+      }
+      return;
     }
 
     setIsLoading(true);

@@ -88,6 +88,9 @@ const InteractionList = ({ title, icon: Icon, data, isLoading }: { title: string
 
 export default function PlayerProfilePage({ params }: PlayerProfilePageProps) {
   const firestore = useFirestore();
+  // `use` is required to access `params` in Server Components, but this
+  // is a Client Component. Using it here maintains compatibility with
+  // potential future Next.js changes and is safe.
   const resolvedParams = use(params);
   const playerId = decodeURIComponent(resolvedParams.playerId);
 
