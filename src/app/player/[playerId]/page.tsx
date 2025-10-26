@@ -41,7 +41,7 @@ import {
   ChartTooltip,
   ChartTooltipContent,
 } from '@/components/ui/chart';
-import { getHallOfFameStats } from '../hall-of-fame/actions';
+import { getHallOfFameStats } from '@/app/hall-of-fame/actions';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 
@@ -359,4 +359,3 @@ export default function PlayerProfilePage({ params }: PlayerProfilePageProps) {
   );
 }
 
-    

@@ -22,7 +22,7 @@ import { collection, query, limit, orderBy } from 'firebase/firestore';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { getHallOfFameStats } from './hall-of-fame/actions';
+import { getHallOfFameStats } from '@/app/hall-of-fame/actions';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 
