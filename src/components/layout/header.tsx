@@ -2,8 +2,6 @@
 
 import Link from 'next/link';
 import { ArmyHelmetIcon } from '@/components/icons';
-import { Button } from '@/components/ui/button';
-import { Database } from 'lucide-react';
 import { SidebarTrigger } from '@/components/ui/sidebar';
 
 export function Header() {
@@ -19,14 +17,6 @@ export function Header() {
             </span>
           </Link>
         </div>
-        <nav>
-          <Button asChild variant="outline">
-            <Link href="/admin">
-              <Database className="mr-2 h-4 w-4" />
-              Admin
-            </Link>
-          </Button>
-        </nav>
       </div>
     </header>
   );
