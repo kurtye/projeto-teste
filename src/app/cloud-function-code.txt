@@ -70,92 +70,67 @@ exports.aggregatePlayerStats = functions
       await snapshot.ref.delete();
       return;
     }
-
-    const batch = db.batch();
-
-    // Itera sobre cada jogador na partida para preparar os incrementos
-    for (const playerStat of matchData.player_stats) {
-      if (!playerStat.steam_id_64) {
-        functions.logger.warn("Encontrado um jogador sem 'steam_id_64' na partida:", playerStat);
-        continue; // Pula para o próximo jogador
-      }
-
-      const playerAggregatesRef = db.collection("playerAggregates").doc(playerStat.steam_id_64);
-
-      // --- Somas Acumulativas ---
-      batch.set(playerAggregatesRef, {
-        totalKills: admin.firestore.FieldValue.increment(playerStat.kills || 0),
-        totalDeaths: admin.firestore.FieldValue.increment(playerStat.deaths || 0),
-        totalCombat: admin.firestore.FieldValue.increment(playerStat.combat || 0),
-        totalOffense: admin.firestore.FieldValue.increment(playerStat.offense || 0),
-        totalDefense: admin.firestore.FieldValue.increment(playerStat.defense || 0),
-        totalSupport: admin.firestore.FieldValue.increment(playerStat.support || 0),
-        totalTimeSeconds: admin.firestore.FieldValue.increment(playerStat.time_seconds || 0),
-        totalTeamKills: admin.firestore.FieldValue.increment(playerStat.teamkills || 0),
-        totalDeathsByTK: admin.firestore.FieldValue.increment(playerStat.deaths_by_tk || 0),
-      }, { merge: true });
-
-      // --- Atualizações de Mapa (Armas, Mortes, etc.) ---
-      const weaponUpdates: { [key: string]: admin.firestore.FieldValue } = {};
-      if (playerStat.weapons) {
-        for (const [weapon, count] of Object.entries(playerStat.weapons)) {
-          weaponUpdates[`weaponUsage.${weapon}`] = admin.firestore.FieldValue.increment(count);
-        }
-      }
-
-      const mostKilledByUpdates: { [key: string]: admin.firestore.FieldValue } = {};
-      if (playerStat.death_by) {
-        for (const [killer, count] of Object.entries(playerStat.death_by)) {
-          mostKilledByUpdates[`mostKilledBy.${killer}`] = admin.firestore.FieldValue.increment(count);
-        }
-      }
-
-      const mostKilledPlayersUpdates: { [key: string]: admin.firestore.FieldValue } = {};
-      if (playerStat.most_killed) {
-        for (const [victim, count] of Object.entries(playerStat.most_killed)) {
-          mostKilledPlayersUpdates[`mostKilledPlayers.${victim}`] = admin.firestore.FieldValue.increment(count);
-        }
-      }
-
-      // Aplica as atualizações de mapa no batch
-      batch.set(playerAggregatesRef, {
-        ...weaponUpdates,
-        ...mostKilledByUpdates,
-        ...mostKilledPlayersUpdates,
-      }, { merge: true });
-    }
-
+    
     try {
-        // Commita o batch principal com todos os incrementos atômicos.
-        await batch.commit();
+      // Usaremos transações para garantir a consistência dos dados complexos.
+      // Promise.all para rodar as atualizações de todos os jogadores em paralelo.
+      await Promise.all(matchData.player_stats.map(async (playerStat) => {
+        if (!playerStat.steam_id_64) {
+          functions.logger.warn("Encontrado um jogador sem 'steam_id_64' na partida:", playerStat);
+          return; // Pula este jogador
+        }
 
-        // A lógica para `longestLifeSecs` e atualizações de metadados precisa de transação,
-        // pois depende da leitura do valor atual. Executaremos isso em transações separadas
-        // por jogador para evitar contenção excessiva.
-        await Promise.all(matchData.player_stats.map(async (playerStat) => {
-            if (!playerStat.steam_id_64) return;
-            const playerAggregatesRef = db.collection("playerAggregates").doc(playerStat.steam_id_64);
+        const playerAggregatesRef = db.collection("playerAggregates").doc(playerStat.steam_id_64);
 
-            await db.runTransaction(async (transaction) => {
-                const playerDoc = await transaction.get(playerAggregatesRef);
-                const currentData = playerDoc.data() || {};
+        // A transação garante que a leitura e a escrita ocorram de forma atômica.
+        return db.runTransaction(async (transaction) => {
+          const playerDoc = await transaction.get(playerAggregatesRef);
+          const currentData = playerDoc.data() || {};
 
-                // Regra do MÁXIMO para longestLifeSecs
-                const newLongestLife = Math.max(currentData.longestLifeSecs || 0, playerStat.longest_life_secs || 0);
+          // --- Campos de Soma (Incremento) ---
+          const updates = {
+            totalKills: (currentData.totalKills || 0) + (playerStat.kills || 0),
+            totalDeaths: (currentData.totalDeaths || 0) + (playerStat.deaths || 0),
+            totalCombat: (currentData.totalCombat || 0) + (playerStat.combat || 0),
+            totalOffense: (currentData.totalOffense || 0) + (playerStat.offense || 0),
+            totalDefense: (currentData.totalDefense || 0) + (playerStat.defense || 0),
+            totalSupport: (currentData.totalSupport || 0) + (playerStat.support || 0),
+            totalTimeSeconds: (currentData.totalTimeSeconds || 0) + (playerStat.time_seconds || 0),
+            totalTeamKills: (currentData.totalTeamKills || 0) + (playerStat.teamkills || 0),
+            totalDeathsByTK: (currentData.totalDeathsByTK || 0) + (playerStat.deaths_by_tk || 0),
+          };
 
-                // Atualização simples para campos de metadados
-                transaction.set(playerAggregatesRef, {
-                    playerId: playerStat.steam_id_64, // Chave
-                    latestPlayerName: playerStat.name, // Último nome encontrado
-                    lastProcessedMatchId: matchData.id,
-                    longestLifeSecs: newLongestLife,
-                }, { merge: true });
-            });
-        }));
+          // --- Regra do MÁXIMO para longestLifeSecs ---
+          updates.longestLifeSecs = Math.max(currentData.longestLifeSecs || 0, playerStat.longest_life_secs || 0);
 
-        // Após tudo ser processado com sucesso, exclui o documento da fila.
-        await snapshot.ref.delete();
-        functions.logger.log(`Agregação da partida ${matchId} concluída com sucesso. Documento excluído.`);
+          // --- Campos de Atualização Simples ---
+          updates.playerId = playerStat.steam_id_64;
+          updates.latestPlayerName = playerStat.name;
+          updates.lastProcessedMatchId = matchData.id;
+
+          // --- Agregação de Mapas ---
+          const aggregateMap = (currentMap, newMap) => {
+              const result = { ...currentMap };
+              if (newMap) {
+                  for (const [key, value] of Object.entries(newMap)) {
+                      result[key] = (result[key] || 0) + value;
+                  }
+              }
+              return result;
+          };
+
+          updates.weaponUsage = aggregateMap(currentData.weaponUsage, playerStat.weapons);
+          updates.mostKilledBy = aggregateMap(currentData.mostKilledBy, playerStat.death_by);
+          updates.mostKilledPlayers = aggregateMap(currentData.mostKilledPlayers, playerStat.most_killed);
+          
+          // Aplica todas as atualizações no documento dentro da transação.
+          transaction.set(playerAggregatesRef, updates, { merge: true });
+        });
+      }));
+
+      // Após todas as transações serem concluídas com sucesso, exclui o documento da fila.
+      await snapshot.ref.delete();
+      functions.logger.log(`Agregação da partida ${matchId} concluída com sucesso. Documento excluído.`);
 
     } catch (error) {
       functions.logger.error(`Erro ao agregar estatísticas para a partida ${matchId}:`, error);
