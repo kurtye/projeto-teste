@@ -193,16 +193,15 @@ export default function Home() {
   const playersQuery = useMemoFirebase(() => {
     if (!firestore) return null;
     
-    // Simplificamos a query: sempre ordenamos por kills para ter uma base consistente.
-    // Aumentamos o limite quando um filtro de clã está ativo para garantir que os membros sejam encontrados.
-    const queryLimit = clanFilter ? 1000 : 200;
+    // Testamos agora com um limite de 2000 jogadores.
+    const queryLimit = 2000;
     
     return query(
       collection(firestore, 'playerAggregates'),
       orderBy('totalKills', 'desc'),
       limit(queryLimit)
     );
-  }, [firestore, clanFilter]);
+  }, [firestore]);
 
 
   const { data: rawPlayers, isLoading, error } = useCollection<PlayerAggregates>(playersQuery);
@@ -484,5 +483,3 @@ export default function Home() {
     </div>
   );
 }
-
-    
