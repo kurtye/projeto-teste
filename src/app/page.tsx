@@ -118,23 +118,25 @@ const SortableHeader = ({
   sortConfig,
   requestSort,
   className,
+  disabled = false,
 }: {
   children: React.ReactNode;
   sortKey: SortKey;
   sortConfig: SortConfig;
   requestSort: (key: SortKey) => void;
   className?: string;
+  disabled?: boolean;
 }) => {
   const isActive = sortConfig.key === sortKey;
   const directionIcon = sortConfig.direction === 'ascending' ? '▲' : '▼';
 
   return (
     <TableHead className={cn("text-center", className)}>
-      <Button variant="ghost" onClick={() => requestSort(sortKey)} className="group h-auto p-2">
+      <Button variant="ghost" onClick={() => requestSort(sortKey)} disabled={disabled} className="group h-auto p-2">
         {children}
         <span className={cn(
           "ml-2 transition-opacity",
-          isActive ? "opacity-100" : "opacity-0 group-hover:opacity-50"
+          isActive && !disabled ? "opacity-100" : "opacity-0 group-hover:opacity-50"
         )}>
           {directionIcon}
         </span>
@@ -177,7 +179,7 @@ export default function Home() {
 
   const { data: rawPlayers, isLoading, error } = useCollection<PlayerAggregates>(playersQuery);
 
-  const processedPlayers = useMemoFirebase(() => {
+  const processedPlayers = useMemo(() => {
     if (!rawPlayers) return [];
     return rawPlayers.map(player => {
         const totalKills = player.totalKills || 0;
@@ -197,7 +199,7 @@ export default function Home() {
     setSortConfig({ key, direction });
   };
 
-  const sortedAndFilteredPlayers = useMemoFirebase(() => {
+  const sortedAndFilteredPlayers = useMemo(() => {
     let sortablePlayers = [...processedPlayers];
 
     // If a clan filter is active, the data is pre-sorted by name from Firestore.
@@ -312,16 +314,16 @@ export default function Home() {
                                 <TableHeader>
                                   <TableRow>
                                     <TableHead className="p-2 md:p-4">Player</TableHead>
-                                    <SortableHeader sortKey="totalScore" sortConfig={sortConfig} requestSort={requestSort} className="hidden md:table-cell">
+                                    <SortableHeader sortKey="totalScore" sortConfig={sortConfig} requestSort={requestSort} className="hidden md:table-cell" disabled={!!clanFilter}>
                                         <Award className="h-5 w-5 inline-block" /> <span className="hidden md:inline">Score</span>
                                     </SortableHeader>
-                                    <SortableHeader sortKey="totalKills" sortConfig={sortConfig} requestSort={requestSort}>
+                                    <SortableHeader sortKey="totalKills" sortConfig={sortConfig} requestSort={requestSort} disabled={!!clanFilter}>
                                       <Crosshair className="h-5 w-5 inline-block" /> <span className="hidden md:inline">Kills</span>
                                     </SortableHeader>
-                                    <SortableHeader sortKey="totalDeaths" sortConfig={sortConfig} requestSort={requestSort} className="hidden md:table-cell">
+                                    <SortableHeader sortKey="totalDeaths" sortConfig={sortConfig} requestSort={requestSort} className="hidden md:table-cell" disabled={!!clanFilter}>
                                       <Skull className="h-5 w-5 inline-block" /> <span className="hidden md:inline">Deaths</span>
                                     </SortableHeader>
-                                    <SortableHeader sortKey="kdRatio" sortConfig={sortConfig} requestSort={requestSort}>
+                                    <SortableHeader sortKey="kdRatio" sortConfig={sortConfig} requestSort={requestSort} disabled={!!clanFilter}>
                                       <Target className="h-5 w-5 inline-block" /> <span className="hidden md:inline">K/D Ratio</span>
                                     </SortableHeader>
                                   </TableRow>
@@ -342,9 +344,9 @@ export default function Home() {
                                                     <span className="font-medium group-hover:text-accent transition-colors truncate">{player.latestPlayerName}</span>
                                                 </Link>
                                                 </TableCell>
-                                                <TableCell className="hidden text-center font-semibold md:table-cell">{player.totalScore?.toLocaleString()}</TableCell>
-                                                <TableCell className="text-center">{player.totalKills?.toLocaleString()}</TableCell>
-                                                <TableCell className="hidden text-center md:table-cell">{player.totalDeaths?.toLocaleString()}</TableCell>
+                                                <TableCell className="hidden text-center font-semibold md:table-cell">{(player.totalScore || 0).toLocaleString()}</TableCell>
+                                                <TableCell className="text-center">{(player.totalKills || 0).toLocaleString()}</TableCell>
+                                                <TableCell className="hidden text-center md:table-cell">{(player.totalDeaths || 0).toLocaleString()}</TableCell>
                                                 <TableCell className="text-center">
                                                 <Badge variant={player.kdRatio && player.kdRatio > 2.0 ? 'destructive' : player.kdRatio && player.kdRatio > 1.0 ? 'default' : 'secondary'} className="bg-accent/20 text-accent-foreground border-accent/30">
                                                     {player.kdRatio?.toFixed(2)}
@@ -386,11 +388,11 @@ export default function Home() {
                                                     <p className="text-xs text-muted-foreground">K/D Ratio</p>
                                                 </div>
                                                 <div>
-                                                    <p className="font-bold text-lg">{player.totalKills?.toLocaleString()}</p>
+                                                    <p className="font-bold text-lg">{(player.totalKills || 0).toLocaleString()}</p>
                                                     <p className="text-xs text-muted-foreground">Kills</p>
                                                 </div>
                                                 <div>
-                                                    <p className="font-bold text-lg">{player.totalScore?.toLocaleString()}</p>
+                                                    <p className="font-bold text-lg">{(player.totalScore || 0).toLocaleString()}</p>
                                                     <p className="text-xs text-muted-foreground">Score</p>
                                                 </div>
                                             </div>
