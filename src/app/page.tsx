@@ -155,14 +155,24 @@ export default function Home() {
   const playersQuery = useMemoFirebase(() => {
     if (!firestore) return null;
     
-    const baseQuery = query(
-      collection(firestore, 'playerAggregates'),
-      orderBy('totalKills', 'desc'),
-      limit(1000) 
-    );
+    // Se um filtro de clã estiver ativo, buscamos um lote maior para garantir que o clã seja encontrado.
+    // A ordenação primária ainda é por kills.
+    if (clanFilter) {
+      return query(
+        collection(firestore, 'playerAggregates'),
+        orderBy('totalKills', 'desc'),
+        limit(1000)
+      );
+    }
     
-    return baseQuery;
-  }, [firestore]);
+    // Para a visualização geral e busca, mantemos a ordenação selecionada pelo usuário
+    // e um limite menor para performance inicial.
+    return query(
+      collection(firestore, 'playerAggregates'),
+      orderBy(sortConfig.key === 'kdRatio' ? 'totalKills' : sortConfig.key, sortConfig.direction), // O Firestore não pode ordenar por um campo calculado como K/D
+      limit(200) 
+    );
+  }, [firestore, clanFilter, sortConfig]);
 
 
   const { data: rawPlayers, isLoading, error } = useCollection<PlayerAggregates>(playersQuery);
@@ -190,30 +200,27 @@ export default function Home() {
   const sortedAndFilteredPlayers = useMemo(() => {
     let filterablePlayers = [...processedPlayers];
 
-    if (clanFilter) {
-      const lowerCaseFilter = `[${clanFilter.toLowerCase()}]`;
-      filterablePlayers = filterablePlayers.filter(player => 
-        player.latestPlayerName.toLowerCase().includes(lowerCaseFilter)
-      );
-    } else if (searchQuery) {
-      filterablePlayers = filterablePlayers.filter(player =>
-        player.latestPlayerName.toLowerCase().includes(searchQuery.toLowerCase())
-      );
+    // A lógica de filtragem agora é mais simples.
+    if (searchQuery) {
+        filterablePlayers = filterablePlayers.filter(player =>
+            player.latestPlayerName.toLowerCase().includes(searchQuery.toLowerCase())
+        );
     }
     
-    // Se um filtro de clã estiver ativo, ordenamos por 'totalKills' por padrão.
-    // Caso contrário, usamos a configuração de ordenação do estado.
-    const currentSortConfig = clanFilter ? { key: 'totalKills', direction: 'descending' } as SortConfig : sortConfig;
+    // Se um filtro de clã estiver ativo, a ordenação é travada em 'totalKills'.
+    // Caso contrário, usa a ordenação dinâmica do estado.
+    const currentSortKey = clanFilter ? 'totalKills' : sortConfig.key;
+    const currentSortDirection = clanFilter ? 'descending' : sortConfig.direction;
     
     filterablePlayers.sort((a, b) => {
-        const valA = a[currentSortConfig.key] || 0;
-        const valB = b[currentSortConfig.key] || 0;
+        const valA = a[currentSortKey] || 0;
+        const valB = b[currentSortKey] || 0;
 
         if (valA < valB) {
-            return currentSortConfig.direction === 'ascending' ? -1 : 1;
+            return currentSortDirection === 'ascending' ? -1 : 1;
         }
         if (valA > valB) {
-            return currentSortConfig.direction === 'ascending' ? 1 : -1;
+            return currentSortDirection === 'ascending' ? 1 : -1;
         }
         return 0;
     });
@@ -224,12 +231,8 @@ export default function Home() {
 
   const handleClanFilterClick = (clan: string | null) => {
     setClanFilter(clan);
-    // Remove a query de pesquisa para não conflitarem
-    setSearchQuery(clan ? `[${clan}]` : '');
-    // Reseta a ordenação para o padrão ao selecionar um clã
-    if (clan) {
-      setSortConfig({ key: 'totalKills', direction: 'descending' });
-    }
+    // Define a query de busca para corresponder ao clã, sem colchetes
+    setSearchQuery(clan || '');
   };
 
   return (
@@ -257,12 +260,14 @@ export default function Home() {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
               <Input
                 id="search"
-                placeholder="Search by name..."
+                placeholder="Search by name or clan tag..."
                 value={searchQuery}
                 onChange={(e) => {
                   setSearchQuery(e.target.value);
-                  // Limpa o filtro de clã se o usuário começar a digitar
-                  if (clanFilter) setClanFilter(null);
+                  // Limpa o filtro de clã se o usuário começar a digitar algo diferente da tag
+                  if (clanFilter && !e.target.value.toLowerCase().includes(clanFilter.toLowerCase())) {
+                    setClanFilter(null);
+                  }
                 }}
                 className="pl-10"
               />
@@ -419,5 +424,3 @@ export default function Home() {
     </div>
   );
 }
-
-    
