@@ -155,31 +155,34 @@ export default function Home() {
   const playersQuery = useMemoFirebase(() => {
     if (!firestore) return null;
     
-    // Se um filtro de clã estiver ativo, buscamos um lote maior para garantir que o clã seja encontrado.
-    // A ordenação primária ainda é por kills.
-    if (clanFilter) {
-      return query(
-        collection(firestore, 'playerAggregates'),
-        orderBy('totalKills', 'desc'),
-        limit(1000)
-      );
-    }
+    // Simplificamos a query: sempre ordenamos por kills para ter uma base consistente.
+    // Aumentamos o limite quando um filtro de clã está ativo para garantir que os membros sejam encontrados.
+    const queryLimit = clanFilter ? 1000 : 200;
     
-    // Para a visualização geral e busca, mantemos a ordenação selecionada pelo usuário
-    // e um limite menor para performance inicial.
     return query(
       collection(firestore, 'playerAggregates'),
-      orderBy(sortConfig.key === 'kdRatio' ? 'totalKills' : sortConfig.key, sortConfig.direction), // O Firestore não pode ordenar por um campo calculado como K/D
-      limit(200) 
+      orderBy('totalKills', 'desc'),
+      limit(queryLimit)
     );
-  }, [firestore, clanFilter, sortConfig]);
+  }, [firestore, clanFilter]);
 
 
   const { data: rawPlayers, isLoading, error } = useCollection<PlayerAggregates>(playersQuery);
 
   const processedPlayers = useMemo(() => {
     if (!rawPlayers) return [];
-    return rawPlayers.map(player => {
+    
+    let filteredData = rawPlayers;
+    
+    // 1. Filtragem por clã ou busca geral (ocorre primeiro)
+    if (searchQuery) {
+        filteredData = rawPlayers.filter(player =>
+            player.latestPlayerName.toLowerCase().includes(searchQuery.toLowerCase())
+        );
+    }
+    
+    // 2. Mapeamento para adicionar campos calculados
+    return filteredData.map(player => {
         const totalKills = player.totalKills || 0;
         const totalDeaths = player.totalDeaths || 1; // Avoid division by zero
         const totalScore = (player.totalCombat || 0) + (player.totalDefense || 0) + (player.totalSupport || 0) + (player.totalOffense || 0);
@@ -187,7 +190,7 @@ export default function Home() {
         
         return { ...player, id: player.id, totalKills, totalDeaths, totalScore, kdRatio };
     });
-  }, [rawPlayers]);
+  }, [rawPlayers, searchQuery]);
 
   const requestSort = (key: SortKey) => {
     let direction: SortDirection = 'descending';
@@ -198,40 +201,28 @@ export default function Home() {
   };
 
   const sortedAndFilteredPlayers = useMemo(() => {
-    let filterablePlayers = [...processedPlayers];
+    let sortablePlayers = [...processedPlayers];
 
-    // A lógica de filtragem agora é mais simples.
-    if (searchQuery) {
-        filterablePlayers = filterablePlayers.filter(player =>
-            player.latestPlayerName.toLowerCase().includes(searchQuery.toLowerCase())
-        );
-    }
-    
-    // Se um filtro de clã estiver ativo, a ordenação é travada em 'totalKills'.
-    // Caso contrário, usa a ordenação dinâmica do estado.
-    const currentSortKey = clanFilter ? 'totalKills' : sortConfig.key;
-    const currentSortDirection = clanFilter ? 'descending' : sortConfig.direction;
-    
-    filterablePlayers.sort((a, b) => {
-        const valA = a[currentSortKey] || 0;
-        const valB = b[currentSortKey] || 0;
+    // 3. Ordenação final baseada no estado do sortConfig
+    sortablePlayers.sort((a, b) => {
+        const valA = a[sortConfig.key] || 0;
+        const valB = b[sortConfig.key] || 0;
 
         if (valA < valB) {
-            return currentSortDirection === 'ascending' ? -1 : 1;
+            return sortConfig.direction === 'ascending' ? -1 : 1;
         }
         if (valA > valB) {
-            return currentSortDirection === 'ascending' ? 1 : -1;
+            return sortConfig.direction === 'ascending' ? 1 : -1;
         }
         return 0;
     });
 
-    return filterablePlayers;
+    return sortablePlayers;
 
-  }, [processedPlayers, searchQuery, sortConfig, clanFilter]);
+  }, [processedPlayers, sortConfig]);
 
   const handleClanFilterClick = (clan: string | null) => {
     setClanFilter(clan);
-    // Define a query de busca para corresponder ao clã, sem colchetes
     setSearchQuery(clan || '');
   };
 
@@ -264,7 +255,6 @@ export default function Home() {
                 value={searchQuery}
                 onChange={(e) => {
                   setSearchQuery(e.target.value);
-                  // Limpa o filtro de clã se o usuário começar a digitar algo diferente da tag
                   if (clanFilter && !e.target.value.toLowerCase().includes(clanFilter.toLowerCase())) {
                     setClanFilter(null);
                   }
@@ -313,7 +303,7 @@ export default function Home() {
                 <Card className="flex flex-col items-center justify-center p-8 text-center">
                     <ShieldAlert className="h-12 w-12 text-destructive" />
                     <h2 className="mt-4 text-xl font-semibold">Failed to load player data</h2>
-                    <p className="mt-2 text-muted-foreground">Please check console for errors or try again later.</p>
+                    <p className="mt-2 text-muted-foreground">An unexpected error occurred. Please try again later.</p>
                 </Card>
             ) : sortedAndFilteredPlayers.length > 0 ? (
                 viewMode === 'table' ? (
