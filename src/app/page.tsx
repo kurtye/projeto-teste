@@ -33,16 +33,18 @@ interface SortConfig {
 function PlayerRowSkeleton() {
   return (
     <TableRow>
-      <TableCell className="font-bold text-lg text-center"><Skeleton className="h-6 w-6 rounded-full" /></TableCell>
-      <TableCell>
+      <TableCell className="p-2 md:p-4">
         <div className="flex items-center gap-3">
+          <Skeleton className="h-6 w-6" />
           <Skeleton className="h-10 w-10 rounded-full" />
-          <Skeleton className="h-4 w-32" />
+          <div className='flex-1'>
+            <Skeleton className="h-4 w-24" />
+          </div>
         </div>
       </TableCell>
+      <TableCell className="hidden text-center md:table-cell"><Skeleton className="h-4 w-12 mx-auto" /></TableCell>
       <TableCell className="text-center"><Skeleton className="h-4 w-12 mx-auto" /></TableCell>
-      <TableCell className="text-center"><Skeleton className="h-4 w-12 mx-auto" /></TableCell>
-      <TableCell className="text-center"><Skeleton className="h-4 w-12 mx-auto" /></TableCell>
+      <TableCell className="hidden text-center md:table-cell"><Skeleton className="h-4 w-12 mx-auto" /></TableCell>
       <TableCell className="text-center">
         <Skeleton className="h-6 w-16 mx-auto rounded-full" />
       </TableCell>
@@ -55,18 +57,20 @@ const SortableHeader = ({
   sortKey,
   sortConfig,
   requestSort,
+  className,
 }: {
   children: React.ReactNode;
   sortKey: SortKey;
   sortConfig: SortConfig;
   requestSort: (key: SortKey) => void;
+  className?: string;
 }) => {
   const isActive = sortConfig.key === sortKey;
   const directionIcon = sortConfig.direction === 'ascending' ? '▲' : '▼';
 
   return (
-    <TableHead className="text-center">
-      <Button variant="ghost" onClick={() => requestSort(sortKey)} className="group">
+    <TableHead className={cn("text-center", className)}>
+      <Button variant="ghost" onClick={() => requestSort(sortKey)} className="group h-auto p-2">
         {children}
         <span className={cn(
           "ml-2 transition-opacity",
@@ -185,21 +189,18 @@ export default function Home() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-[80px] text-center">
-                      <Trophy className="h-5 w-5 inline-block" /> Rank
-                    </TableHead>
                     <TableHead>Player</TableHead>
-                    <SortableHeader sortKey="totalScore" sortConfig={sortConfig} requestSort={requestSort}>
-                       <Award className="h-5 w-5 inline-block" /> Score
+                    <SortableHeader sortKey="totalScore" sortConfig={sortConfig} requestSort={requestSort} className="hidden md:table-cell">
+                       <Award className="h-5 w-5 inline-block" /> <span className="hidden md:inline">Score</span>
                     </SortableHeader>
                     <SortableHeader sortKey="totalKills" sortConfig={sortConfig} requestSort={requestSort}>
-                      <Crosshair className="h-5 w-5 inline-block" /> Kills
+                      <Crosshair className="h-5 w-5 inline-block" /> <span className="hidden md:inline">Kills</span>
                     </SortableHeader>
-                     <SortableHeader sortKey="totalDeaths" sortConfig={sortConfig} requestSort={requestSort}>
-                      <Skull className="h-5 w-5 inline-block" /> Deaths
+                     <SortableHeader sortKey="totalDeaths" sortConfig={sortConfig} requestSort={requestSort} className="hidden md:table-cell">
+                      <Skull className="h-5 w-5 inline-block" /> <span className="hidden md:inline">Deaths</span>
                     </SortableHeader>
                     <SortableHeader sortKey="kdRatio" sortConfig={sortConfig} requestSort={requestSort}>
-                      <Target className="h-5 w-5 inline-block" /> K/D Ratio
+                      <Target className="h-5 w-5 inline-block" /> <span className="hidden md:inline">K/D Ratio</span>
                     </SortableHeader>
                   </TableRow>
                 </TableHeader>
@@ -216,18 +217,18 @@ export default function Home() {
                   ) : sortedAndFilteredPlayers.length > 0 ? (
                     sortedAndFilteredPlayers.map((player, index) => (
                       <TableRow key={player.id}>
-                        <TableCell className="font-bold text-lg text-center">{index + 1}</TableCell>
-                        <TableCell>
-                          <Link href={`/player/${player.id}`} className="flex items-center gap-3 group">
+                        <TableCell className="p-2 md:p-4">
+                           <Link href={`/player/${player.id}`} className="flex items-center gap-3 group">
+                            <span className="font-bold text-sm w-6 text-center text-muted-foreground">{index + 1}</span>
                             <Avatar>
                               <AvatarFallback>{player.latestPlayerName.charAt(0)}</AvatarFallback>
                             </Avatar>
-                            <span className="font-medium group-hover:text-accent transition-colors">{player.latestPlayerName}</span>
+                            <span className="font-medium group-hover:text-accent transition-colors truncate">{player.latestPlayerName}</span>
                           </Link>
                         </TableCell>
-                        <TableCell className="text-center font-semibold">{player.totalScore?.toLocaleString()}</TableCell>
+                        <TableCell className="hidden text-center font-semibold md:table-cell">{player.totalScore?.toLocaleString()}</TableCell>
                         <TableCell className="text-center">{player.totalKills?.toLocaleString()}</TableCell>
-                        <TableCell className="text-center">{player.totalDeaths?.toLocaleString()}</TableCell>
+                        <TableCell className="hidden text-center md:table-cell">{player.totalDeaths?.toLocaleString()}</TableCell>
                         <TableCell className="text-center">
                           <Badge variant={player.kdRatio && player.kdRatio > 2.0 ? 'destructive' : player.kdRatio && player.kdRatio > 1.0 ? 'default' : 'secondary'} className="bg-accent/20 text-accent-foreground border-accent/30">
                             {player.kdRatio?.toFixed(2)}
