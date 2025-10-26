@@ -153,15 +153,10 @@ export default function Home() {
   const [viewMode, setViewMode] = useState<ViewMode>('table');
   const firestore = useFirestore();
 
-  console.log('[Home] Rendering component. Current clanFilter:', clanFilter);
-
   const playersQuery = useMemoFirebase(() => {
     if (!firestore) return null;
 
-    console.log('[Home] useMemoFirebase running. clanFilter:', clanFilter);
-
     if (clanFilter) {
-      console.log(`[Home] Creating DB query for clan: ${clanFilter}`);
       // Query for a specific clan using a prefix-like range query.
       return query(
           collection(firestore, 'playerAggregates'),
@@ -170,7 +165,6 @@ export default function Home() {
           orderBy('latestPlayerName', 'asc')
       );
     } else {
-      console.log('[Home] Creating default DB query for top 200 players.');
       // Default query: top 200 players by total kills.
       return query(
           collection(firestore, 'playerAggregates'),
@@ -179,8 +173,6 @@ export default function Home() {
       );
     }
   }, [firestore, clanFilter]);
-
-  console.log('[Home] playersQuery object created:', playersQuery);
 
   const { data: rawPlayers, isLoading, error } = useCollection<PlayerAggregates>(playersQuery);
 
@@ -237,8 +229,8 @@ export default function Home() {
   }, [processedPlayers, searchQuery, sortConfig, clanFilter]);
 
   const handleClanFilterClick = (clan: string | null) => {
-    console.log(`[Home] Clan button clicked. Setting filter to: ${clan}`);
     setClanFilter(clan);
+    setSearchQuery(clan || ''); // Pre-fill search query
   };
 
   return (
