@@ -88,8 +88,7 @@ const InteractionList = ({ title, icon: Icon, data, isLoading }: { title: string
 
 export default function PlayerProfilePage({ params }: PlayerProfilePageProps) {
   const firestore = useFirestore();
-  const resolvedParams = use(params);
-  const playerId = decodeURIComponent(resolvedParams.playerId);
+  const playerId = decodeURIComponent(params.playerId);
 
   const playerDocRef = useMemoFirebase(() => {
     if (!firestore || !playerId) return null;

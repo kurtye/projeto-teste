@@ -157,12 +157,11 @@ export default function Home() {
     if (!firestore) return null;
 
     if (clanFilter) {
-      const lowerCaseClan = clanFilter.toLowerCase();
       return query(
         collection(firestore, 'playerAggregates'),
-        where("searchablePlayerName", ">=", lowerCaseClan),
-        where("searchablePlayerName", "<=", lowerCaseClan + '\uf8ff')
-        // We will sort client-side for clan view
+        where("latestPlayerName", ">=", clanFilter),
+        where("latestPlayerName", "<=", clanFilter + '\uf8ff'),
+        orderBy("latestPlayerName", "asc")
       );
     } else {
       // Default query: top 200 players by total kills.
@@ -196,23 +195,35 @@ export default function Home() {
     setSortConfig({ key, direction });
   };
 
+  const normalizeName = (name: string) => {
+    return name.replace(/[-_\[\]\s]/g, "").toLowerCase();
+  };
+
   const sortedAndFilteredPlayers = useMemo(() => {
     let sortablePlayers = [...processedPlayers];
 
-    sortablePlayers.sort((a, b) => {
-        const valA = a[sortConfig.key] || 0;
-        const valB = b[sortConfig.key] || 0;
+    // Se houver um filtro de clã, ordena pelo nome normalizado
+    if (clanFilter) {
+      sortablePlayers.sort((a, b) => {
+          return normalizeName(a.latestPlayerName).localeCompare(normalizeName(b.latestPlayerName));
+      });
+    } else {
+      // Caso contrário, usa a ordenação por estatísticas
+      sortablePlayers.sort((a, b) => {
+          const valA = a[sortConfig.key] || 0;
+          const valB = b[sortConfig.key] || 0;
 
-        if (valA < valB) {
-            return sortConfig.direction === 'ascending' ? -1 : 1;
-        }
-        if (valA > valB) {
-            return sortConfig.direction === 'ascending' ? 1 : -1;
-        }
-        return 0;
-    });
+          if (valA < valB) {
+              return sortConfig.direction === 'ascending' ? -1 : 1;
+          }
+          if (valA > valB) {
+              return sortConfig.direction === 'ascending' ? 1 : -1;
+          }
+          return 0;
+      });
+    }
     
-    // Manual search query filtering is still applied on top of any results.
+    // O filtro de pesquisa manual é aplicado por cima de qualquer resultado
     if (searchQuery) {
         return sortablePlayers.filter(player =>
             player.latestPlayerName.toLowerCase().includes(searchQuery.toLowerCase())
@@ -220,7 +231,7 @@ export default function Home() {
     }
 
     return sortablePlayers;
-  }, [processedPlayers, searchQuery, sortConfig]);
+  }, [processedPlayers, searchQuery, sortConfig, clanFilter]);
 
   const handleClanFilterClick = (clan: string | null) => {
     setClanFilter(clan);
@@ -329,7 +340,7 @@ export default function Home() {
                                         return (
                                             <TableRow key={player.id}>
                                                 <TableCell className="p-2 md:p-4">
-                                                <Link href={`/player/${player.id}`} className="flex items-center gap-3 group">
+                                                <Link href={`/player/${encodeURIComponent(player.id)}`} className="flex items-center gap-3 group">
                                                     <div className="w-6 text-center">
                                                         <RankIndicator rank={rank} />
                                                     </div>
@@ -365,7 +376,7 @@ export default function Home() {
                                 "group-hover:border-accent group-hover:shadow-lg";
 
                             return (
-                                <Link key={player.id} href={`/player/${player.id}`} className="group">
+                                <Link key={player.id} href={`/player/${encodeURIComponent(player.id)}`} className="group">
                                     <Card className={cn("h-full transition-all duration-200", cardHighlightClass)}>
                                         <CardHeader className="flex-row items-center gap-4 space-y-0 p-4">
                                             <Avatar className="h-12 w-12 border-2 border-transparent group-hover:border-primary">
