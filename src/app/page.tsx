@@ -46,6 +46,7 @@ const STAT_CATEGORY_NAMES: Record<string, string> = {
   totalSupport: 'Rei do Suporte',
   totalTimeSeconds: 'Mais Tempo Jogado',
   longestLifeSecs: 'Vida Mais Longa',
+  loneWolf: 'O Lobo Solitário',
 };
 
 
@@ -175,7 +176,7 @@ export default function Home() {
         const stats = await getHallOfFameStats();
         const fameMap: HallOfFameMap = {};
         for (const key in stats) {
-            const player = stats[key];
+            const player = stats[key as keyof typeof stats];
             if (player && player.id) {
                 if (!fameMap[player.id]) {
                     fameMap[player.id] = [];
