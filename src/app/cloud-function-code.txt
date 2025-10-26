@@ -22,8 +22,8 @@ const db = admin.firestore();
  * Tipar os dados ajuda a evitar erros.
  */
 interface PlayerStats {
-  player_id: string;
-  player: string;
+  steam_id_64: string; // O ID correto é 'steam_id_64', não 'player_id'
+  name: string;
   kills: number;
   deaths: number;
   combat: number;
@@ -55,7 +55,9 @@ interface MatchData {
  * Esta função processa os dados da partida, agrega as estatísticas para cada jogador
  * e, ao final, exclui o documento da partida bruta para evitar reprocessamento.
  */
-exports.aggregatePlayerStats = functions.region("southamerica-east1")
+exports.aggregatePlayerStats = functions
+  .region("southamerica-east1")
+  .runWith({ memory: "512MB", timeoutSeconds: 60 })
   .firestore.document("rawMatchResults/{matchId}")
   .onCreate(async (snapshot, context) => {
     const { matchId } = context.params;
@@ -71,14 +73,14 @@ exports.aggregatePlayerStats = functions.region("southamerica-east1")
 
     const batch = db.batch();
 
-    // Itera sobre cada jogador na partida
+    // Itera sobre cada jogador na partida para preparar os incrementos
     for (const playerStat of matchData.player_stats) {
-      if (!playerStat.player_id) {
-        functions.logger.warn("Encontrado um jogador sem 'player_id' na partida:", playerStat);
+      if (!playerStat.steam_id_64) {
+        functions.logger.warn("Encontrado um jogador sem 'steam_id_64' na partida:", playerStat);
         continue; // Pula para o próximo jogador
       }
 
-      const playerAggregatesRef = db.collection("playerAggregates").doc(playerStat.player_id);
+      const playerAggregatesRef = db.collection("playerAggregates").doc(playerStat.steam_id_64);
 
       // --- Somas Acumulativas ---
       batch.set(playerAggregatesRef, {
@@ -97,7 +99,6 @@ exports.aggregatePlayerStats = functions.region("southamerica-east1")
       const weaponUpdates: { [key: string]: admin.firestore.FieldValue } = {};
       if (playerStat.weapons) {
         for (const [weapon, count] of Object.entries(playerStat.weapons)) {
-          // A notação com ponto (`weaponUsage.${weapon}`) atualiza campos aninhados.
           weaponUpdates[`weaponUsage.${weapon}`] = admin.firestore.FieldValue.increment(count);
         }
       }
@@ -125,12 +126,15 @@ exports.aggregatePlayerStats = functions.region("southamerica-east1")
     }
 
     try {
-        // A lógica para `longestLifeSecs` e atualizações simples precisa de transação,
+        // Commita o batch principal com todos os incrementos atômicos.
+        await batch.commit();
+
+        // A lógica para `longestLifeSecs` e atualizações de metadados precisa de transação,
         // pois depende da leitura do valor atual. Executaremos isso em transações separadas
-        // por jogador para evitar contenção excessiva em uma única transação gigante.
+        // por jogador para evitar contenção excessiva.
         await Promise.all(matchData.player_stats.map(async (playerStat) => {
-            if (!playerStat.player_id) return;
-            const playerAggregatesRef = db.collection("playerAggregates").doc(playerStat.player_id);
+            if (!playerStat.steam_id_64) return;
+            const playerAggregatesRef = db.collection("playerAggregates").doc(playerStat.steam_id_64);
 
             await db.runTransaction(async (transaction) => {
                 const playerDoc = await transaction.get(playerAggregatesRef);
@@ -141,22 +145,19 @@ exports.aggregatePlayerStats = functions.region("southamerica-east1")
 
                 // Atualização simples para campos de metadados
                 transaction.set(playerAggregatesRef, {
-                    playerId: playerStat.player_id, // Chave
-                    latestPlayerName: playerStat.player, // Último nome encontrado
+                    playerId: playerStat.steam_id_64, // Chave
+                    latestPlayerName: playerStat.name, // Último nome encontrado
                     lastProcessedMatchId: matchData.id,
                     longestLifeSecs: newLongestLife,
                 }, { merge: true });
             });
         }));
 
-        // Commita o batch principal com os incrementos
-        await batch.commit();
-
         // Após tudo ser processado com sucesso, exclui o documento da fila.
         await snapshot.ref.delete();
         functions.logger.log(`Agregação da partida ${matchId} concluída com sucesso. Documento excluído.`);
 
-    } catch (error) {
+    } catch (error) => {
       functions.logger.error(`Erro ao agregar estatísticas para a partida ${matchId}:`, error);
       // Não exclui o documento para que ele possa ser reprocessado ou inspecionado.
     }

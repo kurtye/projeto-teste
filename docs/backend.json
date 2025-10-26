@@ -50,8 +50,8 @@
           "format": "date-time"
         },
         "player_stats": {
-            "type": "array",
-            "description": "Statistics for each player in the match."
+          "type": "array",
+          "description": "Statistics for each player in the match."
         }
       },
       "required": [
@@ -61,29 +61,64 @@
       ]
     },
     "PlayerAggregates": {
-        "$schema": "http://json-schema.org/draft-07/schema#",
-        "title": "PlayerAggregates",
-        "type": "object",
-        "description": "Aggregated statistics for a single player across all matches.",
-        "properties": {
-            "playerId": { "type": "string" },
-            "latestPlayerName": { "type": "string" },
-            "lastProcessedMatchId": { "type": "number" },
-            "totalTimeSeconds": { "type": "number" },
-            "longestLifeSecs": { "type": "number" },
-            "totalKills": { "type": "number" },
-            "totalDeaths": { "type": "number" },
-            "totalCombat": { "type": "number" },
-            "totalOffense": { "type": "number" },
-            "totalDefense": { "type": "number" },
-            "totalSupport": { "type": "number" },
-            "totalTeamKills": { "type": "number" },
-            "totalDeathsByTK": { "type": "number" },
-            "weaponUsage": { "type": "object" },
-            "mostKilledBy": { "type": "object" },
-            "mostKilledPlayers": { "type": "object" }
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "PlayerAggregates",
+      "type": "object",
+      "description": "Aggregated statistics for a single player across all matches.",
+      "properties": {
+        "playerId": {
+          "type": "string"
         },
-        "required": ["playerId", "latestPlayerName"]
+        "latestPlayerName": {
+          "type": "string"
+        },
+        "lastProcessedMatchId": {
+          "type": "number"
+        },
+        "totalTimeSeconds": {
+          "type": "number"
+        },
+        "longestLifeSecs": {
+          "type": "number"
+        },
+        "totalKills": {
+          "type": "number"
+        },
+        "totalDeaths": {
+          "type": "number"
+        },
+        "totalCombat": {
+          "type": "number"
+        },
+        "totalOffense": {
+          "type": "number"
+        },
+        "totalDefense": {
+          "type": "number"
+        },
+        "totalSupport": {
+          "type": "number"
+        },
+        "totalTeamKills": {
+          "type": "number"
+        },
+        "totalDeathsByTK": {
+          "type": "number"
+        },
+        "weaponUsage": {
+          "type": "object"
+        },
+        "mostKilledBy": {
+          "type": "object"
+        },
+        "mostKilledPlayers": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "playerId",
+        "latestPlayerName"
+      ]
     }
   },
   "auth": {
@@ -94,11 +129,15 @@
   },
   "firestore": {
     "/rawMatchResults/{matchId}": {
-      "schema": { "$ref": "#/entities/Match" },
+      "schema": {
+        "$ref": "#/entities/Match"
+      },
       "description": "Collection to store raw match data from the external API. Documents in this collection trigger the aggregation Cloud Function and are deleted after successful processing."
     },
     "/playerAggregates/{playerId}": {
-      "schema": { "$ref": "#/entities/PlayerAggregates" },
+      "schema": {
+        "$ref": "#/entities/PlayerAggregates"
+      },
       "description": "Global collection of aggregated player statistics. Each document represents a single player and contains their consolidated stats from all processed matches."
     }
   }
