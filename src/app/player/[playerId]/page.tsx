@@ -24,6 +24,7 @@ import {
   Target,
 } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
+import { use } from 'react';
 
 interface PlayerProfilePageProps {
   params: {
@@ -87,7 +88,8 @@ const InteractionList = ({ title, icon: Icon, data, isLoading }: { title: string
 
 export default function PlayerProfilePage({ params }: PlayerProfilePageProps) {
   const firestore = useFirestore();
-  const playerId = decodeURIComponent(params.playerId);
+  const resolvedParams = use(params);
+  const playerId = decodeURIComponent(resolvedParams.playerId);
 
   const playerDocRef = useMemoFirebase(() => {
     if (!firestore || !playerId) return null;
