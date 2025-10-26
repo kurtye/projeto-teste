@@ -33,10 +33,10 @@ interface HallOfFameData {
 const statCategories = [
   { key: 'totalKills', title: 'Mais Kills', icon: Swords, formatter: (val: number) => val.toLocaleString() },
   { key: 'totalCombat', title: 'Maior Pontuação de Combate', icon: Award, formatter: (val: number) => val.toLocaleString() },
-  { key: 'loneWolf', title: 'Melhor Jogador sem Clã', icon: User, formatter: (val: number) => `${val.toLocaleString()} Kills` },
   { key: 'totalOffense', title: 'Maior Pontuação de Ataque', icon: Target, formatter: (val: number) => val.toLocaleString() },
   { key: 'totalDefense', title: 'Maior Pontuação de Defesa', icon: Shield, formatter: (val: number) => val.toLocaleString() },
   { key: 'totalSupport', title: 'Maior Pontuação de Suporte', icon: HeartPulse, formatter: (val: number) => val.toLocaleString() },
+  { key: 'loneWolf', title: 'Lobo Solitário', icon: User, formatter: (val: number) => `${val.toLocaleString()} Kills` },
   { key: 'totalTimeSeconds', title: 'Mais Tempo Jogado', icon: Clock, formatter: (val: number) => `${Math.floor(val / 3600)}h` },
   { key: 'longestLifeSecs', title: 'Vida Mais Longa', icon: Timer, formatter: (val: number) => `${Math.floor(val / 60)}m` },
 ];
