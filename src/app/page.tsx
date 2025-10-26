@@ -17,7 +17,7 @@ import { Badge } from '@/components/ui/badge';
 import { Search, Trophy, Skull, Crosshair, BarChart2, ShieldAlert, Target, Award, LayoutGrid, List } from 'lucide-react';
 import { useCollection, useFirestore, useMemoFirebase } from '@/firebase';
 import type { PlayerAggregates } from '@/lib/types';
-import { collection, query, limit, orderBy } from 'firebase/firestore';
+import { collection, query, limit, orderBy, where } from 'firebase/firestore';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -153,12 +153,27 @@ export default function Home() {
 
   const playersQuery = useMemoFirebase(() => {
     if (!firestore) return null;
-    return query(
-        collection(firestore, 'playerAggregates'),
-        orderBy('totalKills', 'desc'),
-        limit(200)
-    );
-  }, [firestore]);
+
+    if (clanFilter) {
+      // Query for a specific clan.
+      // This is a "starts with" query. It fetches all players where latestPlayerName
+      // is between "CLAN" and "CLAN" followed by a high-value Unicode character.
+      return query(
+          collection(firestore, 'playerAggregates'),
+          where("latestPlayerName", ">=", clanFilter),
+          where("latestPlayerName", "<=", clanFilter + '\uf8ff'),
+          orderBy('latestPlayerName', 'asc')
+      );
+    } else {
+      // Default query: top 200 players by total kills.
+      return query(
+          collection(firestore, 'playerAggregates'),
+          orderBy('totalKills', 'desc'),
+          limit(200)
+      );
+    }
+  }, [firestore, clanFilter]);
+
 
   const { data: rawPlayers, isLoading, error } = useCollection<PlayerAggregates>(playersQuery);
 
@@ -185,7 +200,9 @@ export default function Home() {
   const sortedAndFilteredPlayers = useMemoFirebase(() => {
     let sortablePlayers = [...processedPlayers];
 
-    if (sortConfig.key !== 'totalKills' || sortConfig.direction !== 'descending') {
+    // If a clan filter is active, the data is pre-sorted by name from Firestore.
+    // So we only apply custom sorting if there's no clan filter.
+    if (!clanFilter) {
         sortablePlayers.sort((a, b) => {
             const valA = a[sortConfig.key] || 0;
             const valB = b[sortConfig.key] || 0;
@@ -201,13 +218,8 @@ export default function Home() {
     }
 
     let filteredPlayers = sortablePlayers;
-
-    if (clanFilter) {
-        filteredPlayers = filteredPlayers.filter(player => 
-            player.latestPlayerName.toLowerCase().includes(clanFilter.toLowerCase())
-        );
-    }
     
+    // Manual search query filtering is still applied on top of any results.
     if (searchQuery) {
         filteredPlayers = filteredPlayers.filter(player =>
             player.latestPlayerName.toLowerCase().includes(searchQuery.toLowerCase())
