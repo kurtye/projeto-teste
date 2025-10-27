@@ -41,11 +41,6 @@ export default function RootLayout({
                                 <Link href="/"><Home />Ranking</Link>
                             </SidebarMenuButton>
                         </SidebarMenuItem>
-                        <SidebarMenuItem>
-                            <SidebarMenuButton asChild>
-                                <Link href="/caserna"><Briefcase />Caserna</Link>
-                            </SidebarMenuButton>
-                        </SidebarMenuItem>
                          <SidebarMenuItem>
                             <SidebarMenuButton asChild>
                                 <Link href="/hall-of-fame"><Trophy />Hall da Fama</Link>

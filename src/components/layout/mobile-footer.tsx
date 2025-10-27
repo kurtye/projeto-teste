@@ -7,7 +7,6 @@ import { cn } from '@/lib/utils';
 
 const navItems = [
   { href: '/', label: 'Ranking', icon: Home },
-  { href: '/caserna', label: 'Caserna', icon: Briefcase },
   { href: '/hall-of-fame', label: 'Hall da Fama', icon: Trophy },
 ];
 
@@ -16,7 +15,7 @@ export function MobileFooter() {
 
   return (
     <footer className="fixed bottom-0 left-0 z-50 w-full h-16 border-t bg-background/95 backdrop-blur-sm md:hidden">
-      <div className="grid h-full max-w-lg grid-cols-3 mx-auto font-medium">
+      <div className="grid h-full max-w-lg grid-cols-2 mx-auto font-medium">
         {navItems.map(({ href, label, icon: Icon }) => {
           const isActive = pathname === href;
           return (
