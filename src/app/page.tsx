@@ -361,20 +361,28 @@ const InFeedAd = () => (
         </AdBanner>
 
         <div className="flex justify-center md:justify-end gap-0 md:gap-2 rounded-md overflow-hidden md:rounded-lg">
-            <Button 
-                variant={viewMode === 'card' ? 'secondary' : 'ghost'} 
-                onClick={() => setViewMode('card')} 
+            <Button
+                onClick={() => setViewMode('card')}
                 aria-label="Visualização em grade"
-                className="w-1/2 md:w-auto md:rounded-md rounded-none border-r md:border-none"
+                className={cn(
+                    "w-1/2 md:w-auto md:rounded-md rounded-none border-r md:border-none",
+                    viewMode === 'card'
+                        ? 'bg-accent text-accent-foreground hover:bg-accent/90'
+                        : 'bg-muted/50 hover:bg-muted'
+                )}
             >
                 <LayoutGrid className="h-5 w-5" />
                 <span className="ml-2 md:hidden">Cards</span>
             </Button>
-            <Button 
-                variant={viewMode === 'table' ? 'secondary' : 'ghost'} 
-                onClick={() => setViewMode('table')} 
+            <Button
+                onClick={() => setViewMode('table')}
                 aria-label="Visualização em lista"
-                className="w-1/2 md:w-auto md:rounded-md rounded-none"
+                className={cn(
+                    "w-1/2 md:w-auto md:rounded-md rounded-none",
+                    viewMode === 'table'
+                        ? 'bg-accent text-accent-foreground hover:bg-accent/90'
+                        : 'bg-muted/50 hover:bg-muted'
+                )}
             >
                 <List className="h-5 w-5" />
                 <span className="ml-2 md:hidden">Lista</span>
