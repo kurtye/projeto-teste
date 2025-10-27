@@ -30,11 +30,8 @@ export default function RootLayout({
           href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap"
           rel="stylesheet"
         />
-        {/* 
-          COLE AQUI O SCRIPT PRINCIPAL DO GOOGLE ADSENSE
-          Ele se parecerá com algo como:
-          <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-XXXXXXXXXXXXXXXX" crossOrigin="anonymous"></script>
-        */}
+        <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-1957003967974734"
+     crossOrigin="anonymous"></script>
       </head>
       <body className={cn('font-body antialiased min-h-screen bg-background text-foreground')}>
         <FirebaseClientProvider>
