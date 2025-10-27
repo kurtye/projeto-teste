@@ -288,14 +288,16 @@ export default function Home() {
 };
 
 const InFeedAd = () => (
-    <AdBanner>
-        <ins className="adsbygoogle"
-             style={{ display: 'block' }}
-             data-ad-format="fluid"
-             data-ad-layout-key="-fb+5w+4e-db+86"
-             data-ad-client="ca-pub-1957003967974734"
-             data-ad-slot="8617415710"></ins>
-    </AdBanner>
+  <AdBanner>
+      <ins
+          className="adsbygoogle"
+          style={{ display: 'block' }}
+          data-ad-format="fluid"
+          data-ad-layout-key="-fb+5w+4e-db+86"
+          data-ad-client="ca-pub-1957003967974734"
+          data-ad-slot="8617415710"
+      ></ins>
+  </AdBanner>
 );
 
 
@@ -358,12 +360,12 @@ const InFeedAd = () => (
         </Card>
         
         <AdBanner>
-          <ins className="adsbygoogle"
-              style={{ display: 'block' }}
-              data-ad-client="ca-pub-1957003967974734"
-              data-ad-slot="1512951312"
-              data-ad-format="auto"
-              data-full-width-responsive="true"></ins>
+            <ins className="adsbygoogle"
+                style={{ display: 'block' }}
+                data-ad-client="ca-pub-1957003967974734"
+                data-ad-slot="1512951312"
+                data-ad-format="auto"
+                data-full-width-responsive="true"></ins>
         </AdBanner>
 
         <div>
@@ -459,7 +461,7 @@ const InFeedAd = () => (
                                     <Card className={cn("h-full transition-all duration-200", cardHighlightClass)}>
                                         <CardHeader className="flex-row items-center gap-4 space-y-0 p-4">
                                             <Avatar className="h-12 w-12 border-2 border-transparent group-hover:border-primary">
-                                                <AvatarFallback className="text-xl">{player.latestPlayerName.charAt(0)}</AvatarFallback>
+                                                <AvatarFallback className="text-xl font-bold">{rank}</AvatarFallback>
                                             </Avatar>
                                             <div className="flex-1 overflow-hidden">
                                                 <div className="flex items-center">
