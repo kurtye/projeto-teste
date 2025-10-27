@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
-import { Lock } from 'lucide-react';
+import { Lock, LogIn } from 'lucide-react';
 
 export default function AdminLoginPage() {
   const [password, setPassword] = useState('');
@@ -33,21 +33,21 @@ export default function AdminLoginPage() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background">
+    <div className="flex min-h-screen items-center justify-center bg-background p-4">
       <Card className="w-full max-w-sm">
         <CardHeader className="text-center">
           <CardTitle className="text-2xl font-headline flex items-center justify-center gap-2">
             <Lock className="h-6 w-6" />
-            <span>Acesso Restrito</span>
+            <span>Acesso Administrativo</span>
           </CardTitle>
           <CardDescription>
-            Insira a senha para acessar o painel de administração.
+            Área restrita para administração do site.
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-6">
             <div className="space-y-2">
-              <Label htmlFor="password">Senha</Label>
+              <Label htmlFor="password">Senha de Acesso</Label>
               <Input
                 id="password"
                 type="password"
@@ -55,10 +55,12 @@ export default function AdminLoginPage() {
                 onChange={(e) => setPassword(e.target.value)}
                 required
                 disabled={isLoading}
+                placeholder="********"
               />
             </div>
             <Button type="submit" className="w-full" disabled={isLoading}>
-              {isLoading ? 'Entrando...' : 'Entrar'}
+              <LogIn className={`mr-2 h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+              {isLoading ? 'Verificando...' : 'Entrar'}
             </Button>
           </form>
         </CardContent>

@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { Info, Server, Phone, Mail, Beer, Copy } from 'lucide-react';
 import Link from 'next/link';
+import Image from 'next/image';
 
 const servers = [
   { name: 'HRB', url: 'https://stats.hrb-hll.com.br/games' },
@@ -14,7 +15,7 @@ const servers = [
   { name: 'GOAT', url: 'https://goat-stats.hlladmin.com/games' },
 ];
 
-const pixKey = '11950311208'; // Example PIX key
+const pixKey = '00020126330014br.gov.bcb.pix0111007235441075204000053039865802BR5925MARLON HENRIQUE RAMALHO A6009SAO PAULO62580520SAN2025102700304547650300017br.gov.bcb.brcode01051.0.06304FD3D';
 
 export default function SobrePage() {
   const { toast } = useToast();
@@ -101,14 +102,19 @@ export default function SobrePage() {
                 </CardDescription>
             </CardHeader>
             <CardContent className="flex-grow flex flex-col items-center justify-center text-center space-y-4">
-                 <div className="w-48 h-48 bg-muted rounded-lg flex items-center justify-center">
-                    <p className="text-sm text-muted-foreground">Seu QR Code aqui</p>
+                 <div className="w-48 h-48 bg-muted rounded-lg flex items-center justify-center p-2">
+                    <Image src="/pix.png" alt="QR Code PIX" width={180} height={180} className="rounded-md" />
                 </div>
-                <p className="text-muted-foreground text-sm">Ou use a chave PIX (Celular):</p>
-                 <div className="flex items-center gap-2 p-2 rounded-md bg-muted/50 border">
-                    <span className="font-mono text-lg">{pixKey}</span>
-                    <Button variant="ghost" size="icon" onClick={() => copyToClipboard(pixKey)}>
-                        <Copy className="h-4 w-4" />
+                <p className="text-muted-foreground text-sm">Ou use o Pix Copia e Cola:</p>
+                 <div className="flex flex-col items-center gap-2 w-full max-w-xs">
+                    <textarea
+                      readOnly
+                      className="w-full text-xs p-2 rounded-md bg-muted/50 border text-center h-24 resize-none"
+                      value={pixKey}
+                    />
+                    <Button variant="outline" size="sm" onClick={() => copyToClipboard(pixKey)}>
+                        <Copy className="h-4 w-4 mr-2" />
+                        Copiar Chave
                     </Button>
                 </div>
             </CardContent>
