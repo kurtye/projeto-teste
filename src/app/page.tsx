@@ -290,11 +290,11 @@ export default function Home() {
 const InFeedAd = () => (
     <AdBanner className="min-h-[250px]">
         <ins className="adsbygoogle"
-            style={{ display: 'block' }}
-            data-ad-format="fluid"
-            data-ad-layout-key="-fb+5w+4e-db+86"
-            data-ad-client="ca-pub-1957003967974734"
-            data-ad-slot="2506468782"></ins>
+             style={{ display: 'block' }}
+             data-ad-format="fluid"
+             data-ad-layout-key="-fb+5w+4e-db+86"
+             data-ad-client="ca-pub-1957003967974734"
+             data-ad-slot="8617415710"></ins>
     </AdBanner>
 );
 
@@ -511,5 +511,3 @@ const InFeedAd = () => (
     </div>
   );
 }
-
-    
