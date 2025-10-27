@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { ArmyHelmetIcon } from '@/components/icons';
+import Image from 'next/image';
 import { SidebarTrigger } from '@/components/ui/sidebar';
 import { useSidebar } from '@/components/ui/sidebar';
 
@@ -13,7 +13,13 @@ export function Header() {
         <div className="flex gap-2 md:gap-4 items-center">
           {!isMobile && <SidebarTrigger className="md:hidden" />}
           <Link href="/" className="flex items-center space-x-2">
-            <ArmyHelmetIcon className="h-8 w-8 text-primary" />
+            <Image
+              src="/logo.jpg"
+              alt="Hell Let Loose BR Logo"
+              width={32}
+              height={32}
+              className="rounded-full"
+            />
             <span className="font-bold font-headline text-lg">
               Hell Let Loose BR
             </span>
