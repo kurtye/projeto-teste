@@ -51,7 +51,7 @@ const STAT_CATEGORY_NAMES: Record<string, string> = {
 };
 
 
-const CLANS = ['SMK', 'HRB', 'RZN', 'OCL', '3LPZ', 'WRT', 'SAP', 'BOLD', 'IDG'];
+const CLANS = ['SMK', 'HRB', 'RZN', 'OCL', '3LPZ', 'WRT', 'SAP', 'BOLD', 'IDG', 'SOH'];
 
 const getRankHighlightClasses = (rank: number): string => {
     switch (rank) {
