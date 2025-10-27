@@ -352,22 +352,35 @@ const InFeedAd = () => (
         </Card>
         
         <AdBanner>
-            <ins className="adsbygoogle"
-                 style={{ display: 'block' }}
-                 data-ad-client="ca-pub-1957003967974734"
-                 data-ad-slot="1512951312"
-                 data-ad-format="auto"
-                 data-full-width-responsive="true"></ins>
+           <ins className="adsbygoogle"
+               style={{ display: 'block' }}
+               data-ad-client="ca-pub-1957003967974734"
+               data-ad-slot="1512951312"
+               data-ad-format="auto"
+               data-full-width-responsive="true"></ins>
         </AdBanner>
 
-        <div className="flex justify-end gap-2">
-            <Button variant={viewMode === 'card' ? 'secondary' : 'ghost'} size="icon" onClick={() => setViewMode('card')} aria-label="Visualização em grade">
+        <div className="flex justify-center md:justify-end gap-0 md:gap-2 rounded-md overflow-hidden md:rounded-lg">
+            <Button 
+                variant={viewMode === 'card' ? 'secondary' : 'ghost'} 
+                onClick={() => setViewMode('card')} 
+                aria-label="Visualização em grade"
+                className="w-1/2 md:w-auto md:rounded-md rounded-none border-r md:border-none"
+            >
                 <LayoutGrid className="h-5 w-5" />
+                <span className="ml-2 md:hidden">Cards</span>
             </Button>
-            <Button variant={viewMode === 'table' ? 'secondary' : 'ghost'} size="icon" onClick={() => setViewMode('table')} aria-label="Visualização em lista">
+            <Button 
+                variant={viewMode === 'table' ? 'secondary' : 'ghost'} 
+                onClick={() => setViewMode('table')} 
+                aria-label="Visualização em lista"
+                className="w-1/2 md:w-auto md:rounded-md rounded-none"
+            >
                 <List className="h-5 w-5" />
+                <span className="ml-2 md:hidden">Lista</span>
             </Button>
         </div>
+
 
         <div>
             {isLoading ? (
@@ -474,7 +487,7 @@ const InFeedAd = () => (
                                              {player.status === 'retired' && <Badge variant="secondary" className="absolute top-2 right-2">Retired</Badge>}
                                         </CardHeader>
                                         <CardContent className="p-4 pt-0">
-                                            <div className="grid grid-cols-3 gap-2 text-center text-sm">
+                                            <div className="grid grid-cols-3 gap-2 text-sm">
                                                 <div>
                                                     <p className="font-bold text-lg">{player.kdRatio?.toFixed(2)}</p>
                                                     <p className="text-xs text-muted-foreground">K/D Ratio</p>
