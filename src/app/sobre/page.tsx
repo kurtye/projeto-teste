@@ -1,3 +1,4 @@
+
 'use client';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -102,7 +103,7 @@ export default function SobrePage() {
                 </CardDescription>
             </CardHeader>
             <CardContent className="flex-grow flex flex-col items-center justify-center text-center space-y-4">
-                 <div className="w-48 h-48 bg-muted rounded-lg flex items-center justify-center p-2">
+                 <div className="w-48 h-48 bg-white rounded-lg flex items-center justify-center p-2">
                     <Image src="/pix.png" alt="QR Code PIX" width={180} height={180} className="rounded-md" />
                 </div>
                 <p className="text-muted-foreground text-sm">Ou use o Pix Copia e Cola:</p>
