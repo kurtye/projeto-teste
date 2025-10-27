@@ -312,7 +312,7 @@ export default function PlayerProfilePage({ params }: PlayerProfilePageProps) {
                                 <div className="flex flex-col">
                                     <span className="font-bold">{`${item.payload.stat}: ${item.payload.full.toLocaleString()}`}</span>
                                     <span className="text-xs text-muted-foreground">{`(${value}% of record)`}</span>
-                                d</div>
+                                </div>
                             )}
                         />} 
                     />
@@ -331,7 +331,14 @@ export default function PlayerProfilePage({ params }: PlayerProfilePageProps) {
             </CardContent>
           </Card>
 
-          <AdBanner />
+          <AdBanner>
+              <ins className="adsbygoogle"
+                  style={{ display: 'block' }}
+                  data-ad-client="ca-pub-1957003967974734"
+                  data-ad-slot="1512951312"
+                  data-ad-format="auto"
+                  data-full-width-responsive="true"></ins>
+          </AdBanner>
           
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
             <StatCard title="Total Score" value={totalScore.toLocaleString()} icon={Trophy} />
