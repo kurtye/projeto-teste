@@ -64,7 +64,9 @@ export const AdBanner = ({ className, children }: { className?: string, children
   return (
     <div
       ref={adRef}
-      key={JSON.stringify(children)} // Add a key to help React differentiate ad slots
+      // By adding a key that's unique to the ad slot's children, we ensure React
+      // creates a new component instance if the ad code changes, preventing re-pushing to the same slot.
+      key={JSON.stringify(children)} 
       className={cn(
         "flex min-h-24 w-full items-center justify-center rounded-lg border-2 border-dashed bg-muted/50 text-muted-foreground",
         className
