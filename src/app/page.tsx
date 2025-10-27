@@ -357,7 +357,14 @@ const InFeedAd = () => (
           </CardContent>
         </Card>
         
-        <AdBanner />
+        <AdBanner>
+          <ins className="adsbygoogle"
+              style={{ display: 'block' }}
+              data-ad-client="ca-pub-1957003967974734"
+              data-ad-slot="1512951312"
+              data-ad-format="auto"
+              data-full-width-responsive="true"></ins>
+        </AdBanner>
 
         <div>
             {isLoading ? (
@@ -504,3 +511,5 @@ const InFeedAd = () => (
     </div>
   );
 }
+
+    

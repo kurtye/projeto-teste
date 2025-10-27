@@ -11,9 +11,13 @@ declare global {
   }
 }
 
+let adKeyCounter = 0;
+
 export const AdBanner = ({ className, children }: { className?: string, children?: React.ReactNode }) => {
   const adRef = useRef<HTMLDivElement>(null);
   const [isIntersecting, setIsIntersecting] = useState(false);
+  // Use a unique key for each ad instance to prevent React from reusing the component state incorrectly
+  const [adKey] = useState(() => `ad-${adKeyCounter++}`);
 
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -59,14 +63,12 @@ export const AdBanner = ({ className, children }: { className?: string, children
             console.error("AdSense script failed to load or push:", err);
         }
     }
-  }, [isIntersecting, children]); // Add children as a dependency to re-run if the ad code changes
+  }, [isIntersecting]); 
 
   return (
     <div
       ref={adRef}
-      // By adding a key that's unique to the ad slot's children, we ensure React
-      // creates a new component instance if the ad code changes, preventing re-pushing to the same slot.
-      key={JSON.stringify(children)} 
+      key={adKey} 
       className={cn(
         "flex min-h-24 w-full items-center justify-center rounded-lg border-2 border-dashed bg-muted/50 text-muted-foreground",
         className
