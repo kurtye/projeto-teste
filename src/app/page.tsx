@@ -27,7 +27,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { AdBanner } from '@/components/AdBanner';
 
 
-type ViewMode = 'table' | 'card';
+type ViewMode = 'card' | 'table';
 type SortKey = 'totalScore' | 'totalKills' | 'totalDeaths' | 'kdRatio';
 type SortDirection = 'ascending' | 'descending';
 
@@ -108,7 +108,7 @@ function PlayerRowSkeleton() {
 const PlayerCardSkeleton = () => (
     <Card className="w-full">
         <CardHeader className="flex-row items-center gap-4 space-y-0 p-4">
-            <Skeleton className="h-10 w-10 rounded-full" />
+            <Skeleton className="h-12 w-12 rounded-full" />
             <div className="flex-1 space-y-2">
                 <Skeleton className="h-4 w-3/4" />
                 <Skeleton className="h-3 w-1/4" />
@@ -311,14 +311,6 @@ const InFeedAd = () => (
                 <BarChart2 className="h-6 w-6 text-accent" />
                 <span>Player Rankings</span>
               </div>
-               <div className="flex items-center gap-2">
-                    <Button variant={viewMode === 'card' ? 'secondary' : 'ghost'} size="icon" onClick={() => setViewMode('card')}>
-                        <LayoutGrid className="h-5 w-5" />
-                    </Button>
-                    <Button variant={viewMode === 'table' ? 'secondary' : 'ghost'} size="icon" onClick={() => setViewMode('table')}>
-                        <List className="h-5 w-5" />
-                    </Button>
-                </div>
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -361,12 +353,21 @@ const InFeedAd = () => (
         
         <AdBanner>
             <ins className="adsbygoogle"
-                style={{ display: 'block' }}
-                data-ad-client="ca-pub-1957003967974734"
-                data-ad-slot="1512951312"
-                data-ad-format="auto"
-                data-full-width-responsive="true"></ins>
+                 style={{ display: 'block' }}
+                 data-ad-client="ca-pub-1957003967974734"
+                 data-ad-slot="1512951312"
+                 data-ad-format="auto"
+                 data-full-width-responsive="true"></ins>
         </AdBanner>
+
+        <div className="flex justify-end gap-2">
+            <Button variant={viewMode === 'card' ? 'secondary' : 'ghost'} size="icon" onClick={() => setViewMode('card')} aria-label="Visualização em grade">
+                <LayoutGrid className="h-5 w-5" />
+            </Button>
+            <Button variant={viewMode === 'table' ? 'secondary' : 'ghost'} size="icon" onClick={() => setViewMode('table')} aria-label="Visualização em lista">
+                <List className="h-5 w-5" />
+            </Button>
+        </div>
 
         <div>
             {isLoading ? (
