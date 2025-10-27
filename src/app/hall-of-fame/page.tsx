@@ -23,6 +23,7 @@ import {
 import { useCollection, useFirestore, useMemoFirebase } from '@/firebase';
 import { collection, query, where } from 'firebase/firestore';
 import { Separator } from '@/components/ui/separator';
+import { AdBanner } from '@/components/AdBanner';
 
 interface HallOfFameData {
   totalKills?: PlayerAggregates;
@@ -166,6 +167,17 @@ export default function HallOfFamePage() {
                 );
             })
         )}
+      </div>
+
+       <div className="my-8">
+          <AdBanner>
+              <ins className="adsbygoogle"
+                  style={{ display: 'block' }}
+                  data-ad-client="ca-pub-1957003967974734"
+                  data-ad-slot="1512951312"
+                  data-ad-format="auto"
+                  data-full-width-responsive="true"></ins>
+          </AdBanner>
       </div>
 
       <Separator className="my-12" />
