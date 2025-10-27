@@ -1,4 +1,8 @@
 'use server';
+// This file is no longer used for fetching stats on the Caserna page,
+// as the data is now read directly from the 'globalStats/summary' document.
+// The functions are kept for potential administrative use or future reference
+// but are not actively called by the frontend.
 
 import { db } from '@/firebase/server';
 import { collection, getDocs, getCountFromServer } from 'firebase/firestore';
@@ -16,6 +20,8 @@ export interface GlobalCommunityStats {
  * It iterates through all players to sum up kills, time played, and team kills.
  * It also gets the total count of players.
  * @returns A promise that resolves to an object containing the global stats.
+ * @deprecated This function is very inefficient and should not be used on a production page load.
+ * Stats are now aggregated in the `globalStats/summary` document.
  */
 export async function getGlobalCommunityStats(): Promise<GlobalCommunityStats> {
   console.log('[LOG] Iniciando cálculo das estatísticas globais da comunidade...');

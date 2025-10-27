@@ -3,8 +3,16 @@
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Briefcase, Users, Crosshair, Clock, ShieldAlert, Swords } from 'lucide-react';
-import { getGlobalCommunityStats, type GlobalCommunityStats } from './actions';
+import { Briefcase, Users, Swords, Clock, ShieldAlert } from 'lucide-react';
+import { useDoc, useFirestore, useMemoFirebase } from '@/firebase';
+import { doc } from 'firebase/firestore';
+
+interface GlobalCommunityStats {
+  totalPlayers: number;
+  totalKills: number;
+  totalTimeSeconds: number;
+  totalTeamKills: number;
+}
 
 const StatCard = ({ title, value, icon: Icon, isLoading }: { title: string; value: string | number; icon: React.ElementType; isLoading: boolean; }) => (
   <Card className="bg-card/50 backdrop-blur-sm">
@@ -23,24 +31,15 @@ const StatCard = ({ title, value, icon: Icon, isLoading }: { title: string; valu
 );
 
 export default function CasernaPage() {
-  const [stats, setStats] = useState<GlobalCommunityStats | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const firestore = useFirestore();
+  const globalStatsRef = useMemoFirebase(() => {
+    if (!firestore) return null;
+    return doc(firestore, 'globalStats', 'summary');
+  }, [firestore]);
 
-  useEffect(() => {
-    const fetchStats = async () => {
-      setIsLoading(true);
-      try {
-        const communityStats = await getGlobalCommunityStats();
-        setStats(communityStats);
-      } catch (error) {
-        console.error("Failed to fetch community stats:", error);
-        setStats(null); // Define como nulo em caso de erro
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    fetchStats();
-  }, []);
+  const { data: stats, isLoading } = useDoc<GlobalCommunityStats>(globalStatsRef);
+
+  const totalTimeHours = stats?.totalTimeSeconds ? Math.floor(stats.totalTimeSeconds / 3600) : 0;
 
   return (
     <div className="container mx-auto px-4 py-8 mb-16 md:mb-0">
@@ -57,25 +56,25 @@ export default function CasernaPage() {
       <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard 
             title="Soldados Registrados"
-            value={isLoading || !stats ? '0' : stats.totalPlayers.toLocaleString()}
+            value={isLoading || !stats ? '0' : (stats.totalPlayers || 0).toLocaleString()}
             icon={Users}
             isLoading={isLoading}
         />
         <StatCard 
             title="Total de Kills"
-            value={isLoading || !stats ? '0' : stats.totalKills.toLocaleString()}
+            value={isLoading || !stats ? '0' : (stats.totalKills || 0).toLocaleString()}
             icon={Swords}
             isLoading={isLoading}
         />
         <StatCard 
             title="Total de Horas de Guerra"
-            value={isLoading || !stats ? '0' : `${stats.totalTimeHours.toLocaleString()}h`}
+            value={isLoading || !stats ? '0' : `${totalTimeHours.toLocaleString()}h`}
             icon={Clock}
             isLoading={isLoading}
         />
         <StatCard 
             title="Total de Team Kills"
-            value={isLoading || !stats ? '0' : stats.totalTeamKills.toLocaleString()}
+            value={isLoading || !stats ? '0' : (stats.totalTeamKills || 0).toLocaleString()}
             icon={ShieldAlert}
             isLoading={isLoading}
         />

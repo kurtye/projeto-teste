@@ -169,7 +169,11 @@
             "maxTotalCombat": { "type": "number" },
             "maxTotalOffense": { "type": "number" },
             "maxTotalDefense": { "type": "number" },
-            "maxTotalSupport": { "type": "number" }
+            "maxTotalSupport": { "type": "number" },
+            "totalPlayers": { "type": "number" },
+            "totalKills": { "type": "number" },
+            "totalTimeSeconds": { "type": "number" },
+            "totalTeamKills": { "type": "number" }
         }
     },
     "TributePlayer": {
@@ -217,7 +221,7 @@
     },
     "/globalStats/summary": {
         "schema": { "$ref": "#/entities/GlobalStats"},
-        "description": "A single document that holds the all-time maximum values for key player stats."
+        "description": "A single document that holds aggregated community stats and all-time maximum values for key player stats."
     }
   }
 }
