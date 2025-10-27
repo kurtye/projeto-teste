@@ -36,25 +36,35 @@ export const AdBanner = ({ className, children }: { className?: string, children
 
     return () => {
       if (adRef.current) {
-        observer.unobserve(adRef.current);
+        // Use a local variable to avoid issues with the ref being null on cleanup
+        const currentAdRef = adRef.current;
+        observer.unobserve(currentAdRef);
       }
     };
   }, []);
 
   useEffect(() => {
-    // Only push the ad when the component is visible
     if (isIntersecting) {
-      try {
-        (window.adsbygoogle = window.adsbygoogle || []).push({});
-      } catch (err) {
-        console.error("AdSense script failed to load or push:", err);
-      }
+        // Find the 'ins' element inside the ref
+        const adSlot = adRef.current?.querySelector('ins.adsbygoogle');
+        
+        // Check if AdSense has already processed this slot
+        if (adSlot && adSlot.getAttribute('data-ad-status') === 'filled') {
+            return;
+        }
+
+        try {
+            (window.adsbygoogle = window.adsbygoogle || []).push({});
+        } catch (err) {
+            console.error("AdSense script failed to load or push:", err);
+        }
     }
-  }, [isIntersecting]);
+  }, [isIntersecting, children]); // Add children as a dependency to re-run if the ad code changes
 
   return (
     <div
       ref={adRef}
+      key={JSON.stringify(children)} // Add a key to help React differentiate ad slots
       className={cn(
         "flex min-h-24 w-full items-center justify-center rounded-lg border-2 border-dashed bg-muted/50 text-muted-foreground",
         className
