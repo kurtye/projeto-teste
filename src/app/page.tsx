@@ -169,7 +169,7 @@ export default function Home() {
   const [searchQuery, setSearchQuery] = useState('');
   const [clanFilter, setClanFilter] = useState<string | null>(null);
   const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'totalKills', direction: 'descending' });
-  const [viewMode, setViewMode] = useState<ViewMode>('table');
+  const [viewMode, setViewMode] = useState<ViewMode>('card');
   const [hallOfFame, setHallOfFame] = useState<HallOfFameMap>({});
   const firestore = useFirestore();
 
@@ -288,7 +288,7 @@ export default function Home() {
 };
 
 const InFeedAd = () => (
-    <AdBanner className="min-h-[250px]">
+    <AdBanner>
         <ins className="adsbygoogle"
              style={{ display: 'block' }}
              data-ad-format="fluid"
@@ -310,11 +310,11 @@ const InFeedAd = () => (
                 <span>Player Rankings</span>
               </div>
                <div className="flex items-center gap-2">
-                    <Button variant={viewMode === 'table' ? 'secondary' : 'ghost'} size="icon" onClick={() => setViewMode('table')}>
-                        <List className="h-5 w-5" />
-                    </Button>
                     <Button variant={viewMode === 'card' ? 'secondary' : 'ghost'} size="icon" onClick={() => setViewMode('card')}>
                         <LayoutGrid className="h-5 w-5" />
+                    </Button>
+                    <Button variant={viewMode === 'table' ? 'secondary' : 'ghost'} size="icon" onClick={() => setViewMode('table')}>
+                        <List className="h-5 w-5" />
                     </Button>
                 </div>
             </CardTitle>
