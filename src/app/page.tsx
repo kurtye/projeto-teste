@@ -483,7 +483,7 @@ const InFeedAd = () => (
                                     <Card className={cn("h-full transition-all duration-200", cardHighlightClass)}>
                                         <CardHeader className="flex-row items-center gap-4 space-y-0 p-4">
                                             <Avatar className="h-12 w-12 border-2 border-transparent group-hover:border-primary">
-                                                <AvatarFallback className="text-xl font-bold">{rank}</AvatarFallback>
+                                                <AvatarFallback className="text-xl font-bold bg-green-500/20 text-green-400 border-green-500/30">{rank}</AvatarFallback>
                                             </Avatar>
                                             <div className="flex-1 overflow-hidden">
                                                 <div className="flex items-center">
