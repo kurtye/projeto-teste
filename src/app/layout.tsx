@@ -9,6 +9,7 @@ import { MobileFooter } from '@/components/layout/mobile-footer';
 import { Home, BarChart, Trophy, Briefcase, Award, Info } from 'lucide-react';
 import { SidebarContent, SidebarMenu, SidebarMenuItem, SidebarMenuButton } from '@/components/ui/sidebar';
 import Link from 'next/link';
+import Script from 'next/script';
 
 export const metadata: Metadata = {
   title: 'Hell Let Loose BR',
@@ -32,6 +33,18 @@ export default function RootLayout({
         />
         <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-1957003967974734"
      crossOrigin="anonymous"></script>
+
+        {/* Google Analytics */}
+        <Script async src="https://www.googletagmanager.com/gtag/js?id=G-5P5ELS9WSX"></Script>
+        <Script id="google-analytics">
+          {`
+            window.dataLayer = window.dataLayer || [];
+            function gtag(){dataLayer.push(arguments);}
+            gtag('js', new Date());
+          
+            gtag('config', 'G-5P5ELS9WSX');
+          `}
+        </Script>
       </head>
       <body className={cn('font-body antialiased min-h-screen bg-background text-foreground')}>
         <FirebaseClientProvider>
