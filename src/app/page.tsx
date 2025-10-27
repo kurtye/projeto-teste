@@ -287,6 +287,17 @@ export default function Home() {
     );
 };
 
+const InFeedAd = () => (
+    <AdBanner className="min-h-[250px]">
+        <ins className="adsbygoogle"
+            style={{ display: 'block' }}
+            data-ad-format="fluid"
+            data-ad-layout-key="-fb+5w+4e-db+86"
+            data-ad-client="ca-pub-1957003967974734"
+            data-ad-slot="2506468782"></ins>
+    </AdBanner>
+);
+
 
   return (
     <div className="container mx-auto px-4 py-8 mb-16 md:mb-0">
@@ -428,7 +439,7 @@ export default function Home() {
                     </Card>
                 ) : (
                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                        {sortedAndFilteredPlayers.map((player, index) => {
+                        {sortedAndFilteredPlayers.flatMap((player, index) => {
                             const rank = index + 1;
                             const cardHighlightClass = 
                                 rank === 1 ? "border-yellow-400 shadow-yellow-400/20" :
@@ -436,7 +447,7 @@ export default function Home() {
                                 rank === 3 ? "border-orange-400 shadow-orange-400/20" :
                                 "group-hover:border-accent group-hover:shadow-lg";
 
-                            return (
+                            const playerCard = (
                                 <Link key={player.id} href={`/player/${encodeURIComponent(player.id)}`} className="group">
                                     <Card className={cn("h-full transition-all duration-200", cardHighlightClass)}>
                                         <CardHeader className="flex-row items-center gap-4 space-y-0 p-4">
@@ -470,7 +481,14 @@ export default function Home() {
                                         </CardContent>
                                     </Card>
                                 </Link>
-                            )
+                            );
+
+                            // Adicionar anúncio a cada 30 cards
+                            if ((index + 1) % 30 === 0) {
+                                return [playerCard, <InFeedAd key={`ad-${index}`} />];
+                            }
+                            
+                            return [playerCard];
                         })}
                     </div>
                 )

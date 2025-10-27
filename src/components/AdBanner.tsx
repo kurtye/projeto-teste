@@ -13,7 +13,7 @@ declare global {
   }
 }
 
-export const AdBanner = ({ className }: { className?: string }) => {
+export const AdBanner = ({ className, children }: { className?: string, children?: React.ReactNode }) => {
   useEffect(() => {
     try {
       (window.adsbygoogle = window.adsbygoogle || []).push({});
@@ -29,23 +29,12 @@ export const AdBanner = ({ className }: { className?: string }) => {
         className
       )}
     >
-      {/* 
-        COLE AQUI O CÓDIGO DO SEU BLOCO DE ANÚNCIOS DO GOOGLE ADSENSE.
-        Ele se parecerá com algo como:
-        <ins className="adsbygoogle"
-             style={{ display: 'block' }}
-             data-ad-client="ca-pub-XXXXXXXXXXXXXXXX"
-             data-ad-slot="YYYYYYYYYY"
-             data-ad-format="auto"
-             data-full-width-responsive="true"></ins>
-        
-        ATENÇÃO: Por enquanto, o espaço abaixo é apenas um placeholder.
-        Os anúncios reais só aparecerão depois que você colar seu código do AdSense.
-      */}
-      <div className="flex flex-col items-center gap-1 text-center">
-        <p className="text-sm font-semibold">Publicidade</p>
-        <p className="text-xs">Este espaço está reservado para anúncios.</p>
-      </div>
+      {children || (
+        <div className="flex flex-col items-center gap-1 text-center">
+            <p className="text-sm font-semibold">Publicidade</p>
+            <p className="text-xs">Este espaço está reservado para anúncios.</p>
+        </div>
+      )}
     </div>
   );
 };
