@@ -44,6 +44,7 @@ import {
   ChartTooltipContent,
 } from '@/components/ui/chart';
 import { getHallOfFameStats } from '@/app/hall-of-fame/actions';
+import { AdBanner } from '@/components/AdBanner';
 
 interface PlayerProfilePageProps {
   params: {
@@ -311,7 +312,7 @@ export default function PlayerProfilePage({ params }: PlayerProfilePageProps) {
                                 <div className="flex flex-col">
                                     <span className="font-bold">{`${item.payload.stat}: ${item.payload.full.toLocaleString()}`}</span>
                                     <span className="text-xs text-muted-foreground">{`(${value}% of record)`}</span>
-                                </div>
+                                d</div>
                             )}
                         />} 
                     />
@@ -329,6 +330,8 @@ export default function PlayerProfilePage({ params }: PlayerProfilePageProps) {
                 </ChartContainer>
             </CardContent>
           </Card>
+
+          <AdBanner />
           
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
             <StatCard title="Total Score" value={totalScore.toLocaleString()} icon={Trophy} />

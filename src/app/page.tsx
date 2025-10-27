@@ -24,6 +24,7 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { getHallOfFameStats } from '@/app/hall-of-fame/actions';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { AdBanner } from '@/components/AdBanner';
 
 
 type ViewMode = 'table' | 'card';
@@ -344,6 +345,8 @@ export default function Home() {
             </div>
           </CardContent>
         </Card>
+        
+        <AdBanner />
 
         <div>
             {isLoading ? (
