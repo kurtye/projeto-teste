@@ -152,7 +152,7 @@ const SortableHeader = ({
 export function Ranking({ initialPlayers, initialHallOfFame }: { initialPlayers: PlayerAggregates[], initialHallOfFame: HallOfFameMap }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [clanFilter, setClanFilter] = useState<string | null>(null);
-  const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'totalKills', direction: 'descending' });
+  const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'totalScore', direction: 'descending' });
   const [viewMode, setViewMode] = useState<ViewMode>('card');
   const [isLoading, setIsLoading] = useState(false); // Can be used for client-side only loading states
   
@@ -470,3 +470,5 @@ const InFeedAd = () => (
     </>
   );
 }
+
+    
