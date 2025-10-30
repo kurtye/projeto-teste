@@ -291,27 +291,6 @@ const InFeedAd = () => (
                     </Button>
                 ))}
             </div>
-             {viewMode === 'card' && (
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-sm font-medium text-muted-foreground">Ordenar por:</span>
-                <Button 
-                  size="sm"
-                  variant={sortConfig.key === 'totalScore' ? 'default' : 'outline'}
-                  onClick={() => setSortConfig({ key: 'totalScore', direction: 'descending' })}
-                >
-                  <Award className="mr-2 h-4 w-4" />
-                  Score
-                </Button>
-                 <Button 
-                  size="sm"
-                  variant={sortConfig.key === 'totalKills' ? 'default' : 'outline'}
-                  onClick={() => setSortConfig({ key: 'totalKills', direction: 'descending' })}
-                >
-                  <Crosshair className="mr-2 h-4 w-4" />
-                  Kills
-                </Button>
-              </div>
-            )}
           </CardContent>
         </Card>
         
@@ -353,8 +332,29 @@ const InFeedAd = () => (
             </Button>
         </div>
 
+        <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+            <span className="text-sm font-medium text-muted-foreground">Ordenar por:</span>
+            <Button 
+                size="sm"
+                variant={sortConfig.key === 'totalScore' ? 'default' : 'outline'}
+                onClick={() => setSortConfig({ key: 'totalScore', direction: 'descending' })}
+                className={sortConfig.key === 'totalScore' ? 'bg-accent' : ''}
+            >
+                <Award className="mr-2 h-4 w-4" />
+                Score
+            </Button>
+            <Button 
+                size="sm"
+                variant={sortConfig.key === 'totalKills' ? 'default' : 'outline'}
+                onClick={() => setSortConfig({ key: 'totalKills', direction: 'descending' })}
+                className={sortConfig.key === 'totalKills' ? 'bg-accent' : ''}
+            >
+                <Crosshair className="mr-2 h-4 w-4" />
+                Kills
+            </Button>
+        </div>
 
-        <div>
+        <div className="mt-4">
             {isLoading ? (
                 viewMode === 'table' ? (
                      <Card>
