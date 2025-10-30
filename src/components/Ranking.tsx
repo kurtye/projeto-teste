@@ -272,7 +272,7 @@ const InFeedAd = () => (
                 className="pl-10"
               />
             </div>
-            <div className="flex flex-wrap gap-2">
+             <div className="flex flex-wrap gap-2 mb-4">
                 <Button 
                     size="sm"
                     variant={clanFilter === null ? 'default' : 'outline'} 
@@ -291,6 +291,27 @@ const InFeedAd = () => (
                     </Button>
                 ))}
             </div>
+             {viewMode === 'card' && (
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-sm font-medium text-muted-foreground">Ordenar por:</span>
+                <Button 
+                  size="sm"
+                  variant={sortConfig.key === 'totalScore' ? 'default' : 'outline'}
+                  onClick={() => setSortConfig({ key: 'totalScore', direction: 'descending' })}
+                >
+                  <Award className="mr-2 h-4 w-4" />
+                  Score
+                </Button>
+                 <Button 
+                  size="sm"
+                  variant={sortConfig.key === 'totalKills' ? 'default' : 'outline'}
+                  onClick={() => setSortConfig({ key: 'totalKills', direction: 'descending' })}
+                >
+                  <Crosshair className="mr-2 h-4 w-4" />
+                  Kills
+                </Button>
+              </div>
+            )}
           </CardContent>
         </Card>
         
