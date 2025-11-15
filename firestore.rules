@@ -20,60 +20,33 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    /**
-     * @description Rules for the 'players' collection. Allows public read access, but denies all client-side writes.
-     * @path /players/{playerId}
-     * @allow get, list: Anyone can read player data.
-     * @deny create, update, delete: No client-side writes allowed.
-     * @principle Allows public read access but restricts writes to backend processes for data integrity.
-     */
-    match /players/{playerId} {
-      allow get, list: if true;
-      allow create: if false;
-      allow update: if false;
-      allow delete: if false;
+    match /rawMatchResults/{matchId} {
+      allow read, write: if false;
+    }
+    
+    match /globalStats/{docId} {
+      allow get: if true;
+      allow list, create, update, delete: if false;
     }
 
-    /**
-     * @description Rules for the 'matches' collection. Allows public read access, but denies all client-side writes.
-     * @path /matches/{matchId}
-     * @allow get, list: Anyone can read match data.
-     * @deny create, update, delete: No client-side writes allowed.
-     * @principle Allows public read access but restricts writes to backend processes for data integrity.
-     */
-    match /matches/{matchId} {
+    match /playerAggregates/{playerId} {
       allow get, list: if true;
-      allow create: if false;
-      allow update: if false;
-      allow delete: if false;
-    }
+      allow write: if false;
 
-    /**
-     * @description Rules for the 'player_match_stats' collection. Allows public read access, but denies all client-side writes.
-     * @path /player_match_stats/{playerMatchStatsId}
-     * @allow get, list: Anyone can read player match statistics.
-     * @deny create, update, delete: No client-side writes allowed.
-     * @principle Allows public read access but restricts writes to backend processes for data integrity.
-     */
-    match /player_match_stats/{playerMatchStatsId} {
-      allow get, list: if true;
-      allow create: if false;
-      allow update: if false;
-      allow delete: if false;
-    }
+      match /killedBy/{interactionId} {
+        allow get, list: if true;
+        allow write: if false;
+      }
 
-    /**
-     * @description Rules for the 'ranking_filters' collection. Allows public read access, but denies all client-side writes.
-     * @path /ranking_filters/{rankingFilterId}
-     * @allow get, list: Anyone can read ranking filters.
-     * @deny create, update, delete: No client-side writes allowed.
-     * @principle Allows public read access but restricts writes to backend processes for data integrity.
-     */
-    match /ranking_filters/{rankingFilterId} {
-      allow get, list: if true;
-      allow create: if false;
-      allow update: if false;
-      allow delete: if false;
+      match /killedPlayers/{interactionId} {
+        allow get, list: if true;
+        allow write: if false;
+      }
+
+      match /weaponUsage/{interactionId} {
+        allow get, list: if true;
+        allow write: if false;
+      }
     }
   }
 }
