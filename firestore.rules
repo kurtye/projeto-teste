@@ -2,51 +2,30 @@
  * @fileoverview Firestore Security Rules for the Hell Let Loose BR application.
  *
  * Core Philosophy:
- * This ruleset prioritizes data availability while strictly controlling write access.
- * Read access is generally open to all authenticated users. Write access is restricted to backend processes to ensure data integrity.
- *
- * Data Structure:
- * The database consists of four top-level collections: 'players', 'matches', 'player_match_stats', and 'ranking_filters'.
- * Each collection stores data related to its namesake entity.
- *
- * Key Security Decisions:
- * - Public Read Access: All collections are publicly readable to enable broad access to game data.
- * - Backend-Only Writes: All write operations are restricted to backend processes. In this prototyping phase, this is simulated by denying all client-side writes.
- * - No User Listing: Listing of users is not explicitly denied, but since writes are not allowed, it's effectively prevented.
- * - Denormalization: There is no denormalized data in this version.
- * - Structural Segregation: The segregation of collections (`players`, `matches`, `player_match_stats`, `ranking_filters`) is primarily to allow for different query access patterns (QAPs) and does not directly impact the security rules.
+ * This ruleset prioritizes public data availability while strictly controlling write access.
+ * Read access is open to all, as the data is public. Write access is restricted to backend processes
+ * (simulated by denying all client-side writes) to ensure data integrity.
  */
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // This collection is for backend processing only. No client access.
     match /rawMatchResults/{matchId} {
       allow read, write: if false;
     }
-    
+
+    // This collection holds public global stats. Allow anyone to read.
     match /globalStats/{docId} {
       allow get: if true;
       allow list, create, update, delete: if false;
     }
 
-    match /playerAggregates/{playerId} {
+    // This collection and its subcollections hold public player data.
+    // Allow anyone to read, but no one to write.
+    match /playerAggregates/{playerId}/{document=**} {
       allow get, list: if true;
       allow write: if false;
-
-      match /killedBy/{interactionId} {
-        allow get, list: if true;
-        allow write: if false;
-      }
-
-      match /killedPlayers/{interactionId} {
-        allow get, list: if true;
-        allow write: if false;
-      }
-
-      match /weaponUsage/{interactionId} {
-        allow get, list: if true;
-        allow write: if false;
-      }
     }
   }
 }
