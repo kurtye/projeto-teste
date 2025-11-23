@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { ChevronLeft } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
+import { AdBanner } from '@/components/AdBanner';
 
 interface ArticlePageProps {
   params: {
@@ -50,6 +51,16 @@ export default function ArticlePage({ params }: ArticlePageProps) {
           <div className="prose prose-invert prose-lg max-w-none text-foreground/90 prose-headings:text-accent prose-headings:font-headline prose-strong:text-foreground">
             {article.content}
           </div>
+            <div className="my-8">
+              <AdBanner>
+                  <ins className="adsbygoogle"
+                      style={{ display: 'block' }}
+                      data-ad-client="ca-pub-1957003967974734"
+                      data-ad-slot="1512951312"
+                      data-ad-format="auto"
+                      data-full-width-responsive="true"></ins>
+              </AdBanner>
+            </div>
         </CardContent>
       </Card>
     </div>
