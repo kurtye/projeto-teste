@@ -1,3 +1,4 @@
+
 import React from 'react';
 
 export interface Article {
@@ -10,6 +11,41 @@ export interface Article {
 }
 
 export const articles: Article[] = [
+  {
+    slug: 'papel-do-oficial',
+    title: 'O Papel do Oficial: A Espinha Dorsal do Esquadrão',
+    description: 'O Oficial é a engrenagem mais importante de um esquadrão. Aprenda a liderar, a posicionar postos avançados (OPs) e a ser o elo vital entre seus soldados e o Comandante.',
+    date: '3 de Agosto de 2024',
+    tags: ['Liderança', 'Oficial', 'Estratégia'],
+    content: (
+        <div className="space-y-4">
+            <p>
+                Se o Comandante é o cérebro do time, o Oficial (ou Líder de Esquadrão - SL) é a espinha dorsal. É a função mais desafiadora e recompensadora, servindo como o elo direto entre a estratégia geral e a ação no campo de batalha. Um bom Oficial pode levar um esquadrão mediano à grandeza, enquanto um Oficial ruim pode inutilizar até os melhores jogadores.
+            </p>
+            <h3>A Ferramenta Mais Importante: O Posto Avançado (Outpost)</h3>
+            <p>
+                Sua responsabilidade número um é manter um Posto Avançado (OP) ativo para o seu esquadrão. O OP é o ponto de renascimento exclusivo do seu esquadrão.
+            </p>
+            <ul className="list-disc space-y-2 pl-6">
+                <li><strong>Sempre Tenha um Ativo:</strong> Assim que você avançar, coloque um novo OP. Se o seu OP for destruído, recue e coloque outro. Um esquadrão sem OP é um esquadrão fora de combate.</li>
+                <li><strong>Posicionamento Inteligente:</strong> Não coloque OPs em locais óbvios. Use arbustos, valas ou o interior de edifícios. Coloque-o um pouco recuado da linha de frente para que seus soldados não renasçam diretamente sob fogo inimigo.</li>
+                <li><strong>Comunicação:</strong> Avise seu esquadrão quando colocar um novo OP e quando o OP for destruído.</li>
+            </ul>
+            <h3>Comunicação: A Ponte entre Mundos</h3>
+            <p>
+                O Oficial é o único jogador que pode falar (e ouvir) em todos os três canais de voz: proximidade, esquadrão e comando.
+            </p>
+             <ul className="list-disc space-y-2 pl-6">
+                <li><strong>Canal de Comando (Vermelho):</strong> Ouça as ordens do Comandante. Informe sobre movimentos inimigos importantes, peça suporte (bombardeios, suprimentos) e relate o status do seu esquadrão. Mantenha a comunicação no canal de comando clara e concisa.</li>
+                <li><strong>Canal de Esquadrão (Verde):</strong> Traduza a estratégia do comando em ações para seus soldados. Dê ordens claras: "Vamos flanquear pela direita", "Precisamos de um anti-tanque aqui", "Atirem na marca de ataque". Mantenha seu esquadrão focado e motivado.</li>
+            </ul>
+            <h3>Liderando pelo Exemplo</h3>
+            <p>
+                Use seu binóculo para marcar infantaria, tanques e guarnições para seu esquadrão e para o resto do time. Suas marcações aparecem para todos os oficiais e para o comandante. Um bom Oficial está constantemente analisando o campo de batalha, marcando ameaças e guiando o fogo do seu esquadrão. Lidere o avanço, mas não seja imprudente. Sua vida é valiosa, pois só você pode colocar o OP.
+            </p>
+        </div>
+    ),
+  },
   {
     slug: 'comunicacao-eficaz',
     title: 'A Arte da Comunicação Eficaz em Hell Let Loose',
@@ -142,7 +178,7 @@ export const articles: Article[] = [
           Um tanque é operado por uma tripulação de 3 pessoas, e cada uma tem um papel vital:
         </p>
         <ul className="list-disc spacey-y-2 pl-6">
-          <li><strong>Comandante do Tanque:</strong> Sua visão é de 360 graus. Você é os olhos da tripulação. Sua função é avistar alvos (especialmente tanques inimigos e infantaria anti-tanque), comunicar com o comando e outros esquadrões, e dar ordens ao motorista e ao artilheiro.</li>
+          <li><strong>Comandante do Tanque:</strong> Sua visão é de 360 graus. Você é os olhos da tripulação. Sua função é avistar alvos (especialmente tanques inimigos e infantaria anti-tanque), comunicar com o comando e outros esquadrões, e dar ordens ao motorista и ao artilheiro.</li>
           <li><strong>Artilheiro:</strong> Você controla a torre e as armas. Sua função é engajar os alvos designados pelo comandante. Comunique os tempos de recarga e o tipo de munição carregada (AP para blindados, HE for infantaria e estruturas).</li>
           <li><strong>Motorista:</strong> Você controla o movimento do tanque. Seu trabalho é posicionar o tanque de forma a dar ao artilheiro um bom campo de tiro, enquanto mantém a blindagem frontal virada para a ameaça principal. Ouça as ordens do comandante!</li>
         </ul>
@@ -206,4 +242,4 @@ export const articles: Article[] = [
       </div>
     ),
   },
-];
+].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());

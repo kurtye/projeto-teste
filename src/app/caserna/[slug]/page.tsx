@@ -1,3 +1,4 @@
+
 'use client'
 
 import { notFound } from 'next/navigation';
@@ -56,4 +57,10 @@ export default function ArticlePage({ params }: ArticlePageProps) {
       </Card>
     </div>
   );
+}
+
+export async function generateStaticParams() {
+  return articles.map((article) => ({
+    slug: article.slug,
+  }));
 }
