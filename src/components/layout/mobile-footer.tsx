@@ -8,8 +8,8 @@ import { cn } from '@/lib/utils';
 const navItems = [
   { href: '/', label: 'Ranking', icon: Home },
   { href: '/hall-of-fame', label: 'Hall da Fama', icon: Trophy },
+  { href: '/caserna', label: 'Caserna', icon: Briefcase },
   { href: '/sobre', label: 'Sobre', icon: Info },
-  { href: '/politica-de-privacidade', label: 'Privacidade', icon: BookUser },
 ];
 
 export function MobileFooter() {

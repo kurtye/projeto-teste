@@ -64,6 +64,11 @@ export default function RootLayout({
                         </SidebarMenuItem>
                          <SidebarMenuItem>
                             <SidebarMenuButton asChild>
+                                <Link href="/caserna"><Briefcase />Caserna</Link>
+                            </SidebarMenuButton>
+                        </SidebarMenuItem>
+                         <SidebarMenuItem>
+                            <SidebarMenuButton asChild>
                                 <Link href="/sobre"><Info />Sobre</Link>
                             </SidebarMenuButton>
                         </SidebarMenuItem>
