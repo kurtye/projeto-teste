@@ -1,6 +1,3 @@
-
-'use client'
-
 import { notFound } from 'next/navigation';
 import { articles } from '@/lib/articles.tsx';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
