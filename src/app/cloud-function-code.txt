@@ -111,7 +111,7 @@ export const aggregatePlayerStats = onDocumentCreated(
     try {
       const playerPromises = matchData.player_stats.map(async (playerStat) => {
         if (!playerStat.player_id) {
-          logger.warn("Jogador sem 'player_id' encontrado, pulando:", playerStat);
+          logger.warn("Jogador sem 'player_id' encontrado:", playerStat);
           return Promise.resolve();
         }
 
@@ -122,8 +122,8 @@ export const aggregatePlayerStats = onDocumentCreated(
 
         const aggregatesRef = db.collection("playerAggregates").doc(playerId);
         const weeklyRef = db.collection("playerWeeklyStats").doc(weeklyDocId);
-        const monthlyRef = db.collection("playerMonthlyStats").doc(monthlyDocId);
-        
+        const monthlyRef = db.collection("playerMonthlyStats")
+          .doc(monthlyDocId);
         // --- TRANSAÇÃO PARA ESTATÍSTICAS GERAIS ---
         await db.runTransaction(async (transaction) => {
           const playerDoc = await transaction.get(aggregatesRef);
@@ -131,7 +131,9 @@ export const aggregatePlayerStats = onDocumentCreated(
           const currentProcessed = currentData.processedServers || {};
 
           if ((currentProcessed[serverName] || 0) >= matchNumericId) {
-            logger.log(`Partida ${matchNumericId} já processada para ${playerId}.`);
+            logger.log(
+              `Partida ${matchNumericId} já processada para ${playerId}.`
+            );
             return;
           }
 
@@ -177,9 +179,6 @@ export const aggregatePlayerStats = onDocumentCreated(
           transaction.set(aggregatesRef, updates, {merge: true});
         });
 
-        // ATUALIZAÇÕES EM LOTE PARA SUBCOLEÇÕES (GERAL)
-        // ... (código para killedBy, killedPlayers, weaponUsage)
-
         // --- ATUALIZAÇÕES PARA ESTATÍSTICAS SEMANAIS E MENSAIS ---
         const periodBatch = db.batch();
         const periodIncrementData = {
@@ -223,12 +222,10 @@ export const aggregatePlayerStats = onDocumentCreated(
         periodBatch.set(weeklyRef, {
           ...basePeriodData, periodId: weekId, ...periodIncrementData,
         }, {merge: true});
-        
         // Atualização Mensal
         periodBatch.set(monthlyRef, {
           ...basePeriodData, periodId: monthId, ...periodIncrementData,
         }, {merge: true});
-        
         await periodBatch.commit();
       });
 
@@ -243,4 +240,3 @@ export const aggregatePlayerStats = onDocumentCreated(
     }
   }
 );
-
