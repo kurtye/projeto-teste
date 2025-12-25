@@ -335,7 +335,7 @@ export function Ranking({ initialRankings, initialHallOfFame }: { initialRanking
   const [clanFilter, setClanFilter] = useState<string | null>(null);
   const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'totalScore', direction: 'descending' });
   const [viewMode, setViewMode] = useState<ViewMode>('card');
-  const [activeTab, setActiveTab] = useState<Period>('geral');
+  const [activeTab, setActiveTab] = useState<Period>('semanal');
   
   const processedPlayers = useMemo(() => {
     const playersToProcess = initialRankings[activeTab] || [];
@@ -455,11 +455,33 @@ export function Ranking({ initialRankings, initialHallOfFame }: { initialRanking
 
         <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as Period)} className="w-full">
             <div className="flex items-center justify-between">
-                <TabsList>
-                    <TabsTrigger value="semanal">Semanal</TabsTrigger>
-                    <TabsTrigger value="mensal">Mensal</TabsTrigger>
-                    <TabsTrigger value="geral">Geral</TabsTrigger>
+                <TabsList className="grid w-full grid-cols-3">
+                    <TabsTrigger value="semanal" className="data-[state=active]:bg-green-600 data-[state=active]:text-white">Semanal</TabsTrigger>
+                    <TabsTrigger value="mensal" className="data-[state=active]:bg-green-600 data-[state=active]:text-white">Mensal</TabsTrigger>
+                    <TabsTrigger value="geral" className="data-[state=active]:bg-green-600 data-[state=active]:text-white">Geral</TabsTrigger>
                 </TabsList>
+            </div>
+
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-4">
+                <div className="flex flex-wrap items-center justify-center gap-2">
+                    <span className="text-sm font-medium text-muted-foreground">Ordenar por:</span>
+                    <Button 
+                        size="sm"
+                        variant={sortConfig.key === 'totalScore' ? 'default' : 'outline'}
+                        onClick={() => requestSort('totalScore')}
+                    >
+                        <Award className="mr-2 h-4 w-4" />
+                        Score
+                    </Button>
+                    <Button 
+                        size="sm"
+                        variant={sortConfig.key === 'totalKills' ? 'default' : 'outline'}
+                        onClick={() => requestSort('totalKills')}
+                    >
+                        <Crosshair className="mr-2 h-4 w-4" />
+                        Kills
+                    </Button>
+                </div>
                  <div className="hidden md:flex justify-center md:justify-end gap-0 md:gap-2 rounded-md overflow-hidden md:rounded-lg">
                     <Button
                         onClick={() => setViewMode('card')}
@@ -486,26 +508,6 @@ export function Ranking({ initialRankings, initialHallOfFame }: { initialRanking
                         <List className="h-5 w-5" />
                     </Button>
                 </div>
-            </div>
-
-            <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
-                <span className="text-sm font-medium text-muted-foreground">Ordenar por:</span>
-                <Button 
-                    size="sm"
-                    variant={sortConfig.key === 'totalScore' ? 'default' : 'outline'}
-                    onClick={() => requestSort('totalScore')}
-                >
-                    <Award className="mr-2 h-4 w-4" />
-                    Score
-                </Button>
-                <Button 
-                    size="sm"
-                    variant={sortConfig.key === 'totalKills' ? 'default' : 'outline'}
-                    onClick={() => requestSort('totalKills')}
-                >
-                    <Crosshair className="mr-2 h-4 w-4" />
-                    Kills
-                </Button>
             </div>
 
             <TabsContent value="geral">
