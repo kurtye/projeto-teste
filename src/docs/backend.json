@@ -58,7 +58,8 @@
       "required": [
         "id",
         "start",
-        "end"      ]
+        "end"
+      ]
     },
     "PlayerAggregates": {
       "$schema": "http://json-schema.org/draft-07/schema#",
@@ -72,21 +73,9 @@
         "latestPlayerName": {
           "type": "string"
         },
-        "searchablePlayerName": {
-          "type": "string",
-          "description": "Lowercase version of the player's name for case-insensitive searching."
-        },
-        "status": {
-          "type": "string",
-          "description": "The status of the player, e.g., 'retired'.",
-          "enum": ["retired"]
-        },
         "processedServers": {
           "type": "object",
           "description": "A map where each key is a server name and the value is the ID of the last match processed for that player on that server."
-        },
-        "matchesPlayed": {
-            "type": "number"
         },
         "totalTimeSeconds": {
           "type": "number"
@@ -121,11 +110,10 @@
       },
       "required": [
         "playerId",
-        "latestPlayerName",
-        "searchablePlayerName"
+        "latestPlayerName"
       ]
     },
-    "PlayerInteraction": {
+     "PlayerInteraction": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "PlayerInteraction",
       "type": "object",
@@ -159,33 +147,27 @@
       },
       "required": ["name", "count"]
     },
-    "GlobalStats": {
-        "$schema": "http://json-schema.org/draft-07/schema#",
-        "title": "GlobalStats",
-        "type": "object",
-        "description": "Stores the maximum values for key statistics across all players, used for relative rankings and visualizations.",
-        "properties": {
-            "maxTotalKills": { "type": "number" },
-            "maxTotalCombat": { "type": "number" },
-            "maxTotalOffense": { "type": "number" },
-            "maxTotalDefense": { "type": "number" },
-            "maxTotalSupport": { "type": "number" },
-            "totalPlayers": { "type": "number" },
-            "totalKills": { "type": "number" },
-            "totalTimeSeconds": { "type": "number" },
-            "totalTeamKills": { "type": "number" }
-        }
-    },
-    "TributePlayer": {
+    "PlayerPeriodStats": {
       "$schema": "http://json-schema.org/draft-07/schema#",
-      "title": "TributePlayer",
-      "description": "A simplified player object for the tribute page.",
+      "title": "PlayerPeriodStats",
       "type": "object",
+      "description": "Aggregated statistics for a single player for a specific period (week or month).",
       "properties": {
-        "id": { "type": "string" },
-        "latestPlayerName": { "type": "string" }
+        "playerId": { "type": "string" },
+        "latestPlayerName": { "type": "string" },
+        "periodId": { "type": "string", "description": "Identifier for the period, e.g., 'week_2024-32' or 'month_2024-08'."},
+        "totalTimeSeconds": { "type": "number" },
+        "longestLifeSecs": { "type": "number" },
+        "totalKills": { "type": "number" },
+        "totalDeaths": { "type": "number" },
+        "totalCombat": { "type": "number" },
+        "totalOffense": { "type": "number" },
+        "totalDefense": { "type": "number" },
+        "totalSupport": { "type": "number" },
+        "totalTeamKills": { "type": "number" },
+        "totalDeathsByTK": { "type": "number" }
       },
-       "required": ["id", "latestPlayerName"]
+      "required": ["playerId", "latestPlayerName", "periodId"]
     }
   },
   "auth": {
@@ -207,21 +189,25 @@
       },
       "description": "Global collection of aggregated player statistics. Each document represents a single player and contains their consolidated stats from all processed matches."
     },
-    "/playerAggregates/{playerId}/killedBy/{killerId}": {
+    "/playerAggregates/{playerId}/killedBy/{killerName}": {
         "schema": { "$ref": "#/entities/PlayerInteraction" },
-        "description": "Subcollection tracking players who have killed this player and how many times. The document ID is a Base64 encoding of the killer's name."
+        "description": "Subcollection tracking players who have killed this player and how many times."
     },
-    "/playerAggregates/{playerId}/killedPlayers/{victimId}": {
+    "/playerAggregates/{playerId}/killedPlayers/{victimName}": {
         "schema": { "$ref": "#/entities/PlayerInteraction" },
-        "description": "Subcollection tracking players this player has killed and how many times. The document ID is a Base64 encoding of the victim's name."
+        "description": "Subcollection tracking players this player has killed and how many times."
     },
-    "/playerAggregates/{playerId}/weaponUsage/{weaponId}": {
+    "/playerAggregates/{playerId}/weaponUsage/{weaponName}": {
         "schema": { "$ref": "#/entities/WeaponUsage" },
-        "description": "Subcollection tracking the kill count for each weapon used by the player. The document ID is a Base64 encoding of the weapon's name."
+        "description": "Subcollection tracking the kill count for each weapon used by the player."
     },
-    "/globalStats/summary": {
-        "schema": { "$ref": "#/entities/GlobalStats"},
-        "description": "A single document that holds aggregated community stats and all-time maximum values for key player stats."
+    "/playerWeeklyStats/{docId}": {
+      "schema": { "$ref": "#/entities/PlayerPeriodStats" },
+      "description": "Aggregated weekly stats for players. Document ID is a composite of player ID and week ID."
+    },
+    "/playerMonthlyStats/{docId}": {
+      "schema": { "$ref": "#/entities/PlayerPeriodStats" },
+      "description": "Aggregated monthly stats for players. Document ID is a composite of player ID and month ID."
     }
   }
 }

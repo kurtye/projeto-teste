@@ -22,11 +22,13 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { AdBanner } from '@/components/AdBanner';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 
 type ViewMode = 'card' | 'table';
 type SortKey = 'totalScore' | 'totalKills' | 'totalDeaths' | 'kdRatio';
 type SortDirection = 'ascending' | 'descending';
+type Period = 'geral' | 'mensal' | 'semanal';
 
 interface SortConfig {
   key: SortKey;
@@ -35,6 +37,12 @@ interface SortConfig {
 
 interface HallOfFameMap {
   [playerId: string]: string[];
+}
+
+interface RankingsData {
+  geral: PlayerAggregates[];
+  mensal: PlayerAggregates[];
+  semanal: PlayerAggregates[];
 }
 
 const CLANS = ['SMK', 'HRB', 'RZN', 'OCL', '3LPZ', 'WRT', 'SAP', 'BOLD', 'IDG', 'SOH'];
@@ -149,18 +157,193 @@ const SortableHeader = ({
   );
 };
 
-export function Ranking({ initialPlayers, initialHallOfFame }: { initialPlayers: PlayerAggregates[], initialHallOfFame: HallOfFameMap }) {
+const RankingDisplay = ({ 
+    players, 
+    viewMode, 
+    hallOfFame,
+    sortConfig,
+    requestSort
+}: { 
+    players: PlayerAggregates[], 
+    viewMode: ViewMode,
+    hallOfFame: HallOfFameMap,
+    sortConfig: SortConfig,
+    requestSort: (key: SortKey) => void
+}) => {
+
+    const KingBadge = ({ playerId }: { playerId: string }) => {
+        const titles = hallOfFame[playerId];
+        if (!titles) return null;
+
+        return (
+            <TooltipProvider>
+                <Tooltip>
+                    <TooltipTrigger>
+                        <Badge variant="outline" className="ml-2 border-yellow-400/50 bg-yellow-400/10 text-yellow-300">
+                            <Trophy className="h-3 w-3" />
+                        </Badge>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                        <p className="font-semibold">Recordista!</p>
+                        <ul className="list-disc list-inside">
+                            {titles.map(title => <li key={title}>{title}</li>)}
+                        </ul>
+                    </TooltipContent>
+                </Tooltip>
+            </TooltipProvider>
+        );
+    };
+
+    const InFeedAd = () => (
+      <AdBanner>
+          <ins
+              className="adsbygoogle"
+              style={{ display: 'block' }}
+              data-ad-format="fluid"
+              data-ad-layout-key="-fb+5w+4e-db+86"
+              data-ad-client="ca-pub-1957003967974734"
+              data-ad-slot="8617415710"
+          ></ins>
+      </AdBanner>
+    );
+
+    if (players.length === 0) {
+        return (
+            <Card className="flex flex-col items-center justify-center p-8 text-center mt-4">
+                <Search className="h-12 w-12 text-muted-foreground" />
+                <h2 className="mt-4 text-xl font-semibold">Nenhum jogador encontrado</h2>
+                <p className="mt-2 text-muted-foreground">Tente refinar sua busca ou verifique este ranking mais tarde.</p>
+            </Card>
+        )
+    }
+
+    return viewMode === 'table' ? (
+        <Card className="mt-4">
+            <div className="overflow-x-auto">
+                <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="p-2 md:p-4">Jogador</TableHead>
+                        <SortableHeader sortKey="totalScore" sortConfig={sortConfig} requestSort={requestSort} className="hidden md:table-cell">
+                            <Award className="h-5 w-5 inline-block" /> <span className="hidden md:inline">Score</span>
+                        </SortableHeader>
+                        <SortableHeader sortKey="totalKills" sortConfig={sortConfig} requestSort={requestSort}>
+                          <Crosshair className="h-5 w-5 inline-block" /> <span className="hidden md:inline">Kills</span>
+                        </SortableHeader>
+                        <SortableHeader sortKey="totalDeaths" sortConfig={sortConfig} requestSort={requestSort} className="hidden md:table-cell">
+                          <Skull className="h-5 w-5 inline-block" /> <span className="hidden md:inline">Mortes</span>
+                        </SortableHeader>
+                        <SortableHeader sortKey="kdRatio" sortConfig={sortConfig} requestSort={requestSort}>
+                          <Target className="h-5 w-5 inline-block" /> <span className="hidden md:inline">K/D Ratio</span>
+                        </SortableHeader>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        {players.map((player, index) => {
+                            const rank = index + 1;
+                            return (
+                                <TableRow key={player.id}>
+                                    <TableCell className="p-2 md:p-4">
+                                    <Link href={`/player/${encodeURIComponent(player.id)}`} className="flex items-center gap-3 group">
+                                        <div className="w-6 text-center">
+                                            <RankIndicator rank={rank} />
+                                        </div>
+                                        <Avatar>
+                                        <AvatarFallback>{player.latestPlayerName.charAt(0)}</AvatarFallback>
+                                        </Avatar>
+                                        <div className="flex items-center">
+                                            <span className="font-medium group-hover:text-accent transition-colors truncate">{player.latestPlayerName}</span>
+                                            <KingBadge playerId={player.id} />
+                                        </div>
+                                        {player.status === 'retired' && <Badge variant="secondary">Aposentado</Badge>}
+                                    </Link>
+                                    </TableCell>
+                                    <TableCell className="hidden text-center font-semibold md:table-cell">{(player.totalScore || 0).toLocaleString()}</TableCell>
+                                    <TableCell className="text-center">{(player.totalKills || 0).toLocaleString()}</TableCell>
+                                    <TableCell className="hidden text-center md:table-cell">{(player.totalDeaths || 0).toLocaleString()}</TableCell>
+                                    <TableCell className="text-center">
+                                    <Badge variant={player.kdRatio && player.kdRatio > 2.0 ? 'destructive' : player.kdRatio && player.kdRatio > 1.0 ? 'default' : 'secondary'} className="bg-accent/20 text-accent-foreground border-accent/30">
+                                        {player.kdRatio?.toFixed(2)}
+                                    </Badge>
+                                    </TableCell>
+                                </TableRow>
+                            )
+                        })}
+                    </TableBody>
+                </Table>
+            </div>
+        </Card>
+    ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mt-4">
+            {players.flatMap((player, index) => {
+                const rank = index + 1;
+                const cardHighlightClass = 
+                    rank === 1 ? "border-yellow-400 shadow-yellow-400/20" :
+                    rank === 2 ? "border-slate-400 shadow-slate-400/20" :
+                    rank === 3 ? "border-orange-400 shadow-orange-400/20" :
+                    "group-hover:border-accent group-hover:shadow-lg";
+
+                const playerCard = (
+                    <Link key={player.id} href={`/player/${encodeURIComponent(player.id)}`} className="group">
+                        <Card className={cn("h-full transition-all duration-200", cardHighlightClass)}>
+                            <CardHeader className="flex-row items-center gap-4 space-y-0 p-4">
+                                <Avatar className="h-12 w-12 border-2 border-transparent group-hover:border-primary">
+                                    <AvatarFallback className="text-xl font-bold bg-green-500/20 text-green-400 border-green-500/30">{rank}</AvatarFallback>
+                                </Avatar>
+                                <div className="flex-1 overflow-hidden">
+                                    <div className="flex items-center">
+                                        <p className="font-bold text-lg truncate" title={player.latestPlayerName}>{player.latestPlayerName}</p>
+                                        <KingBadge playerId={player.id} />
+                                    </div>
+                                    <CardRankIndicator rank={rank} />
+                                </div>
+                                 {player.status === 'retired' && <Badge variant="secondary" className="absolute top-2 right-2">Aposentado</Badge>}
+                            </CardHeader>
+                            <CardContent className="p-4 pt-0">
+                                <div className="grid grid-cols-3 gap-2 text-sm">
+                                    <div>
+                                        <p className="font-bold text-lg">{player.kdRatio?.toFixed(2)}</p>
+                                        <p className="text-xs text-muted-foreground">K/D Ratio</p>
+                                    </div>
+                                    <div>
+                                        <p className="font-bold text-lg">{(player.totalKills || 0).toLocaleString()}</p>
+                                        <p className="text-xs text-muted-foreground">Kills</p>
+                                    </div>
+                                    <div>
+                                        <p className="font-bold text-lg">{(player.totalScore || 0).toLocaleString()}</p>
+                                        <p className="text-xs text-muted-foreground">Score</p>
+                                    </div>
+                                </div>
+                            </CardContent>
+                        </Card>
+                    </Link>
+                );
+
+                if ((index + 1) % 30 === 0) {
+                    return [<div key={`ad-wrapper-${index}`} className="sm:col-span-2 md:col-span-3 lg:col-span-4"><InFeedAd key={`ad-${index}`} /></div>, playerCard ];
+                }
+                
+                return [playerCard];
+            })}
+        </div>
+    );
+};
+
+
+export function Ranking({ initialRankings, initialHallOfFame }: { initialRankings: RankingsData, initialHallOfFame: HallOfFameMap }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [clanFilter, setClanFilter] = useState<string | null>(null);
   const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'totalScore', direction: 'descending' });
   const [viewMode, setViewMode] = useState<ViewMode>('card');
-  const [isLoading, setIsLoading] = useState(false); // Can be used for client-side only loading states
+  const [activeTab, setActiveTab] = useState<Period>('geral');
   
   const processedPlayers = useMemo(() => {
-    let filteredData = initialPlayers;
+    const playersToProcess = initialRankings[activeTab] || [];
+    
+    let filteredData = playersToProcess;
     
     if (searchQuery) {
-        filteredData = initialPlayers.filter(player =>
+        filteredData = playersToProcess.filter(player =>
             player.latestPlayerName.toLowerCase().includes(searchQuery.toLowerCase())
         );
     }
@@ -173,7 +356,7 @@ export function Ranking({ initialPlayers, initialHallOfFame }: { initialPlayers:
         
         return { ...player, id: player.id, totalKills, totalDeaths, totalScore, kdRatio };
     });
-  }, [initialPlayers, searchQuery]);
+  }, [initialRankings, searchQuery, activeTab]);
 
   const requestSort = (key: SortKey) => {
     let direction: SortDirection = 'descending';
@@ -196,6 +379,10 @@ export function Ranking({ initialPlayers, initialHallOfFame }: { initialPlayers:
         if (valA > valB) {
             return sortConfig.direction === 'ascending' ? 1 : -1;
         }
+        // As a tie-breaker, sort by total score
+        if (sortConfig.key !== 'totalScore') {
+             return (b.totalScore || 0) - (a.totalScore || 0);
+        }
         return 0;
     });
 
@@ -207,43 +394,6 @@ export function Ranking({ initialPlayers, initialHallOfFame }: { initialPlayers:
     setClanFilter(clan);
     setSearchQuery(clan || '');
   };
-  
-  const KingBadge = ({ playerId }: { playerId: string }) => {
-    const titles = initialHallOfFame[playerId];
-    if (!titles) return null;
-
-    return (
-        <TooltipProvider>
-            <Tooltip>
-                <TooltipTrigger>
-                    <Badge variant="outline" className="ml-2 border-yellow-400/50 bg-yellow-400/10 text-yellow-300">
-                        <Trophy className="h-3 w-3" />
-                    </Badge>
-                </TooltipTrigger>
-                <TooltipContent>
-                    <p className="font-semibold">Recordista!</p>
-                    <ul className="list-disc list-inside">
-                        {titles.map(title => <li key={title}>{title}</li>)}
-                    </ul>
-                </TooltipContent>
-            </Tooltip>
-        </TooltipProvider>
-    );
-};
-
-const InFeedAd = () => (
-  <AdBanner>
-      <ins
-          className="adsbygoogle"
-          style={{ display: 'block' }}
-          data-ad-format="fluid"
-          data-ad-layout-key="-fb+5w+4e-db+86"
-          data-ad-client="ca-pub-1957003967974734"
-          data-ad-slot="8617415710"
-      ></ins>
-  </AdBanner>
-);
-
 
   return (
     <>
@@ -252,7 +402,7 @@ const InFeedAd = () => (
             <CardTitle className="flex items-center justify-between text-xl font-headline md:text-2xl">
               <div className="flex items-center gap-2">
                 <BarChart2 className="h-6 w-6 text-accent" />
-                <span>Player Rankings</span>
+                <span>Ranking de Jogadores</span>
               </div>
             </CardTitle>
           </CardHeader>
@@ -261,7 +411,7 @@ const InFeedAd = () => (
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
               <Input
                 id="search"
-                placeholder="Search by name or clan tag..."
+                placeholder="Buscar por nome ou clã..."
                 value={searchQuery}
                 onChange={(e) => {
                   setSearchQuery(e.target.value);
@@ -303,193 +453,71 @@ const InFeedAd = () => (
                data-full-width-responsive="true"></ins>
         </AdBanner>
 
-        <div className="flex justify-center md:justify-end gap-0 md:gap-2 rounded-md overflow-hidden md:rounded-lg">
-            <Button
-                onClick={() => setViewMode('card')}
-                aria-label="Visualização em grade"
-                className={cn(
-                    "w-1/2 md:w-auto md:rounded-md rounded-none border-r md:border-none",
-                    viewMode === 'card'
-                        ? 'bg-accent text-accent-foreground hover:bg-accent/90'
-                        : 'bg-muted/50 hover:bg-muted'
-                )}
-            >
-                <LayoutGrid className="h-5 w-5" />
-                <span className="ml-2 md:hidden">Cards</span>
-            </Button>
-            <Button
-                onClick={() => setViewMode('table')}
-                aria-label="Visualização em lista"
-                className={cn(
-                    "w-1/2 md:w-auto md:rounded-md rounded-none",
-                    viewMode === 'table'
-                        ? 'bg-accent text-accent-foreground hover:bg-accent/90'
-                        : 'bg-muted/50 hover:bg-muted'
-                )}
-            >
-                <List className="h-5 w-5" />
-                <span className="ml-2 md:hidden">Lista</span>
-            </Button>
-        </div>
+        <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as Period)} className="w-full">
+            <div className="flex items-center justify-between">
+                <TabsList>
+                    <TabsTrigger value="semanal">Semanal</TabsTrigger>
+                    <TabsTrigger value="mensal">Mensal</TabsTrigger>
+                    <TabsTrigger value="geral">Geral</TabsTrigger>
+                </TabsList>
+                 <div className="hidden md:flex justify-center md:justify-end gap-0 md:gap-2 rounded-md overflow-hidden md:rounded-lg">
+                    <Button
+                        onClick={() => setViewMode('card')}
+                        aria-label="Visualização em grade"
+                        className={cn(
+                            "h-9 w-9 p-0",
+                            viewMode === 'card'
+                                ? 'bg-accent text-accent-foreground hover:bg-accent/90'
+                                : 'bg-muted/50 hover:bg-muted'
+                        )}
+                    >
+                        <LayoutGrid className="h-5 w-5" />
+                    </Button>
+                    <Button
+                        onClick={() => setViewMode('table')}
+                        aria-label="Visualização em lista"
+                         className={cn(
+                            "h-9 w-9 p-0",
+                            viewMode === 'table'
+                                ? 'bg-accent text-accent-foreground hover:bg-accent/90'
+                                : 'bg-muted/50 hover:bg-muted'
+                        )}
+                    >
+                        <List className="h-5 w-5" />
+                    </Button>
+                </div>
+            </div>
 
-        <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
-            <span className="text-sm font-medium text-muted-foreground">Ordenar por:</span>
-            <Button 
-                size="sm"
-                variant={sortConfig.key === 'totalScore' ? 'default' : 'outline'}
-                onClick={() => setSortConfig({ key: 'totalScore', direction: 'descending' })}
-                className={sortConfig.key === 'totalScore' ? 'bg-accent' : ''}
-            >
-                <Award className="mr-2 h-4 w-4" />
-                Score
-            </Button>
-            <Button 
-                size="sm"
-                variant={sortConfig.key === 'totalKills' ? 'default' : 'outline'}
-                onClick={() => setSortConfig({ key: 'totalKills', direction: 'descending' })}
-                className={sortConfig.key === 'totalKills' ? 'bg-accent' : ''}
-            >
-                <Crosshair className="mr-2 h-4 w-4" />
-                Kills
-            </Button>
-        </div>
+            <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+                <span className="text-sm font-medium text-muted-foreground">Ordenar por:</span>
+                <Button 
+                    size="sm"
+                    variant={sortConfig.key === 'totalScore' ? 'default' : 'outline'}
+                    onClick={() => requestSort('totalScore')}
+                >
+                    <Award className="mr-2 h-4 w-4" />
+                    Score
+                </Button>
+                <Button 
+                    size="sm"
+                    variant={sortConfig.key === 'totalKills' ? 'default' : 'outline'}
+                    onClick={() => requestSort('totalKills')}
+                >
+                    <Crosshair className="mr-2 h-4 w-4" />
+                    Kills
+                </Button>
+            </div>
 
-        <div className="mt-4">
-            {isLoading ? (
-                viewMode === 'table' ? (
-                     <Card>
-                        <Table>
-                            <TableBody>
-                                {Array.from({ length: 10 }).map((_, i) => <PlayerRowSkeleton key={i} />)}
-                            </TableBody>
-                        </Table>
-                     </Card>
-                ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                        {Array.from({ length: 12 }).map((_, i) => <PlayerCardSkeleton key={i} />)}
-                    </div>
-                )
-            ) : sortedAndFilteredPlayers.length > 0 ? (
-                viewMode === 'table' ? (
-                    <Card>
-                        <div className="overflow-x-auto">
-                            <Table>
-                                <TableHeader>
-                                  <TableRow>
-                                    <TableHead className="p-2 md:p-4">Player</TableHead>
-                                    <SortableHeader sortKey="totalScore" sortConfig={sortConfig} requestSort={requestSort} className="hidden md:table-cell">
-                                        <Award className="h-5 w-5 inline-block" /> <span className="hidden md:inline">Score</span>
-                                    </SortableHeader>
-                                    <SortableHeader sortKey="totalKills" sortConfig={sortConfig} requestSort={requestSort}>
-                                      <Crosshair className="h-5 w-5 inline-block" /> <span className="hidden md:inline">Kills</span>
-                                    </SortableHeader>
-                                    <SortableHeader sortKey="totalDeaths" sortConfig={sortConfig} requestSort={requestSort} className="hidden md:table-cell">
-                                      <Skull className="h-5 w-5 inline-block" /> <span className="hidden md:inline">Deaths</span>
-                                    </SortableHeader>
-                                    <SortableHeader sortKey="kdRatio" sortConfig={sortConfig} requestSort={requestSort}>
-                                      <Target className="h-5 w-5 inline-block" /> <span className="hidden md:inline">K/D Ratio</span>
-                                    </SortableHeader>
-                                  </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    {sortedAndFilteredPlayers.map((player, index) => {
-                                        const rank = index + 1;
-                                        return (
-                                            <TableRow key={player.id}>
-                                                <TableCell className="p-2 md:p-4">
-                                                <Link href={`/player/${encodeURIComponent(player.id)}`} className="flex items-center gap-3 group">
-                                                    <div className="w-6 text-center">
-                                                        <RankIndicator rank={rank} />
-                                                    </div>
-                                                    <Avatar>
-                                                    <AvatarFallback>{player.latestPlayerName.charAt(0)}</AvatarFallback>
-                                                    </Avatar>
-                                                    <div className="flex items-center">
-                                                        <span className="font-medium group-hover:text-accent transition-colors truncate">{player.latestPlayerName}</span>
-                                                        <KingBadge playerId={player.id} />
-                                                    </div>
-                                                    {player.status === 'retired' && <Badge variant="secondary">Retired</Badge>}
-                                                </Link>
-                                                </TableCell>
-                                                <TableCell className="hidden text-center font-semibold md:table-cell">{(player.totalScore || 0).toLocaleString()}</TableCell>
-                                                <TableCell className="text-center">{(player.totalKills || 0).toLocaleString()}</TableCell>
-                                                <TableCell className="hidden text-center md:table-cell">{(player.totalDeaths || 0).toLocaleString()}</TableCell>
-                                                <TableCell className="text-center">
-                                                <Badge variant={player.kdRatio && player.kdRatio > 2.0 ? 'destructive' : player.kdRatio && player.kdRatio > 1.0 ? 'default' : 'secondary'} className="bg-accent/20 text-accent-foreground border-accent/30">
-                                                    {player.kdRatio?.toFixed(2)}
-                                                </Badge>
-                                                </TableCell>
-                                            </TableRow>
-                                        )
-                                    })}
-                                </TableBody>
-                            </Table>
-                        </div>
-                    </Card>
-                ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                        {sortedAndFilteredPlayers.flatMap((player, index) => {
-                            const rank = index + 1;
-                            const cardHighlightClass = 
-                                rank === 1 ? "border-yellow-400 shadow-yellow-400/20" :
-                                rank === 2 ? "border-slate-400 shadow-slate-400/20" :
-                                rank === 3 ? "border-orange-400 shadow-orange-400/20" :
-                                "group-hover:border-accent group-hover:shadow-lg";
-
-                            const playerCard = (
-                                <Link key={player.id} href={`/player/${encodeURIComponent(player.id)}`} className="group">
-                                    <Card className={cn("h-full transition-all duration-200", cardHighlightClass)}>
-                                        <CardHeader className="flex-row items-center gap-4 space-y-0 p-4">
-                                            <Avatar className="h-12 w-12 border-2 border-transparent group-hover:border-primary">
-                                                <AvatarFallback className="text-xl font-bold bg-green-500/20 text-green-400 border-green-500/30">{rank}</AvatarFallback>
-                                            </Avatar>
-                                            <div className="flex-1 overflow-hidden">
-                                                <div className="flex items-center">
-                                                    <p className="font-bold text-lg truncate" title={player.latestPlayerName}>{player.latestPlayerName}</p>
-                                                    <KingBadge playerId={player.id} />
-                                                </div>
-                                                <CardRankIndicator rank={rank} />
-                                            </div>
-                                             {player.status === 'retired' && <Badge variant="secondary" className="absolute top-2 right-2">Retired</Badge>}
-                                        </CardHeader>
-                                        <CardContent className="p-4 pt-0">
-                                            <div className="grid grid-cols-3 gap-2 text-sm">
-                                                <div>
-                                                    <p className="font-bold text-lg">{player.kdRatio?.toFixed(2)}</p>
-                                                    <p className="text-xs text-muted-foreground">K/D Ratio</p>
-                                                </div>
-                                                <div>
-                                                    <p className="font-bold text-lg">{(player.totalKills || 0).toLocaleString()}</p>
-                                                    <p className="text-xs text-muted-foreground">Kills</p>
-                                                </div>
-                                                <div>
-                                                    <p className="font-bold text-lg">{(player.totalScore || 0).toLocaleString()}</p>
-                                                    <p className="text-xs text-muted-foreground">Score</p>
-                                                </div>
-                                            </div>
-                                        </CardContent>
-                                    </Card>
-                                </Link>
-                            );
-
-                            if ((index + 1) % 30 === 0) {
-                                return [playerCard, <InFeedAd key={`ad-${index}`} />];
-                            }
-                            
-                            return [playerCard];
-                        })}
-                    </div>
-                )
-            ) : (
-                 <Card className="flex flex-col items-center justify-center p-8 text-center">
-                    <Search className="h-12 w-12 text-muted-foreground" />
-                    <h2 className="mt-4 text-xl font-semibold">No Players Found</h2>
-                    <p className="mt-2 text-muted-foreground">Try refining your search query.</p>
-                </Card>
-            )}
-        </div>
+            <TabsContent value="geral">
+                <RankingDisplay players={sortedAndFilteredPlayers} viewMode={viewMode} hallOfFame={initialHallOfFame} sortConfig={sortConfig} requestSort={requestSort}/>
+            </TabsContent>
+            <TabsContent value="mensal">
+                <RankingDisplay players={sortedAndFilteredPlayers} viewMode={viewMode} hallOfFame={initialHallOfFame} sortConfig={sortConfig} requestSort={requestSort}/>
+            </TabsContent>
+            <TabsContent value="semanal">
+                <RankingDisplay players={sortedAndFilteredPlayers} viewMode={viewMode} hallOfFame={initialHallOfFame} sortConfig={sortConfig} requestSort={requestSort}/>
+            </TabsContent>
+        </Tabs>
     </>
   );
 }
-
-    
