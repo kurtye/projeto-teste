@@ -23,7 +23,7 @@ const servers = [
   {
     id: 'HRB',
     name: 'HRB',
-    apiUrl: 'https://stats.hrb-hll.com.br/api',
+    apiUrl: 'https://hrb-stats.hlladmin.com/api',
   },
   {
     id: 'RZN',
@@ -486,5 +486,7 @@ export default function AdminDashboardPage() {
     </div>
   );
 }
+
+    
 
     

@@ -38,7 +38,7 @@ interface PlayerStats {
 
 const serversConfig = [
   { id: '3LPZ', name: '3LPZ', apiUrl: 'https://3lpz-stats.hlladmin.com/api' },
-  { id: 'HRB', name: 'HRB', apiUrl: 'https://stats.hrb-hll.com.br/api' },
+  { id: 'HRB', name: 'HRB', apiUrl: 'https://hrb-stats.hlladmin.com/api' },
   { id: 'RZN', name: 'RZN', apiUrl: 'https://rzn-stats.crcon.cc/api' },
   { id: 'GOAT', name: 'GOAT', apiUrl: 'https://goat-stats.hlladmin.com/api' },
   { id: 'OCL', name: 'OCL', apiUrl: 'https://ocabala-stats.hlladmin.com/api' },
@@ -395,3 +395,5 @@ export async function updateGlobalStats(): Promise<{ success: boolean; error?: s
     return { success: false, error: error.message };
   }
 }
+
+    

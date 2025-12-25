@@ -9,7 +9,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 
 const servers = [
-  { name: 'HRB', url: 'https://stats.hrb-hll.com.br/games' },
+  { name: 'HRB', url: 'https://hrb-stats.hlladmin.com/games' },
   { name: 'RZN', url: 'https://rzn-stats.crcon.cc/games' },
   { name: '3LPZ', url: 'https://3lpz-stats.hlladmin.com/games' },
   { name: 'OCL', url: 'https://ocabala-stats.hlladmin.com/games' },
@@ -124,3 +124,5 @@ export default function SobrePage() {
     </div>
   );
 }
+
+    
