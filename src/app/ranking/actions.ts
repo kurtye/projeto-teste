@@ -2,9 +2,9 @@
 'use server';
 
 import { db } from '@/firebase/server';
-import { collection, query, orderBy, limit, getDocs } from 'firebase/firestore';
+import { collection, query, orderBy, limit, getDocs, where } from 'firebase/firestore';
 import type { PlayerAggregates } from '@/lib/types';
-import { getYear, getWeek, format } from 'date-fns';
+import { getWeek, getWeekYear, format } from 'date-fns';
 
 const QUERY_LIMIT = 2000;
 
@@ -29,15 +29,23 @@ export async function getPlayerAggregates(): Promise<PlayerAggregates[]> {
 export async function getPlayerPeriodStats(period: 'weekly' | 'monthly'): Promise<PlayerAggregates[]> {
     const now = new Date();
     let collectionName: string;
+    let periodId: string;
     
     if (period === 'weekly') {
         collectionName = 'playerWeeklyStats';
-    } else {
+        const year = getWeekYear(now, { weekStartsOn: 1 });
+        const week = getWeek(now, { weekStartsOn: 1 });
+        periodId = `week_${year}-${week.toString().padStart(2, "0")}`;
+    } else { // monthly
         collectionName = 'playerMonthlyStats';
+        const year = now.getFullYear();
+        const month = (now.getMonth() + 1).toString().padStart(2, "0");
+        periodId = `month_${year}-${month}`;
     }
 
     const playersQuery = query(
         collection(db, collectionName),
+        where('periodId', '==', periodId),
         orderBy('totalKills', 'desc'),
         limit(QUERY_LIMIT)
     );

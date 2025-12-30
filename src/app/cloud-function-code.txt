@@ -8,7 +8,7 @@
 import {logger} from "firebase-functions";
 import {onDocumentCreated} from "firebase-functions/v2/firestore";
 import * as admin from "firebase-admin";
-import {getWeek, getYear} from "date-fns";
+import {getWeek, getYear, getWeekYear} from "date-fns";
 
 // Inicializa o Firebase Admin SDK.
 admin.initializeApp();
@@ -47,15 +47,18 @@ interface MatchData {
 
 /**
  * Retorna o identificador da semana no formato "YYYY-WW".
+ * Usa getWeekYear para garantir que o ano correto seja usado na virada do ano.
  * @return {string} O identificador da semana.
  */
 function getWeekId(): string {
   const now = new Date();
-  const year = getYear(now);
+  // Usa getWeekYear para lidar corretamente com a virada do ano.
+  const year = getWeekYear(now, {weekStartsOn: 1});
   // Começa na segunda-feira
   const week = getWeek(now, {weekStartsOn: 1});
   return `week_${year}-${week.toString().padStart(2, "0")}`;
 }
+
 
 /**
  * Retorna o identificador do mês no formato "YYYY-MM".
