@@ -42,6 +42,7 @@ const serversConfig = [
   { id: 'RZN', name: 'RZN', apiUrl: 'https://rzn-stats.crcon.cc/api' },
   { id: 'GOAT', name: 'GOAT', apiUrl: 'https://goat-stats.hlladmin.com/api' },
   { id: 'OCL', name: 'OCL', apiUrl: 'https://ocabala-stats.hlladmin.com/api' },
+  { id: 'SAP', name: 'SAP', apiUrl: 'https://sap-stats.hlladmin.com/api' },
 ];
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -395,5 +396,7 @@ export async function updateGlobalStats(): Promise<{ success: boolean; error?: s
     return { success: false, error: error.message };
   }
 }
+
+    
 
     

@@ -40,6 +40,11 @@ const servers = [
     name: 'OCL',
     apiUrl: 'https://ocabala-stats.hlladmin.com/api',
   },
+  {
+    id: 'SAP',
+    name: 'SAP',
+    apiUrl: 'https://sap-stats.hlladmin.com/api',
+  },
 ];
 
 type Server = (typeof servers)[0];
@@ -486,6 +491,8 @@ export default function AdminDashboardPage() {
     </div>
   );
 }
+
+    
 
     
 
