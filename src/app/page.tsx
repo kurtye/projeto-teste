@@ -14,6 +14,9 @@ import { Ranking } from '@/components/Ranking';
 import { AdBanner } from '@/components/AdBanner';
 import { getPlayerAggregates, getPlayerPeriodStats } from '@/app/ranking/actions';
 
+// Force dynamic rendering to always get the latest data
+export const dynamic = 'force-dynamic';
+
 interface HallOfFameMap {
   [playerId: string]: string[];
 }
