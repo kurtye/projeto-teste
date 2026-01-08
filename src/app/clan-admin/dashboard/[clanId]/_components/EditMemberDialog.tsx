@@ -11,7 +11,6 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import type { ClanMember } from '@/lib/types';
@@ -21,31 +20,34 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 interface EditMemberDialogProps {
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
-  member: ClanMember | null;
+  memberId: string | null;
+  memberName: string;
+  initialRank: string;
+  initialStatus: ClanMember['status'];
   clanId: string;
 }
 
 const ranks = ['Recruta', 'Membro', 'Veterano', 'Oficial', 'Comandante', 'Líder'];
 const statuses: ClanMember['status'][] = ['active', 'inactive', 'trial'];
 
-export function EditMemberDialog({ isOpen, onOpenChange, member, clanId }: EditMemberDialogProps) {
+export function EditMemberDialog({ isOpen, onOpenChange, memberId, memberName, initialRank, initialStatus, clanId }: EditMemberDialogProps) {
   const [isPending, startTransition] = useTransition();
   const { toast } = useToast();
-  const [rank, setRank] = useState('');
-  const [status, setStatus] = useState<ClanMember['status']>('trial');
+  const [rank, setRank] = useState(initialRank);
+  const [status, setStatus] = useState<ClanMember['status']>(initialStatus);
 
   useEffect(() => {
-    if (member) {
-      setRank(member.rank);
-      setStatus(member.status);
+    if (isOpen) {
+      setRank(initialRank);
+      setStatus(initialStatus);
     }
-  }, [member]);
+  }, [isOpen, initialRank, initialStatus]);
 
-  if (!member) return null;
+  if (!memberId) return null;
 
   const handleUpdate = () => {
     startTransition(async () => {
-      const result = await updateClanMember(clanId, member.id, { rank, status });
+      const result = await updateClanMember(clanId, memberId, { rank, status });
       if (result.success) {
         toast({ title: 'Membro atualizado com sucesso!' });
         onOpenChange(false);
@@ -63,7 +65,7 @@ export function EditMemberDialog({ isOpen, onOpenChange, member, clanId }: EditM
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Editar Membro: {member.playerName}</DialogTitle>
+          <DialogTitle>Editar Membro: {memberName}</DialogTitle>
           <DialogDescription>
             Atualize a patente e o status do jogador.
           </DialogDescription>
@@ -102,3 +104,5 @@ export function EditMemberDialog({ isOpen, onOpenChange, member, clanId }: EditM
     </Dialog>
   );
 }
+
+    

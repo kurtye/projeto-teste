@@ -5,13 +5,11 @@ import { useClanAuth } from '../../layout';
 import { notFound } from 'next/navigation';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { LogOut, Users, PlusCircle, Edit, Trash2, RefreshCw } from 'lucide-react';
+import { LogOut, Users, Edit, Trash2 } from 'lucide-react';
 import { useCollection, useFirestore, useMemoFirebase } from '@/firebase';
-import { collection } from 'firebase/firestore';
-import type { ClanMember } from '@/lib/types';
-import { AddMemberDialog } from './_components/AddMemberDialog';
+import { collection, query, where, or } from 'firebase/firestore';
+import type { PlayerAggregates, ClanMember } from '@/lib/types';
 import { EditMemberDialog } from './_components/EditMemberDialog';
-import { RemoveMemberDialog } from './_components/RemoveMemberDialog';
 import {
   Table,
   TableBody,
@@ -21,58 +19,59 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { useState, useTransition } from 'react';
+import { useState } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useToast } from '@/hooks/use-toast';
-import { syncClanMembersByTag } from '../../actions';
-
 
 export default function ClanDashboardPage({ params }: { params: { clanId: string } }) {
   const { clan, user, logout } = useClanAuth();
   const firestore = useFirestore();
-  const { toast } = useToast();
   
-  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
-  const [memberToEdit, setMemberToEdit] = useState<ClanMember | null>(null);
-  const [memberToRemove, setMemberToRemove] = useState<ClanMember | null>(null);
-  const [isSyncing, startSyncTransition] = useTransition();
+  const [memberToEdit, setMemberToEdit] = useState<PlayerAggregates | null>(null);
 
-
-  // Basic authorization: ensure the user is viewing their own clan's dashboard
   if (!clan || clan.id !== params.clanId) {
     return notFound();
   }
 
+  // Query directly from playerAggregates based on the clan tag
   const membersQuery = useMemoFirebase(() => {
+    if (!firestore || !clan) return null;
+    const clanTag = clan.tag;
+    // This query finds players whose names start with "TAG " or "[TAG]"
+    return query(
+      collection(firestore, 'playerAggregates'),
+      or(
+        where('latestPlayerName', '>=', `${clanTag} `),
+        where('latestPlayerName', '<', `${clanTag }~`),
+        where('latestPlayerName', '>=', `[${clanTag}]`),
+        where('latestPlayerName', '<', `[${clanTag}]~`)
+      )
+    );
+  }, [firestore, clan]);
+
+  const { data: allPlayers, isLoading: isLoadingMembers } = useCollection<PlayerAggregates>(membersQuery);
+
+  // Filter in the client to get exact matches for "startsWith"
+  const members = allPlayers?.filter(p => 
+      p.latestPlayerName.startsWith(`${clan.tag} `) || 
+      p.latestPlayerName.startsWith(`[${clan.tag}]`)
+  );
+
+  // We need to fetch clan-specific data like rank and status separately if it exists
+  const clanMembersSubCollectionQuery = useMemoFirebase(() => {
       if (!firestore || !clan) return null;
       return collection(firestore, 'clans', clan.id, 'members');
   }, [firestore, clan]);
 
-  const { data: members, isLoading: isLoadingMembers } = useCollection<ClanMember>(membersQuery);
+  const { data: clanSpecificData } = useCollection<ClanMember>(clanMembersSubCollectionQuery);
 
-  const handleSyncMembers = () => {
-    startSyncTransition(async () => {
-      toast({
-        title: 'Sincronização iniciada...',
-        description: `Buscando jogadores com a tag [${clan.tag}]...`
-      });
-      const result = await syncClanMembersByTag(clan.id, clan.tag);
-      if (result.success) {
-        toast({
-          title: 'Sincronização Concluída!',
-          description: `${result.addedCount} novos membros foram adicionados. A lista será atualizada.`,
-        });
-      } else {
-        toast({
-          variant: 'destructive',
-          title: 'Falha na Sincronização',
-          description: result.error || 'Ocorreu um erro desconhecido.',
-        });
-      }
-    });
-  };
+  // Create a map for quick lookup of ranks and statuses
+  const memberDetailsMap = useMemo(() => {
+      if (!clanSpecificData) return new Map();
+      return new Map(clanSpecificData.map(member => [member.id, { rank: member.rank, status: member.status }]));
+  }, [clanSpecificData]);
 
-  const getStatusVariant = (status: ClanMember['status']) => {
+
+  const getStatusVariant = (status: ClanMember['status'] | undefined) => {
     switch (status) {
       case 'active': return 'default';
       case 'inactive': return 'secondary';
@@ -83,21 +82,13 @@ export default function ClanDashboardPage({ params }: { params: { clanId: string
 
   return (
     <div className="container mx-auto px-4 py-8">
-       <AddMemberDialog
-        isOpen={isAddDialogOpen}
-        onOpenChange={setIsAddDialogOpen}
-        clan={clan}
-      />
       <EditMemberDialog
         isOpen={!!memberToEdit}
         onOpenChange={(isOpen) => !isOpen && setMemberToEdit(null)}
-        member={memberToEdit}
-        clanId={clan.id}
-      />
-      <RemoveMemberDialog
-        isOpen={!!memberToRemove}
-        onOpenChange={(isOpen) => !isOpen && setMemberToRemove(null)}
-        member={memberToRemove}
+        memberId={memberToEdit?.id || null}
+        memberName={memberToEdit?.latestPlayerName || ''}
+        initialRank={memberDetailsMap.get(memberToEdit?.id || '')?.rank || 'Recruta'}
+        initialStatus={memberDetailsMap.get(memberToEdit?.id || '')?.status || 'trial'}
         clanId={clan.id}
       />
 
@@ -113,23 +104,13 @@ export default function ClanDashboardPage({ params }: { params: { clanId: string
       </div>
       
       <Card>
-        <CardHeader className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+        <CardHeader>
           <div>
             <CardTitle className="text-xl flex items-center gap-2">
               <Users />
               <span>Membros do Clã</span>
             </CardTitle>
-            <CardDescription>Gerencie os jogadores e suas patentes.</CardDescription>
-          </div>
-          <div className='flex gap-2'>
-            <Button onClick={handleSyncMembers} variant="outline" disabled={isSyncing}>
-              <RefreshCw className={`mr-2 ${isSyncing ? 'animate-spin' : ''}`} />
-              {isSyncing ? 'Sincronizando...' : 'Sincronizar Membros'}
-            </Button>
-            <Button onClick={() => setIsAddDialogOpen(true)}>
-              <PlusCircle className="mr-2" />
-              Adicionar Membro
-            </Button>
+            <CardDescription>Gerencie as patentes e status dos jogadores.</CardDescription>
           </div>
         </CardHeader>
         <CardContent>
@@ -150,31 +131,38 @@ export default function ClanDashboardPage({ params }: { params: { clanId: string
                       <TableCell><Skeleton className="h-5 w-32" /></TableCell>
                       <TableCell><Skeleton className="h-5 w-24" /></TableCell>
                       <TableCell><Skeleton className="h-6 w-20 rounded-full" /></TableCell>
-                      <TableCell className="text-right"><Skeleton className="h-8 w-16 ml-auto" /></TableCell>
+                      <TableCell className="text-right"><Skeleton className="h-8 w-8 ml-auto" /></TableCell>
                     </TableRow>
                   ))
                 ) : members && members.length > 0 ? (
-                  members.map((member) => (
-                    <TableRow key={member.id}>
-                      <TableCell className="font-medium">{member.playerName}</TableCell>
-                      <TableCell>{member.rank}</TableCell>
-                      <TableCell>
-                        <Badge variant={getStatusVariant(member.status)}>{member.status}</Badge>
-                      </TableCell>
-                      <TableCell className="text-right">
-                         <Button variant="ghost" size="icon" className="mr-2" onClick={() => setMemberToEdit(member)}>
-                            <Edit className="h-4 w-4" />
-                         </Button>
-                         <Button variant="ghost" size="icon" onClick={() => setMemberToRemove(member)}>
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                         </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))
+                  members.map((member) => {
+                    const details = memberDetailsMap.get(member.id);
+                    const rank = details?.rank || 'Recruta';
+                    const status = details?.status || 'trial';
+
+                    return (
+                      <TableRow key={member.id}>
+                        <TableCell className="font-medium">{member.latestPlayerName}</TableCell>
+                        <TableCell>{rank}</TableCell>
+                        <TableCell>
+                          <Badge variant={getStatusVariant(status)}>{status}</Badge>
+                        </TableCell>
+                        <TableCell className="text-right">
+                           <Button variant="ghost" size="icon" className="mr-2" onClick={() => setMemberToEdit(member)}>
+                              <Edit className="h-4 w-4" />
+                           </Button>
+                           {/* A remoção agora é mais complexa, pois envolve remover a tag do nome do jogador. Desabilitado por enquanto. */}
+                           <Button variant="ghost" size="icon" disabled>
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                           </Button>
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })
                 ) : (
                   <TableRow>
                     <TableCell colSpan={4} className="h-24 text-center">
-                      Nenhum membro encontrado. Use a sincronização ou adicione manualmente.
+                      Nenhum jogador com a tag [{clan.tag}] encontrado na base de dados.
                     </TableCell>
                   </TableRow>
                 )}
@@ -186,3 +174,5 @@ export default function ClanDashboardPage({ params }: { params: { clanId: string
     </div>
   );
 }
+
+    
