@@ -60,6 +60,9 @@ export default function ClanDashboardPage({ params }: { params: Promise<{ clanId
   const aggregatesQuery = useMemoFirebase(() => {
       if (!firestore || memberIds.length === 0) return null;
       // Use documentId() which is equivalent to __name__
+      // Important: Firestore 'in' queries are limited to 30 items. 
+      // If a clan has more, pagination would be needed here.
+      // For now, assuming clans are smaller than 30.
       return query(collection(firestore, 'playerAggregates'), where(documentId(), 'in', memberIds));
   }, [firestore, memberIds]);
 
