@@ -168,6 +168,34 @@
         "totalDeathsByTK": { "type": "number" }
       },
       "required": ["playerId", "latestPlayerName", "periodId"]
+    },
+     "Clan": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Clan",
+      "type": "object",
+      "description": "Represents a clan.",
+      "properties": {
+        "name": { "type": "string" },
+        "tag": { "type": "string" },
+        "adminUids": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Array of Firebase Auth UIDs of users who are admins of this clan."
+        }
+      },
+      "required": ["name", "tag"]
+    },
+    "ClanMember": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "ClanMember",
+      "type": "object",
+      "description": "Represents a member within a clan.",
+      "properties": {
+        "playerId": { "type": "string", "description": "The ID of the player from the playerAggregates collection." },
+        "rank": { "type": "string", "description": "The member's rank or title within the clan." },
+        "status": { "type": "string", "enum": ["active", "inactive", "trial"] }
+      },
+      "required": ["playerId", "rank", "status"]
     }
   },
   "auth": {
@@ -178,15 +206,11 @@
   },
   "firestore": {
     "/rawMatchResults/{matchId}": {
-      "schema": {
-        "$ref": "#/entities/Match"
-      },
+      "schema": { "$ref": "#/entities/Match" },
       "description": "Collection to store raw match data from the external API. Documents in this collection trigger the aggregation Cloud Function and are deleted after successful processing."
     },
     "/playerAggregates/{playerId}": {
-      "schema": {
-        "$ref": "#/entities/PlayerAggregates"
-      },
+      "schema": { "$ref": "#/entities/PlayerAggregates" },
       "description": "Global collection of aggregated player statistics. Each document represents a single player and contains their consolidated stats from all processed matches."
     },
     "/playerAggregates/{playerId}/killedBy/{killerName}": {
@@ -208,6 +232,14 @@
     "/playerMonthlyStats/{docId}": {
       "schema": { "$ref": "#/entities/PlayerPeriodStats" },
       "description": "Aggregated monthly stats for players. Document ID is a composite of player ID and month ID."
+    },
+     "/clans/{clanId}": {
+      "schema": { "$ref": "#/entities/Clan" },
+      "description": "Collection to store information about each clan."
+    },
+    "/clans/{clanId}/members/{playerId}": {
+      "schema": { "$ref": "#/entities/ClanMember" },
+      "description": "Subcollection to store members of a clan and their specific data like rank."
     }
   }
 }

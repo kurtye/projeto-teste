@@ -1,4 +1,5 @@
 
+
 export interface PlayerAggregates {
   id: string; // This will be the document ID (player_id)
   playerId: string;
@@ -42,4 +43,18 @@ export interface GlobalStats {
   maxTotalOffense?: number;
   maxTotalDefense?: number;
   maxTotalSupport?: number;
+}
+
+export interface Clan {
+  id: string;
+  name: string;
+  tag: string;
+  adminUids: string[];
+}
+
+export interface ClanMember {
+  id: string; // This will be the player's ID
+  playerId: string;
+  rank: string;
+  status: 'active' | 'inactive' | 'trial';
 }
