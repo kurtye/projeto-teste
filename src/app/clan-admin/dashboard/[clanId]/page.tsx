@@ -7,7 +7,7 @@ import { Card, CardHeader, CardTitle, CardContent, CardDescription, CardFooter }
 import { Button } from '@/components/ui/button';
 import { LogOut, Users, Edit, Trash2, UserPlus, RefreshCw, CheckSquare, Square } from 'lucide-react';
 import { useCollection, useFirestore, useMemoFirebase } from '@/firebase';
-import { collection, query, where, or } from 'firebase/firestore';
+import { collection, query, where, documentId } from 'firebase/firestore';
 import type { PlayerAggregates, ClanMember } from '@/lib/types';
 import { EditMemberDialog } from './_components/EditMemberDialog';
 import {
@@ -19,7 +19,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { useState, use, useTransition } from 'react';
+import { useState, use, useTransition, useMemo } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { findPotentialMembersByTag, addMembersToClan } from '../../actions';
 import { useToast } from '@/hooks/use-toast';
@@ -52,15 +52,20 @@ export default function ClanDashboardPage({ params }: { params: Promise<{ clanId
   const { data: members, isLoading: isLoadingMembers, error: membersError } = useCollection<ClanMember>(membersQuery);
 
   // We still need to fetch the full aggregate data for the members we have
-  const memberIds = useMemoFirebase(() => members?.map(m => m.id) || [], [members]);
+  const memberIds = useMemo(() => {
+      if (!members || members.length === 0) return [];
+      return members.map(m => m.id)
+  }, [members]);
+
   const aggregatesQuery = useMemoFirebase(() => {
       if (!firestore || memberIds.length === 0) return null;
-      return query(collection(firestore, 'playerAggregates'), where('__name__', 'in', memberIds));
+      // Use documentId() which is equivalent to __name__
+      return query(collection(firestore, 'playerAggregates'), where(documentId(), 'in', memberIds));
   }, [firestore, memberIds]);
 
   const { data: memberAggregates, isLoading: isLoadingAggregates } = useCollection<PlayerAggregates>(aggregatesQuery);
   
-  const memberAggregatesMap = useMemoFirebase(() => {
+  const memberAggregatesMap = useMemo(() => {
     if (!memberAggregates) return new Map<string, PlayerAggregates>();
     return new Map(memberAggregates.map(agg => [agg.id, agg]));
   }, [memberAggregates]);
@@ -125,7 +130,8 @@ export default function ClanDashboardPage({ params }: { params: Promise<{ clanId
     });
   };
 
-  const isLoading = isLoadingMembers || isLoadingAggregates;
+  const isLoading = isLoadingMembers || (memberIds.length > 0 && isLoadingAggregates);
+
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -186,12 +192,14 @@ export default function ClanDashboardPage({ params }: { params: Promise<{ clanId
                     <RefreshCw className={`mr-2 h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} />
                     {isSyncing ? 'Buscando...' : 'Sincronizar por Tag'}
                  </Button>
-                {!isLoading && members && (
-                   <div className="text-right">
-                      <p className="text-3xl font-bold text-accent">{members.length}</p>
-                      <p className="text-sm text-muted-foreground">Membros</p>
-                   </div>
-                )}
+                <div className="text-right">
+                   {isLoading ? (
+                      <Skeleton className="h-7 w-12" />
+                   ) : (
+                      <p className="text-3xl font-bold text-accent">{members?.length || 0}</p>
+                   )}
+                   <p className="text-sm text-muted-foreground">Membros</p>
+                </div>
             </div>
           </div>
         </CardHeader>
@@ -250,7 +258,7 @@ export default function ClanDashboardPage({ params }: { params: Promise<{ clanId
                 ) : (
                   <TableRow>
                     <TableCell colSpan={6} className="h-24 text-center">
-                      Nenhum membro encontrado. Use a "Sincronização por Tag" para encontrar jogadores.
+                      Nenhum membro encontrado. Use a "Sincronização por Tag" para encontrar e adicionar jogadores.
                     </TableCell>
                   </TableRow>
                 )}
