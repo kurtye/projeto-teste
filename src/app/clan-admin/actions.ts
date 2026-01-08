@@ -117,3 +117,64 @@ export async function updateClanMember(clanId: string, playerId: string, data: P
         return { success: false, error: error.message };
     }
 }
+
+
+/**
+ * Syncs clan members by searching for players with the clan tag in their name
+ * and adding them to the clan if they aren't already members.
+ */
+export async function syncClanMembersByTag(clanId: string, clanTag: string): Promise<{ success: boolean, addedCount: number, error?: string }> {
+    console.log(`[LOG] Iniciando sincronização para o clã ${clanId} com a tag [${clanTag}]`);
+    try {
+        const playersRef = collection(db, 'playerAggregates');
+        // Query for players whose name starts with the clan tag
+        const q = query(
+            playersRef,
+            where('latestPlayerName', '>=', `[${clanTag}]`),
+            where('latestPlayerName', '<=', `[${clanTag}]\uf8ff`)
+        );
+
+        const querySnapshot = await getDocs(q);
+        const playersWithTag = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PlayerAggregates));
+        
+        console.log(`[LOG] Encontrados ${playersWithTag.length} jogadores com a tag.`);
+
+        let addedCount = 0;
+        const batch = writeBatch(db);
+
+        for (const player of playersWithTag) {
+            // Check if player is already in a clan or specifically in this clan
+            if (player.clanTag) {
+                continue; // Skip players who are already in any clan
+            }
+
+            const memberRef = doc(db, 'clans', clanId, 'members', player.id);
+            const playerRef = doc(db, 'playerAggregates', player.id);
+
+            const newMember: Omit<ClanMember, 'id'> = {
+                playerId: player.id,
+                playerName: player.latestPlayerName,
+                clanTag: clanTag,
+                rank: 'Recruta',
+                status: 'trial',
+            };
+
+            batch.set(memberRef, newMember);
+            batch.update(playerRef, { clanTag: clanTag });
+            addedCount++;
+        }
+        
+        if(addedCount > 0) {
+            await batch.commit();
+            console.log(`[LOG] ${addedCount} novos membros adicionados ao clã ${clanId}.`);
+        } else {
+            console.log(`[LOG] Nenhum novo membro para adicionar.`);
+        }
+
+        revalidatePath(`/clan-admin/dashboard/${clanId}`);
+        return { success: true, addedCount };
+    } catch (error: any) {
+        console.error(`[ERRO] Falha ao sincronizar membros do clã ${clanId}:`, error);
+        return { success: false, addedCount: 0, error: error.message };
+    }
+}

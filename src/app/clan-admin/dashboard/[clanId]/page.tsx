@@ -5,7 +5,7 @@ import { useClanAuth } from '../../layout';
 import { notFound } from 'next/navigation';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { LogOut, Users, PlusCircle, Edit, Trash2 } from 'lucide-react';
+import { LogOut, Users, PlusCircle, Edit, Trash2, RefreshCw } from 'lucide-react';
 import { useCollection, useFirestore, useMemoFirebase } from '@/firebase';
 import { collection } from 'firebase/firestore';
 import type { ClanMember } from '@/lib/types';
@@ -21,16 +21,22 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { useState } from 'react';
+import { useState, useTransition } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useToast } from '@/hooks/use-toast';
+import { syncClanMembersByTag } from '../../actions';
 
 
 export default function ClanDashboardPage({ params }: { params: { clanId: string } }) {
   const { clan, user, logout } = useClanAuth();
   const firestore = useFirestore();
+  const { toast } = useToast();
+  
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [memberToEdit, setMemberToEdit] = useState<ClanMember | null>(null);
   const [memberToRemove, setMemberToRemove] = useState<ClanMember | null>(null);
+  const [isSyncing, startSyncTransition] = useTransition();
+
 
   // Basic authorization: ensure the user is viewing their own clan's dashboard
   if (!clan || clan.id !== params.clanId) {
@@ -43,6 +49,28 @@ export default function ClanDashboardPage({ params }: { params: { clanId: string
   }, [firestore, clan]);
 
   const { data: members, isLoading: isLoadingMembers } = useCollection<ClanMember>(membersQuery);
+
+  const handleSyncMembers = () => {
+    startSyncTransition(async () => {
+      toast({
+        title: 'Sincronização iniciada...',
+        description: `Buscando jogadores com a tag [${clan.tag}]...`
+      });
+      const result = await syncClanMembersByTag(clan.id, clan.tag);
+      if (result.success) {
+        toast({
+          title: 'Sincronização Concluída!',
+          description: `${result.addedCount} novos membros foram adicionados. A lista será atualizada.`,
+        });
+      } else {
+        toast({
+          variant: 'destructive',
+          title: 'Falha na Sincronização',
+          description: result.error || 'Ocorreu um erro desconhecido.',
+        });
+      }
+    });
+  };
 
   const getStatusVariant = (status: ClanMember['status']) => {
     switch (status) {
@@ -85,7 +113,7 @@ export default function ClanDashboardPage({ params }: { params: { clanId: string
       </div>
       
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
+        <CardHeader className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
           <div>
             <CardTitle className="text-xl flex items-center gap-2">
               <Users />
@@ -93,10 +121,16 @@ export default function ClanDashboardPage({ params }: { params: { clanId: string
             </CardTitle>
             <CardDescription>Gerencie os jogadores e suas patentes.</CardDescription>
           </div>
-          <Button onClick={() => setIsAddDialogOpen(true)}>
-            <PlusCircle className="mr-2" />
-            Adicionar Membro
-          </Button>
+          <div className='flex gap-2'>
+            <Button onClick={handleSyncMembers} variant="outline" disabled={isSyncing}>
+              <RefreshCw className={`mr-2 ${isSyncing ? 'animate-spin' : ''}`} />
+              {isSyncing ? 'Sincronizando...' : 'Sincronizar Membros'}
+            </Button>
+            <Button onClick={() => setIsAddDialogOpen(true)}>
+              <PlusCircle className="mr-2" />
+              Adicionar Membro
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto">
@@ -140,7 +174,7 @@ export default function ClanDashboardPage({ params }: { params: { clanId: string
                 ) : (
                   <TableRow>
                     <TableCell colSpan={4} className="h-24 text-center">
-                      Nenhum membro encontrado.
+                      Nenhum membro encontrado. Use a sincronização ou adicione manualmente.
                     </TableCell>
                   </TableRow>
                 )}
