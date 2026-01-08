@@ -18,6 +18,7 @@ export interface PlayerAggregates {
   totalTeamKills?: number;
   totalDeathsByTK?: number;
   status?: 'retired'; // Field for player status
+  clanTag?: string; // Tag of the clan the player belongs to
 
   // Calculated in the frontend
   totalScore?: number;
@@ -53,8 +54,10 @@ export interface Clan {
 }
 
 export interface ClanMember {
-  id: string; // This will be the player's ID
+  id: string; // This will be the player's ID from playerAggregates
   playerId: string;
+  playerName: string;
   rank: string;
   status: 'active' | 'inactive' | 'trial';
+  clanTag: string;
 }
