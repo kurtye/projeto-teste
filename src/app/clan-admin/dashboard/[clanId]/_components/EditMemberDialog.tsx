@@ -20,34 +20,31 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 interface EditMemberDialogProps {
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
-  memberId: string | null;
-  memberName: string;
-  initialRank: string;
-  initialStatus: ClanMember['status'];
+  member: ClanMember | null;
   clanId: string;
 }
 
 const ranks = ['Recruta', 'Membro', 'Veterano', 'Oficial', 'Comandante', 'Líder'];
 const statuses: ClanMember['status'][] = ['active', 'inactive', 'trial'];
 
-export function EditMemberDialog({ isOpen, onOpenChange, memberId, memberName, initialRank, initialStatus, clanId }: EditMemberDialogProps) {
+export function EditMemberDialog({ isOpen, onOpenChange, member, clanId }: EditMemberDialogProps) {
   const [isPending, startTransition] = useTransition();
   const { toast } = useToast();
-  const [rank, setRank] = useState(initialRank);
-  const [status, setStatus] = useState<ClanMember['status']>(initialStatus);
+  const [rank, setRank] = useState('');
+  const [status, setStatus] = useState<ClanMember['status']>('trial');
 
   useEffect(() => {
-    if (isOpen) {
-      setRank(initialRank);
-      setStatus(initialStatus);
+    if (isOpen && member) {
+      setRank(member.rank || 'Recruta');
+      setStatus(member.status || 'trial');
     }
-  }, [isOpen, initialRank, initialStatus]);
+  }, [isOpen, member]);
 
-  if (!memberId) return null;
+  if (!member) return null;
 
   const handleUpdate = () => {
     startTransition(async () => {
-      const result = await updateClanMember(clanId, memberId, { rank, status });
+      const result = await updateClanMember(clanId, member.id, { rank, status });
       if (result.success) {
         toast({ title: 'Membro atualizado com sucesso!' });
         onOpenChange(false);
@@ -65,7 +62,7 @@ export function EditMemberDialog({ isOpen, onOpenChange, memberId, memberName, i
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Editar Membro: {memberName}</DialogTitle>
+          <DialogTitle>Editar Membro: {member.playerName}</DialogTitle>
           <DialogDescription>
             Atualize a patente e o status do jogador.
           </DialogDescription>
@@ -104,5 +101,3 @@ export function EditMemberDialog({ isOpen, onOpenChange, memberId, memberName, i
     </Dialog>
   );
 }
-
-    

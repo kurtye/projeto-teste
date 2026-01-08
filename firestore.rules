@@ -22,12 +22,13 @@ service cloud.firestore {
       allow list, create, update, delete: if false;
     }
 
-    // Player aggregates are public to read, but writes are locked down.
-    // The `clanTag` can be written by an authenticated clan admin.
+    // Player aggregates are public to read. 
+    // Writes are locked down, except for the 'clanTag' which can be updated by an authorized clan admin.
     match /playerAggregates/{playerId} {
       allow get, list: if true;
       allow create, delete: if false;
       allow update: if request.auth != null && 
+                       request.resource.data.clanTag != null &&
                        exists(/databases/$(database)/documents/clans/$(request.resource.data.clanTag)) &&
                        request.auth.uid in get(/databases/$(database)/documents/clans/$(request.resource.data.clanTag)).data.adminUids;
     }
@@ -41,7 +42,8 @@ service cloud.firestore {
     // Clan information is public to read.
     match /clans/{clanId} {
       allow get, list: if true;
-      allow write: if false; // Clan creation/update should be a manual admin process
+      allow create: if false; 
+      allow update, delete: if request.auth != null && request.auth.uid in resource.data.adminUids;
     }
 
     // Clan members can be read by anyone.

@@ -1,10 +1,11 @@
+
 'use client';
 
 import { useClanAuth } from '../../layout';
 import { notFound } from 'next/navigation';
-import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
+import { Card, CardHeader, CardTitle, CardContent, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { LogOut, Users, Edit, Trash2 } from 'lucide-react';
+import { LogOut, Users, Edit, Trash2, UserPlus, RefreshCw, CheckSquare, Square } from 'lucide-react';
 import { useCollection, useFirestore, useMemoFirebase } from '@/firebase';
 import { collection, query, where, or } from 'firebase/firestore';
 import type { PlayerAggregates, ClanMember } from '@/lib/types';
@@ -18,59 +19,51 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { useState, use } from 'react';
+import { useState, use, useTransition } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
+import { findPotentialMembersByTag, addMembersToClan } from '../../actions';
+import { useToast } from '@/hooks/use-toast';
 
 export default function ClanDashboardPage({ params }: { params: Promise<{ clanId: string }> }) {
   const resolvedParams = use(params);
   const clanId = resolvedParams.clanId;
   const { clan, user, logout } = useClanAuth();
   const firestore = useFirestore();
+  const { toast } = useToast();
   
-  const [memberToEdit, setMemberToEdit] = useState<PlayerAggregates | null>(null);
+  const [memberToEdit, setMemberToEdit] = useState<ClanMember | null>(null);
+  
+  // State for the sync feature
+  const [isSyncing, startSyncTransition] = useTransition();
+  const [potentialMembers, setPotentialMembers] = useState<PlayerAggregates[]>([]);
+  const [selectedNewMembers, setSelectedNewMembers] = useState<Set<string>>(new Set());
+  const [isAdding, startAddingTransition] = useTransition();
 
   if (!clan || clan.id !== clanId) {
     return notFound();
   }
 
-  // Query directly from playerAggregates based on the clan tag
+  // --- Data Fetching ---
   const membersQuery = useMemoFirebase(() => {
-    if (!firestore || !clan) return null;
-    const clanTag = clan.tag;
-    // This query finds players whose names start with "TAG " or "[TAG]"
-    return query(
-      collection(firestore, 'playerAggregates'),
-      or(
-        where('latestPlayerName', '>=', `${clanTag} `),
-        where('latestPlayerName', '<', `${clanTag }~`),
-        where('latestPlayerName', '>=', `[${clanTag}]`),
-        where('latestPlayerName', '<', `[${clanTag}]~`)
-      )
-    );
-  }, [firestore, clan]);
+    if (!firestore || !clanId) return null;
+    return collection(firestore, 'clans', clanId, 'members');
+  }, [firestore, clanId]);
 
-  const { data: allPlayers, isLoading: isLoadingMembers } = useCollection<PlayerAggregates>(membersQuery);
+  const { data: members, isLoading: isLoadingMembers, error: membersError } = useCollection<ClanMember>(membersQuery);
 
-  // Filter in the client to get exact matches for "startsWith"
-  const members = allPlayers?.filter(p => 
-      p.latestPlayerName.startsWith(`${clan.tag} `) || 
-      p.latestPlayerName.startsWith(`[${clan.tag}]`)
-  );
+  // We still need to fetch the full aggregate data for the members we have
+  const memberIds = useMemoFirebase(() => members?.map(m => m.id) || [], [members]);
+  const aggregatesQuery = useMemoFirebase(() => {
+      if (!firestore || memberIds.length === 0) return null;
+      return query(collection(firestore, 'playerAggregates'), where('__name__', 'in', memberIds));
+  }, [firestore, memberIds]);
 
-  // We need to fetch clan-specific data like rank and status separately if it exists
-  const clanMembersSubCollectionQuery = useMemoFirebase(() => {
-      if (!firestore || !clan) return null;
-      return collection(firestore, 'clans', clan.id, 'members');
-  }, [firestore, clan]);
-
-  const { data: clanSpecificData } = useCollection<ClanMember>(clanMembersSubCollectionQuery);
-
-  // Create a map for quick lookup of ranks and statuses
-  const memberDetailsMap = useMemoFirebase(() => {
-      if (!clanSpecificData) return new Map();
-      return new Map(clanSpecificData.map(member => [member.id, { rank: member.rank, status: member.status }]));
-  }, [clanSpecificData]);
-
+  const { data: memberAggregates, isLoading: isLoadingAggregates } = useCollection<PlayerAggregates>(aggregatesQuery);
+  
+  const memberAggregatesMap = useMemoFirebase(() => {
+    if (!memberAggregates) return new Map<string, PlayerAggregates>();
+    return new Map(memberAggregates.map(agg => [agg.id, agg]));
+  }, [memberAggregates]);
 
   const getStatusVariant = (status: ClanMember['status'] | undefined) => {
     switch (status) {
@@ -81,15 +74,65 @@ export default function ClanDashboardPage({ params }: { params: Promise<{ clanId
     }
   }
 
+  const handleSync = () => {
+    startSyncTransition(async () => {
+      setPotentialMembers([]);
+      setSelectedNewMembers(new Set());
+      const result = await findPotentialMembersByTag(clan.id, clan.tag);
+      if (result.success && result.players) {
+        setPotentialMembers(result.players);
+        toast({
+          title: 'Sincronização Concluída',
+          description: `Encontrados ${result.players.length} novos jogadores com a tag [${clan.tag}].`,
+        });
+      } else {
+        toast({
+          variant: 'destructive',
+          title: 'Falha na Sincronização',
+          description: result.error || 'Ocorreu um erro desconhecido.',
+        });
+      }
+    });
+  };
+  
+  const handleToggleSelectNewMember = (playerId: string) => {
+    setSelectedNewMembers(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(playerId)) {
+        newSet.delete(playerId);
+      } else {
+        newSet.add(playerId);
+      }
+      return newSet;
+    });
+  };
+
+  const handleAddSelectedMembers = () => {
+    startAddingTransition(async () => {
+        const playersToAdd = potentialMembers.filter(p => selectedNewMembers.has(p.id));
+        if (playersToAdd.length === 0) {
+            toast({ variant: 'destructive', title: 'Nenhum jogador selecionado.' });
+            return;
+        }
+        const result = await addMembersToClan(clan.id, playersToAdd);
+        if (result.success) {
+            toast({ title: 'Membros adicionados com sucesso!' });
+            setPotentialMembers([]);
+            setSelectedNewMembers(new Set());
+        } else {
+            toast({ variant: 'destructive', title: 'Falha ao adicionar membros', description: result.error });
+        }
+    });
+  };
+
+  const isLoading = isLoadingMembers || isLoadingAggregates;
+
   return (
     <div className="container mx-auto px-4 py-8">
       <EditMemberDialog
         isOpen={!!memberToEdit}
         onOpenChange={(isOpen) => !isOpen && setMemberToEdit(null)}
-        memberId={memberToEdit?.id || null}
-        memberName={memberToEdit?.latestPlayerName || ''}
-        initialRank={memberDetailsMap.get(memberToEdit?.id || '')?.rank || 'Recruta'}
-        initialStatus={memberDetailsMap.get(memberToEdit?.id || '')?.status || 'trial'}
+        member={memberToEdit}
         clanId={clan.id}
       />
 
@@ -99,27 +142,57 @@ export default function ClanDashboardPage({ params }: { params: Promise<{ clanId
           <p className="text-muted-foreground">Bem-vindo, {user?.email}.</p>
         </div>
         <Button variant="outline" onClick={logout}>
-          <LogOut className="mr-2" />
+          <LogOut className="mr-2 h-4 w-4" />
           Sair
         </Button>
       </div>
+
+      {potentialMembers.length > 0 && (
+          <Card className="mb-6">
+              <CardHeader>
+                  <CardTitle>Membros Sugeridos</CardTitle>
+                  <CardDescription>Estes jogadores usam a tag do seu clã mas ainda não estão na lista oficial. Selecione quem deseja adicionar.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                  <div className="space-y-2 max-h-60 overflow-y-auto">
+                      {potentialMembers.map(player => (
+                          <div key={player.id} onClick={() => handleToggleSelectNewMember(player.id)} className="flex items-center gap-3 p-2 rounded-md hover:bg-muted cursor-pointer">
+                              {selectedNewMembers.has(player.id) ? <CheckSquare className="h-5 w-5 text-accent" /> : <Square className="h-5 w-5 text-muted-foreground" />}
+                              <span>{player.latestPlayerName}</span>
+                          </div>
+                      ))}
+                  </div>
+              </CardContent>
+              <CardFooter>
+                  <Button onClick={handleAddSelectedMembers} disabled={isAdding || selectedNewMembers.size === 0}>
+                      {isAdding ? 'Adicionando...' : `Adicionar ${selectedNewMembers.size} Membros`}
+                  </Button>
+              </CardFooter>
+          </Card>
+      )}
       
       <Card>
         <CardHeader>
-          <div className="flex items-start justify-between">
+          <div className="flex flex-col md:flex-row items-start justify-between gap-4">
             <div>
               <CardTitle className="text-xl flex items-center gap-2">
-                <Users />
+                <Users className="h-5 w-5"/>
                 <span>Membros do Clã</span>
               </CardTitle>
               <CardDescription>Gerencie as patentes e status dos jogadores.</CardDescription>
             </div>
-            {!isLoadingMembers && members && (
-               <div className="text-right">
-                  <p className="text-3xl font-bold text-accent">{members.length}</p>
-                  <p className="text-sm text-muted-foreground">Jogadores</p>
-               </div>
-            )}
+            <div className='flex items-center gap-4'>
+                 <Button onClick={handleSync} disabled={isSyncing}>
+                    <RefreshCw className={`mr-2 h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} />
+                    {isSyncing ? 'Buscando...' : 'Sincronizar por Tag'}
+                 </Button>
+                {!isLoading && members && (
+                   <div className="text-right">
+                      <p className="text-3xl font-bold text-accent">{members.length}</p>
+                      <p className="text-sm text-muted-foreground">Membros</p>
+                   </div>
+                )}
+            </div>
           </div>
         </CardHeader>
         <CardContent>
@@ -130,37 +203,43 @@ export default function ClanDashboardPage({ params }: { params: Promise<{ clanId
                   <TableHead>Jogador</TableHead>
                   <TableHead>Patente</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead className="hidden md:table-cell">Kills</TableHead>
+                  <TableHead className="hidden md:table-cell">Tempo Jogado</TableHead>
                   <TableHead className="text-right">Ações</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {isLoadingMembers ? (
+                {isLoading ? (
                   Array.from({ length: 5 }).map((_, i) => (
                     <TableRow key={i}>
                       <TableCell><Skeleton className="h-5 w-32" /></TableCell>
                       <TableCell><Skeleton className="h-5 w-24" /></TableCell>
                       <TableCell><Skeleton className="h-6 w-20 rounded-full" /></TableCell>
+                      <TableCell className="hidden md:table-cell"><Skeleton className="h-5 w-12" /></TableCell>
+                      <TableCell className="hidden md:table-cell"><Skeleton className="h-5 w-12" /></TableCell>
                       <TableCell className="text-right"><Skeleton className="h-8 w-8 ml-auto" /></TableCell>
                     </TableRow>
                   ))
                 ) : members && members.length > 0 ? (
                   members.map((member) => {
-                    const details = memberDetailsMap.get(member.id);
-                    const rank = details?.rank || 'Recruta';
-                    const status = details?.status || 'trial';
-
+                    const aggregateData = memberAggregatesMap.get(member.id);
                     return (
                       <TableRow key={member.id}>
-                        <TableCell className="font-medium">{member.latestPlayerName}</TableCell>
-                        <TableCell>{rank}</TableCell>
+                        <TableCell className="font-medium">{member.playerName}</TableCell>
+                        <TableCell>{member.rank}</TableCell>
                         <TableCell>
-                          <Badge variant={getStatusVariant(status)}>{status}</Badge>
+                          <Badge variant={getStatusVariant(member.status)}>{member.status}</Badge>
+                        </TableCell>
+                        <TableCell className="hidden md:table-cell">
+                          {aggregateData?.totalKills?.toLocaleString() || 'N/A'}
+                        </TableCell>
+                         <TableCell className="hidden md:table-cell">
+                          {aggregateData?.totalTimeSeconds ? `${Math.floor(aggregateData.totalTimeSeconds / 3600)}h` : 'N/A'}
                         </TableCell>
                         <TableCell className="text-right">
                            <Button variant="ghost" size="icon" className="mr-2" onClick={() => setMemberToEdit(member)}>
                               <Edit className="h-4 w-4" />
                            </Button>
-                           {/* A remoção agora é mais complexa, pois envolve remover a tag do nome do jogador. Desabilitado por enquanto. */}
                            <Button variant="ghost" size="icon" disabled>
                               <Trash2 className="h-4 w-4 text-destructive" />
                            </Button>
@@ -170,8 +249,8 @@ export default function ClanDashboardPage({ params }: { params: Promise<{ clanId
                   })
                 ) : (
                   <TableRow>
-                    <TableCell colSpan={4} className="h-24 text-center">
-                      Nenhum jogador com a tag [{clan.tag}] encontrado na base de dados.
+                    <TableCell colSpan={6} className="h-24 text-center">
+                      Nenhum membro encontrado. Use a "Sincronização por Tag" para encontrar jogadores.
                     </TableCell>
                   </TableRow>
                 )}

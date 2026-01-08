@@ -5,8 +5,14 @@ import { db } from '@/firebase/server';
 import { 
     doc,
     setDoc,
+    collection,
+    query,
+    where,
+    or,
+    getDocs,
+    writeBatch
 } from 'firebase/firestore';
-import type { ClanMember } from '@/lib/types';
+import type { ClanMember, PlayerAggregates } from '@/lib/types';
 import { revalidatePath } from 'next/cache';
 
 
@@ -16,13 +22,9 @@ import { revalidatePath } from 'next/cache';
  */
 export async function updateClanMember(clanId: string, playerId: string, data: Partial<Pick<ClanMember, 'rank' | 'status'>>): Promise<{ success: boolean, error?: string }> {
     try {
-        // The document ID in the 'members' subcollection is the player's ID
         const memberRef = doc(db, 'clans', clanId, 'members', playerId);
-        
-        // Use setDoc with merge to create or update the document with rank/status info.
         await setDoc(memberRef, data, { merge: true });
 
-        // Revalidate the dashboard path to show the updated data
         revalidatePath(`/clan-admin/dashboard/${clanId}`);
         return { success: true };
 
@@ -32,4 +34,74 @@ export async function updateClanMember(clanId: string, playerId: string, data: P
     }
 }
 
+/**
+ * Finds players whose names match the clan tag but are not yet members.
+ */
+export async function findPotentialMembersByTag(clanId: string, clanTag: string): Promise<{ success: boolean, players?: PlayerAggregates[], error?: string }> {
+  try {
+    // 1. Get all players that match the tag
+    const playersQuery = query(
+      collection(db, 'playerAggregates'),
+      or(
+        where('latestPlayerName', '>=', `${clanTag} `),
+        where('latestPlayerName', '<', `${clanTag}~`),
+        where('latestPlayerName', '>=', `[${clanTag}]`),
+        where('latestPlayerName', '<', `[${clanTag}]~`)
+      )
+    );
+    const querySnapshot = await getDocs(playersQuery);
+    
+    const potentialPlayers = querySnapshot.docs
+      .map(doc => ({ id: doc.id, ...doc.data() } as PlayerAggregates))
+      .filter(p => p.latestPlayerName.startsWith(`${clanTag} `) || p.latestPlayerName.startsWith(`[${clanTag}]`));
+
+    // 2. Get all current members of the clan
+    const membersCollection = collection(db, 'clans', clanId, 'members');
+    const membersSnapshot = await getDocs(membersCollection);
+    const existingMemberIds = new Set(membersSnapshot.docs.map(doc => doc.id));
+
+    // 3. Filter out players who are already members
+    const newPlayers = potentialPlayers.filter(p => !existingMemberIds.has(p.id));
+
+    return { success: true, players: newPlayers };
+  } catch (error: any) {
+    console.error("Error finding potential members:", error);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * Adds a list of players to the clan's member subcollection.
+ */
+export async function addMembersToClan(clanId: string, players: PlayerAggregates[]): Promise<{ success: boolean, error?: string }> {
+    if (!players || players.length === 0) {
+        return { success: false, error: "No players selected to add." };
+    }
+
+    try {
+        const batch = writeBatch(db);
+        const membersCollectionRef = collection(db, 'clans', clanId, 'members');
+
+        players.forEach(player => {
+            const memberDocRef = doc(membersCollectionRef, player.id);
+            const newMember: ClanMember = {
+                id: player.id,
+                playerId: player.id,
+                playerName: player.latestPlayerName,
+                rank: 'Recruta',
+                status: 'trial',
+                clanTag: clanId, // Assuming clanId is the tag, like 'smk'
+            };
+            batch.set(memberDocRef, newMember, { merge: true });
+        });
+
+        await batch.commit();
+        revalidatePath(`/clan-admin/dashboard/${clanId}`);
+        return { success: true };
+
+    } catch (error: any) {
+        console.error("Error adding members to clan:", error);
+        return { success: false, error: error.message };
+    }
+}
     
