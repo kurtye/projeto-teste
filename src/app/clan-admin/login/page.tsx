@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useClanAuth } from '../layout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -15,9 +15,17 @@ export default function ClanAdminLoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const { login, clan } = useClanAuth();
+  const { login, isAuthenticated, clan } = useClanAuth();
   const { toast } = useToast();
   const router = useRouter();
+
+  // Efeito para redirecionar se o usuário já estiver logado e acessar esta página
+  useEffect(() => {
+    if (isAuthenticated && clan) {
+      router.replace(`/clan-admin/dashboard/${clan.id}`);
+    }
+  }, [isAuthenticated, clan, router]);
+
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -30,7 +38,9 @@ export default function ClanAdminLoginPage() {
         title: 'Login bem-sucedido!',
         description: 'Redirecionando para o painel...',
       });
-      // The layout will handle the redirect
+      // A mudança de estado no layout vai disparar o useEffect acima e redirecionar.
+      // O layout já lida com o redirecionamento principal, mas o useEffect aqui garante que aconteça
+      // mesmo que o usuário aterrisse na página de login já autenticado.
     } else {
        toast({
         variant: 'destructive',
