@@ -12,7 +12,8 @@ import {
     deleteDoc,
     setDoc,
     getDoc,
-    limit
+    limit,
+    or
 } from 'firebase/firestore';
 import type { ClanMember, PlayerAggregates } from '@/lib/types';
 import { revalidatePath } from 'next/cache';
@@ -124,28 +125,47 @@ export async function updateClanMember(clanId: string, playerId: string, data: P
  * and adding them to the clan if they aren't already members.
  */
 export async function syncClanMembersByTag(clanId: string, clanTag: string): Promise<{ success: boolean, addedCount: number, error?: string }> {
-    console.log(`[LOG] Iniciando sincronização para o clã ${clanId} com a tag [${clanTag}]`);
+    console.log(`[LOG] Iniciando sincronização para o clã ${clanId} com a tag '${clanTag}'`);
     try {
         const playersRef = collection(db, 'playerAggregates');
-        // Query for players whose name starts with the clan tag
+        
+        // This query now looks for names that start with "TAG " OR "[TAG]".
+        // Firestore range queries are powerful for "startsWith" functionality.
         const q = query(
             playersRef,
-            where('latestPlayerName', '>=', `[${clanTag}]`),
-            where('latestPlayerName', '<=', `[${clanTag}]\uf8ff`)
+             or(
+                where('latestPlayerName', '>=', `${clanTag} `),
+                where('latestPlayerName', '<', `${clanTag }z`),
+                where('latestPlayerName', '>=', `[${clanTag}]`),
+                where('latestPlayerName', '<', `[${clanTag}]z`)
+            ),
+            limit(500) // Limit to avoid reading too many documents at once.
         );
 
         const querySnapshot = await getDocs(q);
-        const playersWithTag = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PlayerAggregates));
         
+        // Manual filter because Firestore query is not exact for "startsWith"
+        const playersWithTag = querySnapshot.docs
+          .map(doc => ({ id: doc.id, ...doc.data() } as PlayerAggregates))
+          .filter(p => 
+            p.latestPlayerName.startsWith(`${clanTag} `) || 
+            p.latestPlayerName.startsWith(`[${clanTag}]`)
+          );
+
         console.log(`[LOG] Encontrados ${playersWithTag.length} jogadores com a tag.`);
+
+        if (playersWithTag.length === 0) {
+            console.log(`[LOG] Nenhum novo membro para adicionar.`);
+            return { success: true, addedCount: 0 };
+        }
 
         let addedCount = 0;
         const batch = writeBatch(db);
 
         for (const player of playersWithTag) {
-            // Check if player is already in a clan or specifically in this clan
+            // Check if player is already in a clan.
             if (player.clanTag) {
-                continue; // Skip players who are already in any clan
+                continue; // Skip players who are already in any clan.
             }
 
             const memberRef = doc(db, 'clans', clanId, 'members', player.id);
@@ -168,7 +188,7 @@ export async function syncClanMembersByTag(clanId: string, clanTag: string): Pro
             await batch.commit();
             console.log(`[LOG] ${addedCount} novos membros adicionados ao clã ${clanId}.`);
         } else {
-            console.log(`[LOG] Nenhum novo membro para adicionar.`);
+            console.log(`[LOG] Nenhum novo membro para adicionar (jogadores encontrados já possuem clã).`);
         }
 
         revalidatePath(`/clan-admin/dashboard/${clanId}`);
