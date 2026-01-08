@@ -19,16 +19,18 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { useState } from 'react';
+import { useState, use } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
 
-export default function ClanDashboardPage({ params }: { params: { clanId: string } }) {
+export default function ClanDashboardPage({ params }: { params: Promise<{ clanId: string }> }) {
+  const resolvedParams = use(params);
+  const clanId = resolvedParams.clanId;
   const { clan, user, logout } = useClanAuth();
   const firestore = useFirestore();
   
   const [memberToEdit, setMemberToEdit] = useState<PlayerAggregates | null>(null);
 
-  if (!clan || clan.id !== params.clanId) {
+  if (!clan || clan.id !== clanId) {
     return notFound();
   }
 
@@ -65,7 +67,7 @@ export default function ClanDashboardPage({ params }: { params: { clanId: string
   const { data: clanSpecificData } = useCollection<ClanMember>(clanMembersSubCollectionQuery);
 
   // Create a map for quick lookup of ranks and statuses
-  const memberDetailsMap = useMemo(() => {
+  const memberDetailsMap = useMemoFirebase(() => {
       if (!clanSpecificData) return new Map();
       return new Map(clanSpecificData.map(member => [member.id, { rank: member.rank, status: member.status }]));
   }, [clanSpecificData]);
@@ -174,5 +176,3 @@ export default function ClanDashboardPage({ params }: { params: { clanId: string
     </div>
   );
 }
-
-    
