@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useClanAuth } from '../../layout';
@@ -107,12 +106,20 @@ export default function ClanDashboardPage({ params }: { params: Promise<{ clanId
       
       <Card>
         <CardHeader>
-          <div>
-            <CardTitle className="text-xl flex items-center gap-2">
-              <Users />
-              <span>Membros do Clã</span>
-            </CardTitle>
-            <CardDescription>Gerencie as patentes e status dos jogadores.</CardDescription>
+          <div className="flex items-start justify-between">
+            <div>
+              <CardTitle className="text-xl flex items-center gap-2">
+                <Users />
+                <span>Membros do Clã</span>
+              </CardTitle>
+              <CardDescription>Gerencie as patentes e status dos jogadores.</CardDescription>
+            </div>
+            {!isLoadingMembers && members && (
+               <div className="text-right">
+                  <p className="text-3xl font-bold text-accent">{members.length}</p>
+                  <p className="text-sm text-muted-foreground">Jogadores</p>
+               </div>
+            )}
           </div>
         </CardHeader>
         <CardContent>
