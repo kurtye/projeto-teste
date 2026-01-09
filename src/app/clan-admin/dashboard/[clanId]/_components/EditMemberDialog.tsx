@@ -24,7 +24,26 @@ interface EditMemberDialogProps {
   clanId: string;
 }
 
-const ranks = ['Recruta', 'Membro', 'Veterano', 'Oficial', 'Comandante', 'Líder'];
+const ranks = [
+    'Recruta',
+    'Soldado',
+    'Cabo',
+    'Terceiro-Sargento',
+    'Segundo-Sargento',
+    'Primeiro-Sargento',
+    'Subtenente',
+    'Aspirante',
+    'Segundo-Tenente',
+    'Primeiro-Tenente',
+    'Capitão',
+    'Major',
+    'Tenente-Coronel',
+    'Coronel',
+    'General de Brigada',
+    'General de Divisão',
+    'General de Exército',
+    'Marechal'
+];
 const statuses: ClanMember['status'][] = ['active', 'inactive', 'trial'];
 
 export function EditMemberDialog({ isOpen, onOpenChange, member, clanId }: EditMemberDialogProps) {

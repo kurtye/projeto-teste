@@ -5,9 +5,9 @@ import { useClanAuth } from '../../layout';
 import { notFound } from 'next/navigation';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { LogOut, Users, Edit, Trash2, UserPlus, RefreshCw, CheckSquare, Square, List, Trophy, Shield, Star, Crown, ArrowUp } from 'lucide-react';
+import { LogOut, Users, Edit, Trash2, UserPlus, RefreshCw, CheckSquare, Square, List, Trophy, Shield, Star, Crown, ArrowUp, Diamond, Award } from 'lucide-react';
 import { useCollection, useFirestore, useMemoFirebase } from '@/firebase';
-import { collection, query, where, documentId } from 'firebase/firestore';
+import { collection, query, where, documentId, orderBy } from 'firebase/firestore';
 import type { PlayerAggregates, ClanMember } from '@/lib/types';
 import { EditMemberDialog } from './_components/EditMemberDialog';
 import { HierarchyView } from './_components/HierarchyView';
@@ -44,7 +44,7 @@ export default function ClanDashboardPage({ params }: { params: { clanId: string
 
   const membersQuery = useMemoFirebase(() => {
     if (!firestore || !clanId) return null;
-    return collection(firestore, 'clans', clanId, 'members');
+    return query(collection(firestore, 'clans', clanId, 'members'), orderBy('playerName'));
   }, [firestore, clanId]);
 
   const { data: members, isLoading: isLoadingMembers, error: membersError } = useCollection<ClanMember>(membersQuery);
@@ -52,6 +52,13 @@ export default function ClanDashboardPage({ params }: { params: { clanId: string
   if (!clan || clan.id !== clanId) {
     return notFoundError();
   }
+  
+  const ranksInOrder = [
+    'Marechal', 'General de Exército', 'General de Divisão', 'General de Brigada', 'Coronel', 
+    'Tenente-Coronel', 'Major', 'Capitão', 'Primeiro-Tenente', 'Segundo-Tenente', 
+    'Aspirante', 'Subtenente', 'Primeiro-Sargento', 'Segundo-Sargento', 'Terceiro-Sargento', 
+    'Cabo', 'Soldado', 'Recruta'
+  ];
 
   const getStatusVariant = (status: ClanMember['status'] | undefined) => {
     switch (status) {
@@ -61,6 +68,16 @@ export default function ClanDashboardPage({ params }: { params: { clanId: string
       default: return 'secondary';
     }
   }
+  
+  const getRankIcon = (rank: string) => {
+    if (rank.includes('General') || rank.includes('Marechal')) return <Crown className="h-4 w-4 text-yellow-400"/>;
+    if (rank.includes('Coronel') || rank.includes('Major')) return <Star className="h-4 w-4 text-purple-400"/>;
+    if (rank.includes('Tenente') || rank.includes('Capitão')) return <Diamond className="h-4 w-4 text-blue-400"/>;
+    if (rank.includes('Sargento') || rank.includes('Subtenente') || rank.includes('Aspirante')) return <Award className="h-4 w-4 text-teal-400"/>;
+    if (rank.includes('Cabo')) return <Shield className="h-4 w-4 text-green-400"/>;
+    return <UserPlus className="h-4 w-4 text-gray-400"/>
+  };
+
 
   const handleSync = () => {
     startSyncTransition(async () => {
@@ -135,11 +152,11 @@ export default function ClanDashboardPage({ params }: { params: { clanId: string
 
   const sortedMembers = useMemo(() => {
     if (!members) return [];
-    const rankOrder = ['Líder', 'Comandante', 'Oficial', 'Veterano', 'Membro', 'Recruta'];
     return [...members].sort((a, b) => {
-      const rankA = rankOrder.indexOf(a.rank);
-      const rankB = rankOrder.indexOf(b.rank);
+      const rankA = ranksInOrder.indexOf(a.rank);
+      const rankB = ranksInOrder.indexOf(b.rank);
       if (rankA !== rankB) {
+        // Higher index means lower rank, so we want higher rank first
         return rankA - rankB;
       }
       return a.playerName.localeCompare(b.playerName);
@@ -253,7 +270,10 @@ export default function ClanDashboardPage({ params }: { params: { clanId: string
                         sortedMembers.map((member) => (
                             <TableRow key={member.id}>
                                 <TableCell className="font-medium">{member.playerName}</TableCell>
-                                <TableCell>{member.rank}</TableCell>
+                                <TableCell className="flex items-center gap-2">
+                                    {getRankIcon(member.rank)}
+                                    {member.rank}
+                                </TableCell>
                                 <TableCell>
                                 <Badge variant={getStatusVariant(member.status)}>{member.status}</Badge>
                                 </TableCell>
@@ -262,7 +282,7 @@ export default function ClanDashboardPage({ params }: { params: { clanId: string
                                         variant="ghost" 
                                         size="icon" 
                                         onClick={() => handlePromote(member)}
-                                        disabled={isPromoting || member.rank === 'Líder'}
+                                        disabled={isPromoting || member.rank === 'Marechal'}
                                         title="Promover"
                                     >
                                         <ArrowUp className="h-4 w-4" />
