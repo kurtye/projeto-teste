@@ -39,10 +39,6 @@ export default function ClanDashboardPage({ params }: { params: Promise<{ clanId
   const [selectedNewMembers, setSelectedNewMembers] = useState<Set<string>>(new Set());
   const [isAdding, startAddingTransition] = useTransition();
 
-  if (!clan || clan.id !== clanId) {
-    return notFound();
-  }
-
   // --- Data Fetching ---
   const membersQuery = useMemoFirebase(() => {
     if (!firestore || !clanId) return null;
@@ -52,13 +48,13 @@ export default function ClanDashboardPage({ params }: { params: Promise<{ clanId
   const { data: members, isLoading: isLoadingMembers, error: membersError } = useCollection<ClanMember>(membersQuery);
 
   const memberIds = useMemo(() => {
-      if (!members || members.length === 0) return [];
+      if (!members || members.length === 0) return null;
       return members.map(m => m.id);
   }, [members]);
 
   const aggregatesQuery = useMemoFirebase(() => {
-      if (!firestore || memberIds.length === 0) return null;
-      
+      if (!firestore || !memberIds) return null;
+      // This now correctly depends on memberIds being non-null
       return query(collection(firestore, 'playerAggregates'), where(documentId(), 'in', memberIds));
   }, [firestore, memberIds]);
 
@@ -68,6 +64,10 @@ export default function ClanDashboardPage({ params }: { params: Promise<{ clanId
     if (!memberAggregates) return new Map<string, PlayerAggregates>();
     return new Map(memberAggregates.map(agg => [agg.id, agg]));
   }, [memberAggregates]);
+  
+  if (!clan || clan.id !== clanId) {
+    return notFound();
+  }
 
   const getStatusVariant = (status: ClanMember['status'] | undefined) => {
     switch (status) {
@@ -140,7 +140,7 @@ export default function ClanDashboardPage({ params }: { params: Promise<{ clanId
     });
   };
 
-  const isLoading = isLoadingMembers || (memberIds.length > 0 && isLoadingAggregates);
+  const isLoading = isLoadingMembers || (memberIds && memberIds.length > 0 && isLoadingAggregates);
 
 
   return (
