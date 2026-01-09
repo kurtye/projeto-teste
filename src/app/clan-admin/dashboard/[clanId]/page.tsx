@@ -47,23 +47,15 @@ export default function ClanDashboardPage({ params }: { params: Promise<{ clanId
 
   const { data: members, isLoading: isLoadingMembers, error: membersError } = useCollection<ClanMember>(membersQuery);
 
-  const memberIds = useMemo(() => {
-      if (!members || members.length === 0) return null;
-      return members.map(m => m.id);
-  }, [members]);
-
-  const aggregatesQuery = useMemoFirebase(() => {
-      if (!firestore || !memberIds) return null;
-      // This now correctly depends on memberIds being non-null
-      return query(collection(firestore, 'playerAggregates'), where(documentId(), 'in', memberIds));
-  }, [firestore, memberIds]);
-
-  const { data: memberAggregates, isLoading: isLoadingAggregates } = useCollection<PlayerAggregates>(aggregatesQuery);
+  // START: Strategy change - Remove complex aggregate fetching for now.
+  // We will initialize with null and not fetch aggregates to avoid the error.
+  const { data: memberAggregates, isLoading: isLoadingAggregates } = useCollection<PlayerAggregates>(null);
   
   const memberAggregatesMap = useMemo(() => {
     if (!memberAggregates) return new Map<string, PlayerAggregates>();
     return new Map(memberAggregates.map(agg => [agg.id, agg]));
   }, [memberAggregates]);
+  // END: Strategy change
   
   if (!clan || clan.id !== clanId) {
     return notFound();
@@ -140,7 +132,7 @@ export default function ClanDashboardPage({ params }: { params: Promise<{ clanId
     });
   };
 
-  const isLoading = isLoadingMembers || (memberIds && memberIds.length > 0 && isLoadingAggregates);
+  const isLoading = isLoadingMembers || isLoadingAggregates;
 
 
   return (
@@ -252,10 +244,12 @@ export default function ClanDashboardPage({ params }: { params: Promise<{ clanId
                           <Badge variant={getStatusVariant(member.status)}>{member.status}</Badge>
                         </TableCell>
                         <TableCell className="hidden md:table-cell">
-                          {aggregateData?.totalKills?.toLocaleString() || 'N/A'}
+                          {/* aggregateData?.totalKills?.toLocaleString() || 'N/A' */}
+                          -
                         </TableCell>
                          <TableCell className="hidden md:table-cell">
-                          {aggregateData?.totalTimeSeconds ? `${Math.floor(aggregateData.totalTimeSeconds / 3600)}h` : 'N/A'}
+                          {/* aggregateData?.totalTimeSeconds ? `${Math.floor(aggregateData.totalTimeSeconds / 3600)}h` : 'N/A' */}
+                          -
                         </TableCell>
                         <TableCell className="text-right">
                            <Button variant="ghost" size="icon" className="mr-2" onClick={() => setMemberToEdit(member)}>
