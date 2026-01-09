@@ -9,7 +9,8 @@ import {
     query,
     where,
     getDocs,
-    writeBatch
+    writeBatch,
+    orderBy
 } from 'firebase/firestore';
 import type { ClanMember, PlayerAggregates } from '@/lib/types';
 import { revalidatePath } from 'next/cache';
@@ -43,8 +44,9 @@ export async function findPotentialMembersByTag(clanId: string, clanTag: string)
     // This is a broader query that Firestore can handle efficiently.
     const playersQuery = query(
       collection(db, 'playerAggregates'),
-      where('latestPlayerName', '>=', clanTag),
-      where('latestPlayerName', '<', clanTag + '~') // '~' is a character that comes after all other characters
+      orderBy('latestPlayerName'),
+      where('latestPlayerName', '>=', `[${clanTag}]`),
+      where('latestPlayerName', '<', `[${clanTag}]` + '\uf8ff')
     );
     const querySnapshot = await getDocs(playersQuery);
     
