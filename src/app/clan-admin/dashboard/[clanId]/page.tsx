@@ -114,6 +114,17 @@ export default function ClanDashboardPage({ params }: { params: Promise<{ clanId
       return newSet;
     });
   };
+  
+  const handleToggleSelectAll = () => {
+    if (selectedNewMembers.size === potentialMembers.length) {
+        // If all are selected, deselect all
+        setSelectedNewMembers(new Set());
+    } else {
+        // If not all are selected, select all
+        const allIds = new Set(potentialMembers.map(p => p.id));
+        setSelectedNewMembers(allIds);
+    }
+  };
 
   const handleAddSelectedMembers = () => {
     startAddingTransition(async () => {
@@ -172,9 +183,12 @@ export default function ClanDashboardPage({ params }: { params: Promise<{ clanId
                       ))}
                   </div>
               </CardContent>
-              <CardFooter>
+              <CardFooter className="flex items-center gap-4">
                   <Button onClick={handleAddSelectedMembers} disabled={isAdding || selectedNewMembers.size === 0}>
                       {isAdding ? 'Adicionando...' : `Adicionar ${selectedNewMembers.size} Membros`}
+                  </Button>
+                   <Button variant="outline" onClick={handleToggleSelectAll} disabled={isAdding}>
+                      {selectedNewMembers.size === potentialMembers.length ? 'Desmarcar Todos' : 'Marcar Todos'}
                   </Button>
               </CardFooter>
           </Card>
@@ -273,3 +287,5 @@ export default function ClanDashboardPage({ params }: { params: Promise<{ clanId
     </div>
   );
 }
+
+    
