@@ -58,13 +58,16 @@ export default function ClanDashboardPage({ params }: { params: Promise<{ clanId
   }, [members]);
 
   const aggregatesQuery = useMemoFirebase(() => {
-      if (!firestore || memberIds.length === 0) return null;
+      // CRITICAL FIX: Do not run the query if memberIds is not ready or is empty.
+      // An 'in' query with an empty array is invalid in Firestore.
+      if (!firestore || isLoadingMembers || memberIds.length === 0) return null;
+      
       // Use documentId() which is equivalent to __name__
       // Important: Firestore 'in' queries are limited to 30 items. 
       // If a clan has more, pagination would be needed here.
       // For now, assuming clans are smaller than 30.
       return query(collection(firestore, 'playerAggregates'), where(documentId(), 'in', memberIds));
-  }, [firestore, memberIds]);
+  }, [firestore, memberIds, isLoadingMembers]);
 
   const { data: memberAggregates, isLoading: isLoadingAggregates } = useCollection<PlayerAggregates>(aggregatesQuery);
   
@@ -287,5 +290,3 @@ export default function ClanDashboardPage({ params }: { params: Promise<{ clanId
     </div>
   );
 }
-
-    
