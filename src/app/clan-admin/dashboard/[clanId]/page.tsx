@@ -1,15 +1,15 @@
-
 'use client';
 
 import { useClanAuth } from '../../layout';
 import { notFound } from 'next/navigation';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { LogOut, Users, Edit, Trash2, UserPlus, RefreshCw, CheckSquare, Square } from 'lucide-react';
+import { LogOut, Users, Edit, Trash2, UserPlus, RefreshCw, CheckSquare, Square, List, Trophy, Shield, Star, Crown } from 'lucide-react';
 import { useCollection, useFirestore, useMemoFirebase } from '@/firebase';
 import { collection, query, where, documentId } from 'firebase/firestore';
 import type { PlayerAggregates, ClanMember } from '@/lib/types';
 import { EditMemberDialog } from './_components/EditMemberDialog';
+import { HierarchyView } from './_components/HierarchyView';
 import {
   Table,
   TableBody,
@@ -18,13 +18,15 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { useState, use, useTransition, useMemo } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { findPotentialMembersByTag, addMembersToClan } from '../../actions';
 import { useToast } from '@/hooks/use-toast';
+import { notFound as notFoundError } from 'next/navigation';
 
-export default function ClanDashboardPage({ params }: { params: Promise<{ clanId: string }> }) {
+export default function ClanDashboardPage({ params }: { params: { clanId: string } }) {
   const resolvedParams = use(params);
   const clanId = resolvedParams.clanId;
   const { clan, user, logout } = useClanAuth();
@@ -33,32 +35,37 @@ export default function ClanDashboardPage({ params }: { params: Promise<{ clanId
   
   const [memberToEdit, setMemberToEdit] = useState<ClanMember | null>(null);
   
-  // State for the sync feature
   const [isSyncing, startSyncTransition] = useTransition();
   const [potentialMembers, setPotentialMembers] = useState<PlayerAggregates[]>([]);
   const [selectedNewMembers, setSelectedNewMembers] = useState<Set<string>>(new Set());
   const [isAdding, startAddingTransition] = useTransition();
 
-  // --- Data Fetching ---
   const membersQuery = useMemoFirebase(() => {
     if (!firestore || !clanId) return null;
     return collection(firestore, 'clans', clanId, 'members');
   }, [firestore, clanId]);
 
   const { data: members, isLoading: isLoadingMembers, error: membersError } = useCollection<ClanMember>(membersQuery);
+  
+  const memberIds = useMemo(() => {
+      if (!members || members.length === 0) return null;
+      return members.map(m => m.id);
+  }, [members]);
 
-  // START: Strategy change - Remove complex aggregate fetching for now.
-  // We will initialize with null and not fetch aggregates to avoid the error.
-  const { data: memberAggregates, isLoading: isLoadingAggregates } = useCollection<PlayerAggregates>(null);
+  const memberAggregatesQuery = useMemoFirebase(() => {
+    if (!firestore || !memberIds) return null;
+    return query(collection(firestore, 'playerAggregates'), where(documentId(), 'in', memberIds));
+  }, [firestore, memberIds]);
+
+  const { data: memberAggregates, isLoading: isLoadingAggregates, error: aggregatesError } = useCollection<PlayerAggregates>(memberAggregatesQuery);
   
   const memberAggregatesMap = useMemo(() => {
     if (!memberAggregates) return new Map<string, PlayerAggregates>();
     return new Map(memberAggregates.map(agg => [agg.id, agg]));
   }, [memberAggregates]);
-  // END: Strategy change
   
   if (!clan || clan.id !== clanId) {
-    return notFound();
+    return notFoundError();
   }
 
   const getStatusVariant = (status: ClanMember['status'] | undefined) => {
@@ -105,10 +112,8 @@ export default function ClanDashboardPage({ params }: { params: Promise<{ clanId
   
   const handleToggleSelectAll = () => {
     if (selectedNewMembers.size === potentialMembers.length) {
-        // If all are selected, deselect all
         setSelectedNewMembers(new Set());
     } else {
-        // If not all are selected, select all
         const allIds = new Set(potentialMembers.map(p => p.id));
         setSelectedNewMembers(allIds);
     }
@@ -133,6 +138,19 @@ export default function ClanDashboardPage({ params }: { params: Promise<{ clanId
   };
 
   const isLoading = isLoadingMembers || isLoadingAggregates;
+
+  const sortedMembers = useMemo(() => {
+    if (!members) return [];
+    const rankOrder = ['Líder', 'Comandante', 'Oficial', 'Veterano', 'Membro', 'Recruta'];
+    return [...members].sort((a, b) => {
+      const rankA = rankOrder.indexOf(a.rank);
+      const rankB = rankOrder.indexOf(b.rank);
+      if (rankA !== rankB) {
+        return rankA - rankB;
+      }
+      return a.playerName.localeCompare(b.playerName);
+    });
+  }, [members]);
 
 
   return (
@@ -182,16 +200,12 @@ export default function ClanDashboardPage({ params }: { params: Promise<{ clanId
           </Card>
       )}
       
-      <Card>
-        <CardHeader>
-          <div className="flex flex-col md:flex-row items-start justify-between gap-4">
-            <div>
-              <CardTitle className="text-xl flex items-center gap-2">
-                <Users className="h-5 w-5"/>
-                <span>Membros do Clã</span>
-              </CardTitle>
-              <CardDescription>Gerencie as patentes e status dos jogadores.</CardDescription>
-            </div>
+      <Tabs defaultValue="list">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4">
+            <TabsList>
+                <TabsTrigger value="list"><List className="mr-2 h-4 w-4"/>Lista de Membros</TabsTrigger>
+                <TabsTrigger value="hierarchy"><Users className="mr-2 h-4 w-4"/>Hierarquia</TabsTrigger>
+            </TabsList>
             <div className='flex items-center gap-4'>
                  <Button onClick={handleSync} disabled={isSyncing}>
                     <RefreshCw className={`mr-2 h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} />
@@ -206,74 +220,94 @@ export default function ClanDashboardPage({ params }: { params: Promise<{ clanId
                    <p className="text-sm text-muted-foreground">Membros</p>
                 </div>
             </div>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Jogador</TableHead>
-                  <TableHead>Patente</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="hidden md:table-cell">Kills</TableHead>
-                  <TableHead className="hidden md:table-cell">Tempo Jogado</TableHead>
-                  <TableHead className="text-right">Ações</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {isLoading ? (
-                  Array.from({ length: 5 }).map((_, i) => (
-                    <TableRow key={i}>
-                      <TableCell><Skeleton className="h-5 w-32" /></TableCell>
-                      <TableCell><Skeleton className="h-5 w-24" /></TableCell>
-                      <TableCell><Skeleton className="h-6 w-20 rounded-full" /></TableCell>
-                      <TableCell className="hidden md:table-cell"><Skeleton className="h-5 w-12" /></TableCell>
-                      <TableCell className="hidden md:table-cell"><Skeleton className="h-5 w-12" /></TableCell>
-                      <TableCell className="text-right"><Skeleton className="h-8 w-8 ml-auto" /></TableCell>
-                    </TableRow>
-                  ))
-                ) : members && members.length > 0 ? (
-                  members.map((member) => {
-                    const aggregateData = memberAggregatesMap.get(member.id);
-                    return (
-                      <TableRow key={member.id}>
-                        <TableCell className="font-medium">{member.playerName}</TableCell>
-                        <TableCell>{member.rank}</TableCell>
-                        <TableCell>
-                          <Badge variant={getStatusVariant(member.status)}>{member.status}</Badge>
-                        </TableCell>
-                        <TableCell className="hidden md:table-cell">
-                          {/* aggregateData?.totalKills?.toLocaleString() || 'N/A' */}
-                          -
-                        </TableCell>
-                         <TableCell className="hidden md:table-cell">
-                          {/* aggregateData?.totalTimeSeconds ? `${Math.floor(aggregateData.totalTimeSeconds / 3600)}h` : 'N/A' */}
-                          -
-                        </TableCell>
-                        <TableCell className="text-right">
-                           <Button variant="ghost" size="icon" className="mr-2" onClick={() => setMemberToEdit(member)}>
-                              <Edit className="h-4 w-4" />
-                           </Button>
-                           <Button variant="ghost" size="icon" disabled>
-                              <Trash2 className="h-4 w-4 text-destructive" />
-                           </Button>
-                        </TableCell>
-                      </TableRow>
-                    )
-                  })
-                ) : (
-                  <TableRow>
-                    <TableCell colSpan={6} className="h-24 text-center">
-                      Nenhum membro encontrado. Use a "Sincronização por Tag" para encontrar e adicionar jogadores.
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
+        </div>
+
+        <TabsContent value="list">
+            <Card>
+                <CardHeader>
+                    <CardTitle className="text-xl flex items-center gap-2">
+                        <Users className="h-5 w-5"/>
+                        <span>Membros do Clã</span>
+                    </CardTitle>
+                    <CardDescription>Gerencie as patentes e status dos jogadores.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                <div className="overflow-x-auto">
+                    <Table>
+                    <TableHeader>
+                        <TableRow>
+                        <TableHead>Jogador</TableHead>
+                        <TableHead>Patente</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead className="hidden md:table-cell">Kills</TableHead>
+                        <TableHead className="hidden md:table-cell">Tempo Jogado</TableHead>
+                        <TableHead className="text-right">Ações</TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        {isLoading ? (
+                        Array.from({ length: 5 }).map((_, i) => (
+                            <TableRow key={i}>
+                            <TableCell><Skeleton className="h-5 w-32" /></TableCell>
+                            <TableCell><Skeleton className="h-5 w-24" /></TableCell>
+                            <TableCell><Skeleton className="h-6 w-20 rounded-full" /></TableCell>
+                            <TableCell className="hidden md:table-cell"><Skeleton className="h-5 w-12" /></TableCell>
+                            <TableCell className="hidden md:table-cell"><Skeleton className="h-5 w-12" /></TableCell>
+                            <TableCell className="text-right"><Skeleton className="h-8 w-8 ml-auto" /></TableCell>
+                            </TableRow>
+                        ))
+                        ) : sortedMembers && sortedMembers.length > 0 ? (
+                        sortedMembers.map((member) => {
+                            const aggregateData = memberAggregatesMap.get(member.id);
+                            return (
+                            <TableRow key={member.id}>
+                                <TableCell className="font-medium">{member.playerName}</TableCell>
+                                <TableCell>{member.rank}</TableCell>
+                                <TableCell>
+                                <Badge variant={getStatusVariant(member.status)}>{member.status}</Badge>
+                                </TableCell>
+                                <TableCell className="hidden md:table-cell">
+                                  {aggregateData?.totalKills?.toLocaleString() ?? '-'}
+                                </TableCell>
+                                <TableCell className="hidden md:table-cell">
+                                  {aggregateData?.totalTimeSeconds ? `${Math.floor(aggregateData.totalTimeSeconds / 3600)}h` : '-'}
+                                </TableCell>
+                                <TableCell className="text-right">
+                                <Button variant="ghost" size="icon" className="mr-2" onClick={() => setMemberToEdit(member)}>
+                                    <Edit className="h-4 w-4" />
+                                </Button>
+                                <Button variant="ghost" size="icon" disabled>
+                                    <Trash2 className="h-4 w-4 text-destructive" />
+                                </Button>
+                                </TableCell>
+                            </TableRow>
+                            )
+                        })
+                        ) : (
+                        <TableRow>
+                            <TableCell colSpan={6} className="h-24 text-center">
+                            Nenhum membro encontrado. Use a "Sincronização por Tag" para encontrar e adicionar jogadores.
+                            </TableCell>
+                        </TableRow>
+                        )}
+                    </TableBody>
+                    </Table>
+                </div>
+                </CardContent>
+            </Card>
+        </TabsContent>
+        <TabsContent value="hierarchy">
+            {isLoadingMembers ? (
+                <div className="space-y-4">
+                    <Skeleton className="h-32 w-full" />
+                    <Skeleton className="h-48 w-full" />
+                    <Skeleton className="h-64 w-full" />
+                </div>
+            ) : (
+                <HierarchyView members={members || []} />
+            )}
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
