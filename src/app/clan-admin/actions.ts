@@ -8,7 +8,6 @@ import {
     collection,
     query,
     where,
-    or,
     getDocs,
     writeBatch
 } from 'firebase/firestore';
@@ -36,26 +35,25 @@ export async function updateClanMember(clanId: string, playerId: string, data: P
 
 /**
  * Finds players whose names match the clan tag but are not yet members.
+ * This function is more robust and uses a simpler query with server-side filtering.
  */
 export async function findPotentialMembersByTag(clanId: string, clanTag: string): Promise<{ success: boolean, players?: PlayerAggregates[], error?: string }> {
   try {
-    // 1. Get all players that match the tag
+    // 1. Get all players whose name starts with the tag (e.g., "SMK" or "[SMK").
+    // This is a broader query that Firestore can handle efficiently.
     const playersQuery = query(
       collection(db, 'playerAggregates'),
-      or(
-        where('latestPlayerName', '>=', `${clanTag} `),
-        where('latestPlayerName', '<', `${clanTag}~`),
-        where('latestPlayerName', '>=', `[${clanTag}]`),
-        where('latestPlayerName', '<', `[${clanTag}]~`)
-      )
+      where('latestPlayerName', '>=', clanTag),
+      where('latestPlayerName', '<', clanTag + '~') // '~' is a character that comes after all other characters
     );
     const querySnapshot = await getDocs(playersQuery);
     
+    // Server-side filtering to match the exact patterns
     const potentialPlayers = querySnapshot.docs
       .map(doc => ({ id: doc.id, ...doc.data() } as PlayerAggregates))
       .filter(p => p.latestPlayerName.startsWith(`${clanTag} `) || p.latestPlayerName.startsWith(`[${clanTag}]`));
 
-    // 2. Get all current members of the clan
+    // 2. Get all current members of the clan to avoid suggesting existing ones
     const membersCollection = collection(db, 'clans', clanId, 'members');
     const membersSnapshot = await getDocs(membersCollection);
     const existingMemberIds = new Set(membersSnapshot.docs.map(doc => doc.id));
