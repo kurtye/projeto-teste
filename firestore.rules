@@ -1,68 +1,10 @@
-
-/**
- * @fileoverview Firestore Security Rules for the Hell Let Loose BR application.
- *
- * Core Philosophy:
- * This ruleset prioritizes public data availability while strictly controlling write access.
- * Read access is open to all for public stats. Write access is restricted to backend processes
- * or authenticated clan admins for their specific data, ensuring data integrity.
- */
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    // This collection is for backend processing only. No client access.
-    match /rawMatchResults/{matchId} {
-      allow read, write: if false;
-    }
-
-    // This collection holds public global stats. Allow anyone to read.
-    match /globalStats/{docId} {
-      allow get: if true;
-      allow list, create, update, delete: if false;
-    }
-
-    // Player aggregates are public to read. 
-    // Writes are locked down, except for the 'clanTag' which can be updated by an authorized clan admin.
-    match /playerAggregates/{playerId} {
-      allow get, list: if true;
-      allow create, delete: if false;
-      allow update: if request.auth != null && 
-                       request.resource.data.clanTag != null &&
-                       exists(/databases/$(database)/documents/clans/$(request.resource.data.clanTag)) &&
-                       request.auth.uid in get(/databases/$(database)/documents/clans/$(request.resource.data.clanTag)).data.adminUids;
-    }
-    
-    // Subcollections of playerAggregates are public read-only.
-    match /playerAggregates/{playerId}/{subcollection}/{docId} {
-      allow get, list: if true;
-      allow write: if false;
-    }
-
-    // Clan information is public to read.
-    match /clans/{clanId} {
-      allow get, list: if true;
-      allow create: if false; 
-      allow update, delete: if request.auth != null && request.auth.uid in resource.data.adminUids;
-    }
-
-    // Clan members can be read by anyone.
-    // Writes (add, update, delete) are only allowed by admins of that specific clan.
-    match /clans/{clanId}/members/{playerId} {
-      allow get, list: if true;
-      allow write: if request.auth != null &&
-                      exists(/databases/$(database)/documents/clans/$(clanId)) &&
-                      request.auth.uid in get(/databases/$(database)/documents/clans/$(clanId)).data.adminUids;
-    }
-
-    // Periodic stats are public read-only.
-    match /{path=**}/playerWeeklyStats/{docId} {
-        allow get, list: if true;
-        allow write: if false;
-    }
-    match /{path=**}/playerMonthlyStats/{docId} {
-        allow get, list: if true;
-        allow write: if false;
+    // Regra totalmente permissiva para desenvolvimento.
+    // Permite que qualquer usuário leia e escreva em qualquer documento.
+    match /{document=**} {
+      allow read, write: if true;
     }
   }
 }
