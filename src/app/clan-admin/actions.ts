@@ -40,20 +40,16 @@ export async function updateClanMember(clanId: string, playerId: string, data: P
  */
 export async function findPotentialMembersByTag(clanId: string, clanTag: string): Promise<{ success: boolean, players?: PlayerAggregates[], error?: string }> {
   try {
-    // 1. Get all players whose name starts with the tag (e.g., "SMK" or "[SMK").
-    // This is a broader query that Firestore can handle efficiently.
-    const playersQuery = query(
-      collection(db, 'playerAggregates'),
-      orderBy('latestPlayerName'),
-      where('latestPlayerName', '>=', `[${clanTag}]`),
-      where('latestPlayerName', '<', `[${clanTag}]` + '\uf8ff')
-    );
+    // 1. Get all players. This is inefficient but necessary for a "contains" search without a dedicated search service.
+    // NOTE: This will be very slow and expensive on large datasets. For production, a search service like Algolia or Typesense is recommended.
+    const playersQuery = query(collection(db, 'playerAggregates'));
     const querySnapshot = await getDocs(playersQuery);
     
-    // Server-side filtering to match the exact patterns
+    // Server-side filtering to find names containing the tag.
+    const upperCaseClanTag = clanTag.toUpperCase();
     const potentialPlayers = querySnapshot.docs
       .map(doc => ({ id: doc.id, ...doc.data() } as PlayerAggregates))
-      .filter(p => p.latestPlayerName.startsWith(`${clanTag} `) || p.latestPlayerName.startsWith(`[${clanTag}]`));
+      .filter(p => p.latestPlayerName.toUpperCase().includes(upperCaseClanTag));
 
     // 2. Get all current members of the clan to avoid suggesting existing ones
     const membersCollection = collection(db, 'clans', clanId, 'members');
@@ -62,6 +58,11 @@ export async function findPotentialMembersByTag(clanId: string, clanTag: string)
 
     // 3. Filter out players who are already members
     const newPlayers = potentialPlayers.filter(p => !existingMemberIds.has(p.id));
+
+    if (newPlayers.length === 0) {
+        // This is expected if the database is empty or no new players with the tag are found.
+        console.log(`[LOG] No new potential members found for tag: ${clanTag}`);
+    }
 
     return { success: true, players: newPlayers };
   } catch (error: any) {
