@@ -10,7 +10,8 @@ import {
     where,
     getDocs,
     writeBatch,
-    orderBy
+    orderBy,
+    and
 } from 'firebase/firestore';
 import type { ClanMember, PlayerAggregates } from '@/lib/types';
 import { revalidatePath } from 'next/cache';
@@ -40,36 +41,42 @@ export async function updateClanMember(clanId: string, playerId: string, data: P
  */
 export async function findPotentialMembersByTag(clanId: string, clanTag: string): Promise<{ success: boolean, players?: PlayerAggregates[], error?: string }> {
   try {
-    // 1. Get all players. This is inefficient but necessary for a "contains" search without a dedicated search service.
-    // NOTE: This will be very slow and expensive on large datasets. For production, a search service like Algolia or Typesense is recommended.
-    const playersQuery = query(collection(db, 'playerAggregates'));
+    const upperCaseClanTag = clanTag.toUpperCase();
+    
+    // Create a query to find players whose names start with the clan tag.
+    // This is more efficient than fetching all players.
+    const playersQuery = query(
+        collection(db, 'playerAggregates'),
+        where('latestPlayerName', '>=', upperCaseClanTag),
+        where('latestPlayerName', '<=', upperCaseClanTag + '\uf8ff')
+    );
+    
     const querySnapshot = await getDocs(playersQuery);
     
-    // Server-side filtering to find names containing the tag.
-    const upperCaseClanTag = clanTag.toUpperCase();
     const potentialPlayers = querySnapshot.docs
       .map(doc => ({ id: doc.id, ...doc.data() } as PlayerAggregates))
+      // Double-check the filter on the server side as Firestore's string operators can sometimes be broader.
       .filter(p => p.latestPlayerName.toUpperCase().includes(upperCaseClanTag));
 
-    // 2. Get all current members of the clan to avoid suggesting existing ones
+    // Get all current members of the clan to avoid suggesting existing ones
     const membersCollection = collection(db, 'clans', clanId, 'members');
     const membersSnapshot = await getDocs(membersCollection);
     const existingMemberIds = new Set(membersSnapshot.docs.map(doc => doc.id));
 
-    // 3. Filter out players who are already members
+    // Filter out players who are already members
     const newPlayers = potentialPlayers.filter(p => !existingMemberIds.has(p.id));
 
     if (newPlayers.length === 0) {
-        // This is expected if the database is empty or no new players with the tag are found.
         console.log(`[LOG] No new potential members found for tag: ${clanTag}`);
     }
 
     return { success: true, players: newPlayers };
   } catch (error: any) {
     console.error("Error finding potential members:", error);
-    return { success: false, error: error.message };
+    return { success: false, error: "Falha ao buscar jogadores. Verifique as permissões ou tente mais tarde." };
   }
 }
+
 
 /**
  * Adds a list of players to the clan's member subcollection.
