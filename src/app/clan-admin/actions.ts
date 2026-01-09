@@ -16,6 +16,32 @@ import {
 import type { ClanMember, PlayerAggregates } from '@/lib/types';
 import { revalidatePath } from 'next/cache';
 
+const RANKS = ['Recruta', 'Membro', 'Veterano', 'Oficial', 'Comandante', 'Líder'];
+
+/**
+ * Promotes a clan member to the next rank in the hierarchy.
+ */
+export async function promoteClanMember(clanId: string, memberId: string, currentRank: string): Promise<{ success: boolean; error?: string }> {
+    try {
+        const currentIndex = RANKS.indexOf(currentRank);
+        if (currentIndex === -1 || currentIndex >= RANKS.length - 1) {
+            return { success: false, error: "Este membro já está na patente máxima ou a patente atual é inválida." };
+        }
+        
+        const newRank = RANKS[currentIndex + 1];
+
+        const memberRef = doc(db, 'clans', clanId, 'members', memberId);
+        await setDoc(memberRef, { rank: newRank }, { merge: true });
+
+        revalidatePath(`/clan-admin/dashboard/${clanId}`);
+        return { success: true };
+
+    } catch (error: any) {
+        console.error("Error promoting clan member:", error);
+        return { success: false, error: error.message };
+    }
+}
+
 
 /**
  * Updates a clan member's data (rank or status).

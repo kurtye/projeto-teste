@@ -1,10 +1,11 @@
+
 'use client';
 
 import { useClanAuth } from '../../layout';
 import { notFound } from 'next/navigation';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { LogOut, Users, Edit, Trash2, UserPlus, RefreshCw, CheckSquare, Square, List, Trophy, Shield, Star, Crown } from 'lucide-react';
+import { LogOut, Users, Edit, Trash2, UserPlus, RefreshCw, CheckSquare, Square, List, Trophy, Shield, Star, Crown, ArrowUp } from 'lucide-react';
 import { useCollection, useFirestore, useMemoFirebase } from '@/firebase';
 import { collection, query, where, documentId } from 'firebase/firestore';
 import type { PlayerAggregates, ClanMember } from '@/lib/types';
@@ -22,7 +23,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { useState, use, useTransition, useMemo } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
-import { findPotentialMembersByTag, addMembersToClan } from '../../actions';
+import { findPotentialMembersByTag, addMembersToClan, promoteClanMember } from '../../actions';
 import { useToast } from '@/hooks/use-toast';
 import { notFound as notFoundError } from 'next/navigation';
 
@@ -39,6 +40,7 @@ export default function ClanDashboardPage({ params }: { params: { clanId: string
   const [potentialMembers, setPotentialMembers] = useState<PlayerAggregates[]>([]);
   const [selectedNewMembers, setSelectedNewMembers] = useState<Set<string>>(new Set());
   const [isAdding, startAddingTransition] = useTransition();
+  const [isPromoting, startPromotingTransition] = useTransition();
 
   const membersQuery = useMemoFirebase(() => {
     if (!firestore || !clanId) return null;
@@ -78,6 +80,17 @@ export default function ClanDashboardPage({ params }: { params: { clanId: string
           description: result.error || 'Ocorreu um erro desconhecido.',
         });
       }
+    });
+  };
+
+  const handlePromote = (member: ClanMember) => {
+    startPromotingTransition(async () => {
+        const result = await promoteClanMember(clan.id, member.id, member.rank);
+        if (result.success) {
+            toast({ title: 'Promoção bem-sucedida!', description: `${member.playerName} foi promovido.` });
+        } else {
+            toast({ variant: 'destructive', title: 'Falha na Promoção', description: result.error });
+        }
     });
   };
   
@@ -188,7 +201,7 @@ export default function ClanDashboardPage({ params }: { params: { clanId: string
                 <TabsTrigger value="hierarchy"><Users className="mr-2 h-4 w-4"/>Hierarquia</TabsTrigger>
             </TabsList>
             <div className='flex items-center gap-4'>
-                 <Button onClick={handleSync} disabled={isSyncing}>
+                 <Button onClick={handleSync} disabled={isSyncing || isPromoting}>
                     <RefreshCw className={`mr-2 h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} />
                     {isSyncing ? 'Buscando...' : 'Sincronizar por Tag'}
                  </Button>
@@ -230,7 +243,10 @@ export default function ClanDashboardPage({ params }: { params: { clanId: string
                             <TableCell><Skeleton className="h-5 w-32" /></TableCell>
                             <TableCell><Skeleton className="h-5 w-24" /></TableCell>
                             <TableCell><Skeleton className="h-6 w-20 rounded-full" /></TableCell>
-                            <TableCell className="text-right"><Skeleton className="h-8 w-8 ml-auto" /></TableCell>
+                            <TableCell className="text-right space-x-2">
+                                <Skeleton className="h-8 w-8 ml-auto inline-block" />
+                                <Skeleton className="h-8 w-8 ml-auto inline-block" />
+                            </TableCell>
                             </TableRow>
                         ))
                         ) : sortedMembers && sortedMembers.length > 0 ? (
@@ -241,13 +257,19 @@ export default function ClanDashboardPage({ params }: { params: { clanId: string
                                 <TableCell>
                                 <Badge variant={getStatusVariant(member.status)}>{member.status}</Badge>
                                 </TableCell>
-                                <TableCell className="text-right">
-                                <Button variant="ghost" size="icon" className="mr-2" onClick={() => setMemberToEdit(member)}>
-                                    <Edit className="h-4 w-4" />
-                                </Button>
-                                <Button variant="ghost" size="icon" disabled>
-                                    <Trash2 className="h-4 w-4 text-destructive" />
-                                </Button>
+                                <TableCell className="text-right space-x-1">
+                                    <Button 
+                                        variant="ghost" 
+                                        size="icon" 
+                                        onClick={() => handlePromote(member)}
+                                        disabled={isPromoting || member.rank === 'Líder'}
+                                        title="Promover"
+                                    >
+                                        <ArrowUp className="h-4 w-4" />
+                                    </Button>
+                                    <Button variant="ghost" size="icon" onClick={() => setMemberToEdit(member)} title="Editar">
+                                        <Edit className="h-4 w-4" />
+                                    </Button>
                                 </TableCell>
                             </TableRow>
                             )
