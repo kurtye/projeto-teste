@@ -47,23 +47,6 @@ export default function ClanDashboardPage({ params }: { params: { clanId: string
 
   const { data: members, isLoading: isLoadingMembers, error: membersError } = useCollection<ClanMember>(membersQuery);
   
-  const memberIds = useMemo(() => {
-      if (!members || members.length === 0) return null;
-      return members.map(m => m.id);
-  }, [members]);
-
-  const memberAggregatesQuery = useMemoFirebase(() => {
-    if (!firestore || !memberIds) return null;
-    return query(collection(firestore, 'playerAggregates'), where(documentId(), 'in', memberIds));
-  }, [firestore, memberIds]);
-
-  const { data: memberAggregates, isLoading: isLoadingAggregates, error: aggregatesError } = useCollection<PlayerAggregates>(memberAggregatesQuery);
-  
-  const memberAggregatesMap = useMemo(() => {
-    if (!memberAggregates) return new Map<string, PlayerAggregates>();
-    return new Map(memberAggregates.map(agg => [agg.id, agg]));
-  }, [memberAggregates]);
-  
   if (!clan || clan.id !== clanId) {
     return notFoundError();
   }
@@ -136,8 +119,6 @@ export default function ClanDashboardPage({ params }: { params: { clanId: string
         }
     });
   };
-
-  const isLoading = isLoadingMembers || isLoadingAggregates;
 
   const sortedMembers = useMemo(() => {
     if (!members) return [];
@@ -212,7 +193,7 @@ export default function ClanDashboardPage({ params }: { params: { clanId: string
                     {isSyncing ? 'Buscando...' : 'Sincronizar por Tag'}
                  </Button>
                 <div className="text-right">
-                   {isLoading ? (
+                   {isLoadingMembers ? (
                       <Skeleton className="h-7 w-12" />
                    ) : (
                       <p className="text-3xl font-bold text-accent">{members?.length || 0}</p>
@@ -239,38 +220,26 @@ export default function ClanDashboardPage({ params }: { params: { clanId: string
                         <TableHead>Jogador</TableHead>
                         <TableHead>Patente</TableHead>
                         <TableHead>Status</TableHead>
-                        <TableHead className="hidden md:table-cell">Kills</TableHead>
-                        <TableHead className="hidden md:table-cell">Tempo Jogado</TableHead>
                         <TableHead className="text-right">Ações</TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
-                        {isLoading ? (
+                        {isLoadingMembers ? (
                         Array.from({ length: 5 }).map((_, i) => (
                             <TableRow key={i}>
                             <TableCell><Skeleton className="h-5 w-32" /></TableCell>
                             <TableCell><Skeleton className="h-5 w-24" /></TableCell>
                             <TableCell><Skeleton className="h-6 w-20 rounded-full" /></TableCell>
-                            <TableCell className="hidden md:table-cell"><Skeleton className="h-5 w-12" /></TableCell>
-                            <TableCell className="hidden md:table-cell"><Skeleton className="h-5 w-12" /></TableCell>
                             <TableCell className="text-right"><Skeleton className="h-8 w-8 ml-auto" /></TableCell>
                             </TableRow>
                         ))
                         ) : sortedMembers && sortedMembers.length > 0 ? (
-                        sortedMembers.map((member) => {
-                            const aggregateData = memberAggregatesMap.get(member.id);
-                            return (
+                        sortedMembers.map((member) => (
                             <TableRow key={member.id}>
                                 <TableCell className="font-medium">{member.playerName}</TableCell>
                                 <TableCell>{member.rank}</TableCell>
                                 <TableCell>
                                 <Badge variant={getStatusVariant(member.status)}>{member.status}</Badge>
-                                </TableCell>
-                                <TableCell className="hidden md:table-cell">
-                                  {aggregateData?.totalKills?.toLocaleString() ?? '-'}
-                                </TableCell>
-                                <TableCell className="hidden md:table-cell">
-                                  {aggregateData?.totalTimeSeconds ? `${Math.floor(aggregateData.totalTimeSeconds / 3600)}h` : '-'}
                                 </TableCell>
                                 <TableCell className="text-right">
                                 <Button variant="ghost" size="icon" className="mr-2" onClick={() => setMemberToEdit(member)}>
@@ -282,10 +251,10 @@ export default function ClanDashboardPage({ params }: { params: { clanId: string
                                 </TableCell>
                             </TableRow>
                             )
-                        })
+                        )
                         ) : (
                         <TableRow>
-                            <TableCell colSpan={6} className="h-24 text-center">
+                            <TableCell colSpan={4} className="h-24 text-center">
                             Nenhum membro encontrado. Use a "Sincronização por Tag" para encontrar e adicionar jogadores.
                             </TableCell>
                         </TableRow>
