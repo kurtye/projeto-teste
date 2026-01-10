@@ -61,3 +61,15 @@ export interface ClanMember {
   status: 'active' | 'inactive' | 'trial';
   clanTag: string;
 }
+
+export interface PromotionLog {
+    id: string;
+    playerId: string;
+    playerName: string;
+    oldRank: string;
+    newRank: string;
+    promotionDate: {
+        seconds: number;
+        nanoseconds: number;
+    } | Date;
+}

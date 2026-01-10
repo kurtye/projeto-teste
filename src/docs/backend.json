@@ -196,6 +196,20 @@
         "status": { "type": "string", "enum": ["active", "inactive", "trial"] }
       },
       "required": ["playerId", "rank", "status"]
+    },
+    "PromotionLog": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "title": "PromotionLog",
+        "type": "object",
+        "description": "Represents a log entry for a member's promotion.",
+        "properties": {
+            "playerId": { "type": "string" },
+            "playerName": { "type": "string" },
+            "oldRank": { "type": "string" },
+            "newRank": { "type": "string" },
+            "promotionDate": { "type": "string", "format": "date-time" }
+        },
+        "required": ["playerId", "playerName", "oldRank", "newRank", "promotionDate"]
     }
   },
   "auth": {
@@ -240,6 +254,10 @@
     "/clans/{clanId}/members/{playerId}": {
       "schema": { "$ref": "#/entities/ClanMember" },
       "description": "Subcollection to store members of a clan and their specific data like rank."
+    },
+    "/clans/{clanId}/promotionLog/{logId}": {
+        "schema": { "$ref": "#/entities/PromotionLog" },
+        "description": "Subcollection to log member promotions."
     }
   }
 }

@@ -5,12 +5,13 @@ import { useClanAuth } from '../../layout';
 import { notFound } from 'next/navigation';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { LogOut, Users, Edit, Trash2, UserPlus, RefreshCw, CheckSquare, Square, List, Trophy, Shield, Star, Crown, ArrowUp, Diamond, Award } from 'lucide-react';
+import { LogOut, Users, Edit, UserPlus, RefreshCw, CheckSquare, Square, List, Trophy, Shield, Star, Crown, ArrowUp, Diamond, Award, Medal } from 'lucide-react';
 import { useCollection, useFirestore, useMemoFirebase } from '@/firebase';
-import { collection, query, where, documentId, orderBy } from 'firebase/firestore';
-import type { PlayerAggregates, ClanMember } from '@/lib/types';
+import { collection, query, orderBy } from 'firebase/firestore';
+import type { PlayerAggregates, ClanMember, PromotionLog } from '@/lib/types';
 import { EditMemberDialog } from './_components/EditMemberDialog';
 import { HierarchyView } from './_components/HierarchyView';
+import { RecentPromotions } from './_components/RecentPromotions';
 import {
   Table,
   TableBody,
@@ -42,12 +43,20 @@ export default function ClanDashboardPage({ params }: { params: { clanId: string
   const [isAdding, startAddingTransition] = useTransition();
   const [isPromoting, startPromotingTransition] = useTransition();
 
+  // Query for clan members
   const membersQuery = useMemoFirebase(() => {
     if (!firestore || !clanId) return null;
     return query(collection(firestore, 'clans', clanId, 'members'), orderBy('playerName'));
   }, [firestore, clanId]);
+  const { data: members, isLoading: isLoadingMembers } = useCollection<ClanMember>(membersQuery);
+  
+  // Query for promotion logs
+  const promotionsQuery = useMemoFirebase(() => {
+      if (!firestore || !clanId) return null;
+      return query(collection(firestore, 'clans', clanId, 'promotionLog'), orderBy('promotionDate', 'desc'), orderBy('playerName'));
+  }, [firestore, clanId]);
+  const { data: promotions, isLoading: isLoadingPromotions } = useCollection<PromotionLog>(promotionsQuery);
 
-  const { data: members, isLoading: isLoadingMembers, error: membersError } = useCollection<ClanMember>(membersQuery);
   
   if (!clan || clan.id !== clanId) {
     return notFoundError();
@@ -156,7 +165,6 @@ export default function ClanDashboardPage({ params }: { params: { clanId: string
       const rankA = ranksInOrder.indexOf(a.rank);
       const rankB = ranksInOrder.indexOf(b.rank);
       if (rankA !== rankB) {
-        // Higher index means lower rank, so we want higher rank first
         return rankA - rankB;
       }
       return a.playerName.localeCompare(b.playerName);
@@ -216,6 +224,7 @@ export default function ClanDashboardPage({ params }: { params: { clanId: string
             <TabsList>
                 <TabsTrigger value="list"><List className="mr-2 h-4 w-4"/>Lista de Membros</TabsTrigger>
                 <TabsTrigger value="hierarchy"><Users className="mr-2 h-4 w-4"/>Hierarquia</TabsTrigger>
+                <TabsTrigger value="promotions"><Medal className="mr-2 h-4 w-4"/>Promoções</TabsTrigger>
             </TabsList>
             <div className='flex items-center gap-4'>
                  <Button onClick={handleSync} disabled={isSyncing || isPromoting}>
@@ -317,6 +326,15 @@ export default function ClanDashboardPage({ params }: { params: { clanId: string
             ) : (
                 <HierarchyView members={members || []} />
             )}
+        </TabsContent>
+        <TabsContent value="promotions">
+             {isLoadingPromotions ? (
+                 <div className="space-y-4">
+                    <Skeleton className="h-48 w-full" />
+                </div>
+             ) : (
+                <RecentPromotions promotions={promotions || []} />
+             )}
         </TabsContent>
       </Tabs>
     </div>

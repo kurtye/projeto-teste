@@ -11,9 +11,11 @@ import {
     getDocs,
     writeBatch,
     orderBy,
-    and
+    and,
+    addDoc,
+    serverTimestamp,
 } from 'firebase/firestore';
-import type { ClanMember, PlayerAggregates } from '@/lib/types';
+import type { ClanMember, PlayerAggregates, PromotionLog } from '@/lib/types';
 import { revalidatePath } from 'next/cache';
 
 const RANKS = [
@@ -38,7 +40,7 @@ const RANKS = [
 ];
 
 /**
- * Promotes a clan member to the next rank in the hierarchy.
+ * Promotes a clan member to the next rank and logs the promotion.
  */
 export async function promoteClanMember(clanId: string, memberId: string, currentRank: string): Promise<{ success: boolean; error?: string }> {
     try {
@@ -50,7 +52,31 @@ export async function promoteClanMember(clanId: string, memberId: string, curren
         const newRank = RANKS[currentIndex + 1];
 
         const memberRef = doc(db, 'clans', clanId, 'members', memberId);
-        await setDoc(memberRef, { rank: newRank }, { merge: true });
+        const promotionLogRef = collection(db, 'clans', clanId, 'promotionLog');
+
+        const memberDoc = await getDocs(query(collection(db, 'clans', clanId, 'members'), where('playerId', '==', memberId)));
+        
+        if (memberDoc.empty) {
+            return { success: false, error: "Membro não encontrado para registrar a promoção." };
+        }
+        const memberData = memberDoc.docs[0].data() as ClanMember;
+
+        const batch = writeBatch(db);
+
+        // Update member's rank
+        batch.set(memberRef, { rank: newRank }, { merge: true });
+
+        // Create promotion log entry
+        const promotionLogEntry: Omit<PromotionLog, 'id' | 'promotionDate'> & { promotionDate: any } = {
+            playerId: memberId,
+            playerName: memberData.playerName,
+            oldRank: currentRank,
+            newRank: newRank,
+            promotionDate: serverTimestamp(),
+        };
+        batch.set(doc(promotionLogRef), promotionLogEntry);
+        
+        await batch.commit();
 
         revalidatePath(`/clan-admin/dashboard/${clanId}`);
         return { success: true };
