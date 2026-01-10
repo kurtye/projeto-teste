@@ -7,7 +7,7 @@ import { Card, CardHeader, CardTitle, CardContent, CardDescription, CardFooter }
 import { Button } from '@/components/ui/button';
 import { LogOut, Users, Edit, UserPlus, RefreshCw, CheckSquare, Square, List, Trophy, Shield, Star, Crown, ArrowUp, Diamond, Award, Medal } from 'lucide-react';
 import { useCollection, useFirestore, useMemoFirebase } from '@/firebase';
-import { collection, query, orderBy } from 'firebase/firestore';
+import { collection, query, orderBy, getDocs, where, documentId } from 'firebase/firestore';
 import type { PlayerAggregates, ClanMember, PromotionLog } from '@/lib/types';
 import { EditMemberDialog } from './_components/EditMemberDialog';
 import { HierarchyView } from './_components/HierarchyView';
@@ -22,7 +22,7 @@ import {
 } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { useState, use, useTransition, useMemo } from 'react';
+import { useState, use, useTransition, useMemo, useEffect } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { findPotentialMembersByTag, addMembersToClan, promoteClanMember } from '../../actions';
 import { useToast } from '@/hooks/use-toast';
@@ -42,7 +42,7 @@ export default function ClanDashboardPage({ params }: { params: { clanId: string
   const [selectedNewMembers, setSelectedNewMembers] = useState<Set<string>>(new Set());
   const [isAdding, startAddingTransition] = useTransition();
   const [isPromoting, startPromotingTransition] = useTransition();
-
+  
   // Query for clan members
   const membersQuery = useMemoFirebase(() => {
     if (!firestore || !clanId) return null;
@@ -50,12 +50,25 @@ export default function ClanDashboardPage({ params }: { params: { clanId: string
   }, [firestore, clanId]);
   const { data: members, isLoading: isLoadingMembers } = useCollection<ClanMember>(membersQuery);
   
-  // Query for promotion logs
+  // Query for promotion logs - simplified query
   const promotionsQuery = useMemoFirebase(() => {
       if (!firestore || !clanId) return null;
-      return query(collection(firestore, 'clans', clanId, 'promotionLog'), orderBy('promotionDate', 'desc'), orderBy('playerName'));
+      return query(collection(firestore, 'clans', clanId, 'promotionLog'));
   }, [firestore, clanId]);
   const { data: promotions, isLoading: isLoadingPromotions } = useCollection<PromotionLog>(promotionsQuery);
+
+  // Client-side sorting for promotions
+  const sortedPromotions = useMemo(() => {
+    if (!promotions) return [];
+    return [...promotions].sort((a, b) => {
+        const dateA = a.promotionDate as any;
+        const dateB = b.promotionDate as any;
+        // Handle both Timestamps and Dates
+        const timeA = dateA.seconds ? dateA.seconds * 1000 : new Date(dateA).getTime();
+        const timeB = dateB.seconds ? dateB.seconds * 1000 : new Date(dateB).getTime();
+        return timeB - timeA;
+    });
+  }, [promotions]);
 
   
   if (!clan || clan.id !== clanId) {
@@ -333,7 +346,7 @@ export default function ClanDashboardPage({ params }: { params: { clanId: string
                     <Skeleton className="h-48 w-full" />
                 </div>
              ) : (
-                <RecentPromotions promotions={promotions || []} />
+                <RecentPromotions promotions={sortedPromotions || []} />
              )}
         </TabsContent>
       </Tabs>
