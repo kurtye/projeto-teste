@@ -10,7 +10,7 @@ import type { ClanMember } from '@/lib/types';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Users, List, Shield } from 'lucide-react';
+import { Users, List, Shield, Settings } from 'lucide-react';
 import { HierarchyView } from '@/app/clan-admin/dashboard/[clanId]/_components/HierarchyView';
 import {
   Table,
@@ -22,6 +22,9 @@ import {
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Button } from '@/components/ui/button';
+import Link from 'next/link';
+
 
 interface ClanPageProps {
   params: {
@@ -76,14 +79,22 @@ export default function ClanPage({ params }: ClanPageProps) {
 
   return (
     <div className="container mx-auto px-4 py-8 mb-16 md:mb-0">
-      <div className="flex flex-col sm:flex-row items-center gap-6 mb-8">
-        <Avatar className="h-24 w-24 border-4 border-primary">
-          <AvatarFallback className="text-4xl">{clan.tag}</AvatarFallback>
-        </Avatar>
-        <div>
-          <h1 className="text-3xl md:text-4xl font-bold font-headline">{clan.name}</h1>
-          <p className="text-xl text-muted-foreground">Tag: [{clan.tag}]</p>
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-6 mb-8">
+        <div className="flex items-center gap-6">
+            <Avatar className="h-24 w-24 border-4 border-primary">
+              <AvatarFallback className="text-4xl">{clan.tag}</AvatarFallback>
+            </Avatar>
+            <div>
+              <h1 className="text-3xl md:text-4xl font-bold font-headline">{clan.name}</h1>
+              <p className="text-xl text-muted-foreground">Tag: [{clan.tag}]</p>
+            </div>
         </div>
+         <Button asChild>
+            <Link href={`/clan-admin/dashboard/${clanId}`}>
+                <Settings className="mr-2 h-4 w-4" />
+                Painel do Admin
+            </Link>
+        </Button>
       </div>
       
        <Tabs defaultValue="list">
