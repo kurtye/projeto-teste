@@ -52,7 +52,7 @@ const CLAN_TAGS = ['SMK', 'HRB', 'RZN', 'OCL', '3LPZ', 'WRT', 'SAP', 'BOLD', 'ID
 function hasClanTag(playerName: string): boolean {
   if (!playerName) return false;
   const upperPlayerName = playerName.toUpperCase();
-  return CLAN_TAGS.some(tag => upperPlayerName.includes(`[${tag}]`) || upperPlayerName.startsWith(tag));
+  return CLAN_TAGS.some(tag => upperPlayerName.includes(`[${tag}]`) || upperPlayerName.includes(tag));
 }
 
 /**
@@ -130,8 +130,6 @@ export async function updateClanMember(clanId: string, playerId: string, data: P
  */
 export async function findPotentialMembersByTag(clanId: string, clanTag: string): Promise<{ success: boolean, players?: PlayerAggregates[], error?: string }> {
   try {
-    const upperCaseClanTag = `[${clanTag.toUpperCase()}]`;
-    const simpleTag = clanTag.toUpperCase();
     
     // This query is broad but necessary to find names that contain the tag anywhere.
     const playersQuery = query(collection(db, 'playerAggregates'));
@@ -143,7 +141,7 @@ export async function findPotentialMembersByTag(clanId: string, clanTag: string)
       // Filter on the server side to find tags anywhere in the name
       .filter(p => {
         const upperName = p.latestPlayerName.toUpperCase();
-        return upperName.includes(upperCaseClanTag) || upperName.includes(simpleTag);
+        return upperName.includes(clanTag.toUpperCase());
       });
 
     // Get all current members of the clan to avoid suggesting existing ones
