@@ -6,12 +6,7 @@ import { createContext, useContext, useState, useEffect, ReactNode, useMemo } fr
 import { useUser, useAuth as useFirebaseAuth } from '@/firebase';
 import type { User } from 'firebase/auth';
 import { signInWithEmailAndPassword } from 'firebase/auth';
-
-// --- Static Clan Data for Testing ---
-// In a real app, this would come from Firestore
-const clans = [
-    { id: 'smk', name: 'Senta a Pua - Smoke Cobras', tag: 'SMK', adminEmails: ['smk@test.com'] }
-];
+import { clans } from '@/lib/clans';
 
 interface ClanAuthContextType {
   isAuthenticated: boolean;

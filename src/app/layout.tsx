@@ -7,7 +7,7 @@ import { Header } from '@/components/layout/header';
 import { FirebaseClientProvider } from '@/firebase';
 import { Sidebar, SidebarProvider, SidebarInset } from '@/components/ui/sidebar';
 import { MobileFooter } from '@/components/layout/mobile-footer';
-import { Home, BarChart, Trophy, Briefcase, Award, Info, BookUser } from 'lucide-react';
+import { Home, BarChart, Trophy, Briefcase, Award, Info, BookUser, Users } from 'lucide-react';
 import { SidebarContent, SidebarMenu, SidebarMenuItem, SidebarMenuButton } from '@/components/ui/sidebar';
 import Link from 'next/link';
 import Script from 'next/script';
@@ -56,6 +56,11 @@ export default function RootLayout({
                         <SidebarMenuItem>
                             <SidebarMenuButton asChild>
                                 <Link href="/"><Home />Ranking</Link>
+                            </SidebarMenuButton>
+                        </SidebarMenuItem>
+                         <SidebarMenuItem>
+                            <SidebarMenuButton asChild>
+                                <Link href="/clans"><Users />Clãs</Link>
                             </SidebarMenuButton>
                         </SidebarMenuItem>
                          <SidebarMenuItem>

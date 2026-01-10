@@ -50,7 +50,7 @@ export interface Clan {
   id: string;
   name: string;
   tag: string;
-  adminUids: string[];
+  adminEmails: string[];
 }
 
 export interface ClanMember {

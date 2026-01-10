@@ -3,14 +3,14 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, Briefcase, Trophy, Award, Info, BookUser } from 'lucide-react';
+import { Home, Briefcase, Trophy, Users, Info } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const navItems = [
   { href: '/', label: 'Ranking', icon: Home },
+  { href: '/clans', label: 'Clãs', icon: Users },
   { href: '/hall-of-fame', label: 'Hall da Fama', icon: Trophy },
   { href: '/caserna', label: 'Caserna', icon: Briefcase },
-  { href: '/sobre', label: 'Sobre', icon: Info },
 ];
 
 export function MobileFooter() {
@@ -20,7 +20,7 @@ export function MobileFooter() {
     <footer className="fixed bottom-0 left-0 z-50 w-full h-16 border-t bg-background/95 backdrop-blur-sm md:hidden">
       <div className="grid h-full max-w-lg grid-cols-4 mx-auto font-medium">
         {navItems.map(({ href, label, icon: Icon }) => {
-          const isActive = pathname === href;
+          const isActive = pathname.startsWith(href) && (href !== '/' || pathname === '/');
           return (
             <Link
               key={label}
