@@ -27,6 +27,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { findPotentialMembersByTag, addMembersToClan, promoteClanMember, findLoneWolves } from '../../actions';
 import { useToast } from '@/hooks/use-toast';
 import { notFound as notFoundError } from 'next/navigation';
+import Image from 'next/image';
 
 export default function ClanDashboardPage({ params }: { params: { clanId: string } }) {
   const resolvedParams = use(params);
@@ -92,13 +93,17 @@ export default function ClanDashboardPage({ params }: { params: { clanId: string
     }
   }
   
-  const getRankIcon = (rank: string) => {
-    if (rank.includes('General') || rank.includes('Marechal')) return <Crown className="h-4 w-4 text-yellow-400"/>;
-    if (rank.includes('Coronel') || rank.includes('Major')) return <Star className="h-4 w-4 text-purple-400"/>;
-    if (rank.includes('Tenente') || rank.includes('Capitão')) return <Diamond className="h-4 w-4 text-blue-400"/>;
-    if (rank.includes('Sargento') || rank.includes('Subtenente') || rank.includes('Aspirante')) return <Award className="h-4 w-4 text-teal-400"/>;
-    if (rank.includes('Cabo')) return <Shield className="h-4 w-4 text-green-400"/>;
-    return <UserPlus className="h-4 w-4 text-gray-400"/>
+  const getRankImage = (rank: string) => {
+    const imageName = rank.toLowerCase().replace(/ /g, '-').replace('ê', 'e') + '.png';
+    return (
+        <Image 
+            src={`/patentes/${imageName}`} 
+            alt={rank} 
+            width={20} 
+            height={20} 
+            className="w-5 h-5"
+        />
+    );
   };
 
 
@@ -324,7 +329,7 @@ export default function ClanDashboardPage({ params }: { params: { clanId: string
                             <TableRow key={member.id}>
                                 <TableCell className="font-medium">{member.playerName}</TableCell>
                                 <TableCell className="flex items-center gap-2">
-                                    {getRankIcon(member.rank)}
+                                    {getRankImage(member.rank)}
                                     {member.rank}
                                 </TableCell>
                                 <TableCell>

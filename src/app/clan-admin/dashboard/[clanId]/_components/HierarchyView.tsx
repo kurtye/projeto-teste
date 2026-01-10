@@ -4,8 +4,8 @@
 import type { ClanMember } from '@/lib/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Crown, Shield, Star, User, Diamond, Award } from 'lucide-react';
 import Link from 'next/link';
+import Image from 'next/image';
 
 interface HierarchyViewProps {
   members: ClanMember[];
@@ -32,25 +32,9 @@ const ranksInOrder = [
     'Recruta'
 ];
 
-const rankIcons: { [key: string]: React.ReactNode } = {
-  'Marechal': <Crown className="h-5 w-5 text-yellow-400" />,
-  'General de Exército': <Crown className="h-5 w-5 text-yellow-500" />,
-  'General de Divisão': <Crown className="h-5 w-5 text-yellow-600" />,
-  'General de Brigada': <Crown className="h-5 w-5 text-yellow-700" />,
-  'Coronel': <Star className="h-5 w-5 text-purple-400" />,
-  'Tenente-Coronel': <Star className="h-5 w-5 text-purple-500" />,
-  'Major': <Star className="h-5 w-5 text-purple-600" />,
-  'Capitão': <Diamond className="h-5 w-5 text-blue-400" />,
-  'Primeiro-Tenente': <Diamond className="h-5 w-5 text-blue-500" />,
-  'Segundo-Tenente': <Diamond className="h-5 w-5 text-blue-600" />,
-  'Aspirante': <Award className="h-5 w-5 text-teal-400" />,
-  'Subtenente': <Award className="h-5 w-5 text-teal-500" />,
-  'Primeiro-Sargento': <Shield className="h-5 w-5 text-green-400" />,
-  'Segundo-Sargento': <Shield className="h-5 w-5 text-green-500" />,
-  'Terceiro-Sargento': <Shield className="h-5 w-5 text-green-600" />,
-  'Cabo': <User className="h-5 w-5 text-gray-400" />,
-  'Soldado': <User className="h-5 w-5 text-gray-500" />,
-  'Recruta': <User className="h-5 w-5 text-gray-600" />,
+const getRankImage = (rank: string) => {
+    const imageName = rank.toLowerCase().replace(/ /g, '-').replace('ê', 'e') + '.png';
+    return `/patentes/${imageName}`;
 };
 
 export function HierarchyView({ members }: HierarchyViewProps) {
@@ -68,7 +52,7 @@ export function HierarchyView({ members }: HierarchyViewProps) {
           <Card key={rank} className="bg-card/50 backdrop-blur-sm">
             <CardHeader>
               <CardTitle className="flex items-center gap-3 text-xl font-headline">
-                {rankIcons[rank] || <User className="h-5 w-5" />}
+                <Image src={getRankImage(rank)} alt={rank} width={24} height={24} />
                 <span>{rank} ({members.length})</span>
               </CardTitle>
             </CardHeader>
