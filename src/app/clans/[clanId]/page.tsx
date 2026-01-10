@@ -151,9 +151,3 @@ export default function ClanPage({ params }: ClanPageProps) {
     </div>
   );
 }
-
-export async function generateStaticParams() {
-  return clans.map((clan) => ({
-    clanId: clan.id,
-  }));
-}
