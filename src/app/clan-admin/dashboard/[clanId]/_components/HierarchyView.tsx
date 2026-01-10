@@ -33,7 +33,8 @@ const ranksInOrder = [
 ];
 
 const getRankImage = (rank: string) => {
-    const imageName = rank.toLowerCase().replace(/ /g, '-').replace('ê', 'e') + '.png';
+    // Correctly forms the image name, preserving case and using the .jpeg extension.
+    const imageName = rank.replace(/ /g, '-') + '.jpeg';
     return `/patentes/${imageName}`;
 };
 
