@@ -51,11 +51,14 @@ export function HierarchyView({ members }: HierarchyViewProps) {
       {membersByRank.map(({ rank, members }) => (
         members.length > 0 && (
           <Card key={rank} className="bg-card/50 backdrop-blur-sm">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-3 text-xl font-headline">
-                <Image src={getRankImage(rank)} alt={rank} width={24} height={24} />
-                <span>{rank} ({members.length})</span>
-              </CardTitle>
+            <CardHeader className="flex flex-row items-center justify-between">
+                <div>
+                    <CardTitle className="text-xl font-headline">
+                        {rank}
+                    </CardTitle>
+                    <p className="text-sm text-muted-foreground">{members.length} membro(s)</p>
+                </div>
+                <Image src={getRankImage(rank)} alt={rank} width={48} height={48} />
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
@@ -67,7 +70,7 @@ export function HierarchyView({ members }: HierarchyViewProps) {
                       </Avatar>
                       <div className="overflow-hidden">
                         <p className="truncate font-medium">{member.playerName}</p>
-                        <p className="text-xs text-muted-foreground">{member.status}</p>
+                        <p className="text-xs text-muted-foreground capitalize">{member.status}</p>
                       </div>
                     </div>
                   </Link>
