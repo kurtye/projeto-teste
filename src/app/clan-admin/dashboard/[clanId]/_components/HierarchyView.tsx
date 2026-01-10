@@ -1,4 +1,3 @@
-
 'use client';
 
 import type { ClanMember } from '@/lib/types';
@@ -50,33 +49,41 @@ export function HierarchyView({ members }: HierarchyViewProps) {
     <div className="space-y-6">
       {membersByRank.map(({ rank, members }) => (
         members.length > 0 && (
-          <Card key={rank} className="bg-card/50 backdrop-blur-sm">
-            <CardHeader className="flex flex-row items-center justify-between">
-                <div>
-                    <CardTitle className="text-xl font-headline">
-                        {rank}
-                    </CardTitle>
-                    <p className="text-sm text-muted-foreground">{members.length} membro(s)</p>
-                </div>
-                <Image src={getRankImage(rank)} alt={rank} width={48} height={48} />
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                {members.map(member => (
-                  <Link key={member.id} href={`/player/${encodeURIComponent(member.id)}`}>
-                    <div className="flex items-center gap-3 rounded-md p-2 transition-colors hover:bg-muted">
-                      <Avatar className="h-10 w-10">
-                        <AvatarFallback>{member.playerName.charAt(0)}</AvatarFallback>
-                      </Avatar>
-                      <div className="overflow-hidden">
-                        <p className="truncate font-medium">{member.playerName}</p>
-                        <p className="text-xs text-muted-foreground capitalize">{member.status}</p>
+          <Card key={rank} className="bg-card/50 backdrop-blur-sm overflow-hidden">
+            <div className="flex">
+              <div className="w-2/3 p-6">
+                 <CardTitle className="text-xl font-headline">
+                    {rank}
+                </CardTitle>
+                <p className="text-sm text-muted-foreground mb-4">{members.length} membro(s)</p>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {members.map(member => (
+                    <Link key={member.id} href={`/player/${encodeURIComponent(member.id)}`}>
+                      <div className="flex items-center gap-3 rounded-md p-2 transition-colors hover:bg-muted">
+                        <Avatar className="h-10 w-10">
+                          <AvatarFallback>{member.playerName.charAt(0)}</AvatarFallback>
+                        </Avatar>
+                        <div className="overflow-hidden">
+                          <p className="truncate font-medium">{member.playerName}</p>
+                          <p className="text-xs text-muted-foreground capitalize">{member.status}</p>
+                        </div>
                       </div>
-                    </div>
-                  </Link>
-                ))}
+                    </Link>
+                  ))}
+                </div>
               </div>
-            </CardContent>
+
+              <div className="relative w-1/3">
+                 <Image 
+                    src={getRankImage(rank)} 
+                    alt={rank} 
+                    fill
+                    className="object-cover"
+                 />
+                 <div className="absolute inset-0 bg-gradient-to-l from-black/50 to-transparent"></div>
+              </div>
+            </div>
           </Card>
         )
       ))}
