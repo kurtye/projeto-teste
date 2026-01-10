@@ -14,9 +14,11 @@ import {
     and,
     addDoc,
     serverTimestamp,
+    limit,
 } from 'firebase/firestore';
 import type { ClanMember, PlayerAggregates, PromotionLog } from '@/lib/types';
 import { revalidatePath } from 'next/cache';
+import { getWeek, getWeekYear } from 'date-fns';
 
 const RANKS = [
     'Recruta',
@@ -39,6 +41,20 @@ const RANKS = [
     'Marechal'
 ];
 
+const CLAN_TAGS = ['SMK', 'HRB', 'RZN', 'OCL', '3LPZ', 'WRT', 'SAP', 'BOLD', 'IDG', 'SOH'];
+
+/**
+ * Checks if a player name contains any of the known clan tags.
+ * The check is case-insensitive.
+ * @param playerName - The name of the player.
+ * @returns True if a clan tag is found, false otherwise.
+ */
+function hasClanTag(playerName: string): boolean {
+  if (!playerName) return false;
+  const upperPlayerName = playerName.toUpperCase();
+  return CLAN_TAGS.some(tag => upperPlayerName.includes(`[${tag}]`) || upperPlayerName.startsWith(tag));
+}
+
 /**
  * Promotes a clan member to the next rank and logs the promotion.
  */
@@ -54,17 +70,19 @@ export async function promoteClanMember(clanId: string, memberId: string, curren
         const memberRef = doc(db, 'clans', clanId, 'members', memberId);
         const promotionLogRef = collection(db, 'clans', clanId, 'promotionLog');
 
-        const memberDoc = await getDocs(query(collection(db, 'clans', clanId, 'members'), where('playerId', '==', memberId)));
+        const memberDocQuery = query(collection(db, 'clans', clanId, 'members'), where('playerId', '==', memberId));
+        const memberDocSnapshot = await getDocs(memberDocQuery);
+
         
-        if (memberDoc.empty) {
+        if (memberDocSnapshot.empty) {
             return { success: false, error: "Membro não encontrado para registrar a promoção." };
         }
-        const memberData = memberDoc.docs[0].data() as ClanMember;
+        const memberData = memberDocSnapshot.docs[0].data() as ClanMember;
 
         const batch = writeBatch(db);
 
         // Update member's rank
-        batch.set(memberRef, { rank: newRank }, { merge: true });
+        batch.set(doc(db, 'clans', clanId, 'members', memberData.id), { rank: newRank }, { merge: true });
 
         // Create promotion log entry
         const promotionLogEntry: Omit<PromotionLog, 'id' | 'promotionDate'> & { promotionDate: any } = {
@@ -112,22 +130,21 @@ export async function updateClanMember(clanId: string, playerId: string, data: P
  */
 export async function findPotentialMembersByTag(clanId: string, clanTag: string): Promise<{ success: boolean, players?: PlayerAggregates[], error?: string }> {
   try {
-    const upperCaseClanTag = clanTag.toUpperCase();
+    const upperCaseClanTag = `[${clanTag.toUpperCase()}]`;
+    const simpleTag = clanTag.toUpperCase();
     
-    // Create a query to find players whose names start with the clan tag.
-    // This is more efficient than fetching all players.
-    const playersQuery = query(
-        collection(db, 'playerAggregates'),
-        where('latestPlayerName', '>=', upperCaseClanTag),
-        where('latestPlayerName', '<=', upperCaseClanTag + '\uf8ff')
-    );
+    // This query is broad but necessary to find names that contain the tag anywhere.
+    const playersQuery = query(collection(db, 'playerAggregates'));
     
     const querySnapshot = await getDocs(playersQuery);
     
     const potentialPlayers = querySnapshot.docs
       .map(doc => ({ id: doc.id, ...doc.data() } as PlayerAggregates))
-      // Double-check the filter on the server side as Firestore's string operators can sometimes be broader.
-      .filter(p => p.latestPlayerName.toUpperCase().includes(upperCaseClanTag));
+      // Filter on the server side to find tags anywhere in the name
+      .filter(p => {
+        const upperName = p.latestPlayerName.toUpperCase();
+        return upperName.includes(upperCaseClanTag) || upperName.includes(simpleTag);
+      });
 
     // Get all current members of the clan to avoid suggesting existing ones
     const membersCollection = collection(db, 'clans', clanId, 'members');
@@ -181,6 +198,38 @@ export async function addMembersToClan(clanId: string, players: PlayerAggregates
     } catch (error: any) {
         console.error("Error adding members to clan:", error);
         return { success: false, error: error.message };
+    }
+}
+
+/**
+ * Finds top players from the monthly stats who do not have a known clan tag.
+ */
+export async function findLoneWolves(): Promise<{ success: boolean, players?: PlayerAggregates[], error?: string }> {
+    try {
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = (now.getMonth() + 1).toString().padStart(2, "0");
+        const periodId = `month_${year}-${month}`;
+
+        const monthlyStatsQuery = query(
+            collection(db, 'playerMonthlyStats'),
+            where('periodId', '==', periodId),
+            orderBy('totalKills', 'desc'),
+            limit(100) // Fetch top 100 players of the month
+        );
+
+        const snapshot = await getDocs(monthlyStatsQuery);
+        
+        const allMonthlyPlayers = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.data().playerId } as PlayerAggregates));
+        
+        // Filter out players who have a known clan tag
+        const loneWolves = allMonthlyPlayers.filter(player => !hasClanTag(player.latestPlayerName));
+
+        return { success: true, players: loneWolves };
+
+    } catch (error: any) {
+        console.error("Error finding lone wolves:", error);
+        return { success: false, error: "Falha ao buscar jogadores sem clã." };
     }
 }
     

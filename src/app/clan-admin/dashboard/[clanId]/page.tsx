@@ -5,7 +5,7 @@ import { useClanAuth } from '../../layout';
 import { notFound } from 'next/navigation';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { LogOut, Users, Edit, UserPlus, RefreshCw, CheckSquare, Square, List, Trophy, Shield, Star, Crown, ArrowUp, Diamond, Award, Medal } from 'lucide-react';
+import { LogOut, Users, Edit, UserPlus, RefreshCw, CheckSquare, Square, List, Trophy, Shield, Star, Crown, ArrowUp, Diamond, Award, Medal, Search } from 'lucide-react';
 import { useCollection, useFirestore, useMemoFirebase } from '@/firebase';
 import { collection, query, orderBy, getDocs, where, documentId } from 'firebase/firestore';
 import type { PlayerAggregates, ClanMember, PromotionLog } from '@/lib/types';
@@ -24,7 +24,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { useState, use, useTransition, useMemo, useEffect } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
-import { findPotentialMembersByTag, addMembersToClan, promoteClanMember } from '../../actions';
+import { findPotentialMembersByTag, addMembersToClan, promoteClanMember, findLoneWolves } from '../../actions';
 import { useToast } from '@/hooks/use-toast';
 import { notFound as notFoundError } from 'next/navigation';
 
@@ -42,15 +42,17 @@ export default function ClanDashboardPage({ params }: { params: { clanId: string
   const [selectedNewMembers, setSelectedNewMembers] = useState<Set<string>>(new Set());
   const [isAdding, startAddingTransition] = useTransition();
   const [isPromoting, startPromotingTransition] = useTransition();
+  const [isFindingWolves, startFindingWolvesTransition] = useTransition();
+  const [loneWolves, setLoneWolves] = useState<PlayerAggregates[]>([]);
   
   // Query for clan members
   const membersQuery = useMemoFirebase(() => {
     if (!firestore || !clanId) return null;
     return query(collection(firestore, 'clans', clanId, 'members'), orderBy('playerName'));
   }, [firestore, clanId]);
-  const { data: members, isLoading: isLoadingMembers } = useCollection<ClanMember>(membersQuery);
+  const { data: members, isLoading: isLoadingMembers, error: membersError } = useCollection<ClanMember>(membersQuery);
   
-  // Query for promotion logs - simplified query
+  // Query for promotion logs
   const promotionsQuery = useMemoFirebase(() => {
       if (!firestore || !clanId) return null;
       return query(collection(firestore, 'clans', clanId, 'promotionLog'));
@@ -63,9 +65,8 @@ export default function ClanDashboardPage({ params }: { params: { clanId: string
     return [...promotions].sort((a, b) => {
         const dateA = a.promotionDate as any;
         const dateB = b.promotionDate as any;
-        // Handle both Timestamps and Dates
-        const timeA = dateA.seconds ? dateA.seconds * 1000 : new Date(dateA).getTime();
-        const timeB = dateB.seconds ? dateB.seconds * 1000 : new Date(dateB).getTime();
+        const timeA = dateA?.seconds ? dateA.seconds * 1000 : new Date(dateA).getTime();
+        const timeB = dateB?.seconds ? dateB.seconds * 1000 : new Date(dateB).getTime();
         return timeB - timeA;
     });
   }, [promotions]);
@@ -122,6 +123,29 @@ export default function ClanDashboardPage({ params }: { params: { clanId: string
     });
   };
 
+    const handleFindLoneWolves = () => {
+    startFindingWolvesTransition(async () => {
+      setLoneWolves([]);
+      const result = await findLoneWolves();
+      if (result.success && result.players) {
+        const existingMemberIds = new Set((members || []).map(m => m.id));
+        const newLoneWolves = result.players.filter(p => !existingMemberIds.has(p.id));
+        setLoneWolves(newLoneWolves);
+        toast({
+          title: 'Busca Concluída',
+          description: `Encontrados ${newLoneWolves.length} jogadores sem clã com bom desempenho este mês.`,
+        });
+      } else {
+        toast({
+          variant: 'destructive',
+          title: 'Falha na Busca',
+          description: result.error || 'Ocorreu um erro desconhecido.',
+        });
+      }
+    });
+  };
+
+
   const handlePromote = (member: ClanMember) => {
     startPromotingTransition(async () => {
         const result = await promoteClanMember(clan.id, member.id, member.rank);
@@ -145,18 +169,20 @@ export default function ClanDashboardPage({ params }: { params: { clanId: string
     });
   };
   
-  const handleToggleSelectAll = () => {
-    if (selectedNewMembers.size === potentialMembers.length) {
+  const handleToggleSelectAll = (source: 'potential' | 'wolves') => {
+    const membersToConsider = source === 'potential' ? potentialMembers : loneWolves;
+    if (selectedNewMembers.size === membersToConsider.length) {
         setSelectedNewMembers(new Set());
     } else {
-        const allIds = new Set(potentialMembers.map(p => p.id));
+        const allIds = new Set(membersToConsider.map(p => p.id));
         setSelectedNewMembers(allIds);
     }
   };
 
   const handleAddSelectedMembers = () => {
     startAddingTransition(async () => {
-        const playersToAdd = potentialMembers.filter(p => selectedNewMembers.has(p.id));
+        const playersToAdd = [...potentialMembers, ...loneWolves].filter(p => selectedNewMembers.has(p.id));
+
         if (playersToAdd.length === 0) {
             toast({ variant: 'destructive', title: 'Nenhum jogador selecionado.' });
             return;
@@ -165,6 +191,7 @@ export default function ClanDashboardPage({ params }: { params: { clanId: string
         if (result.success) {
             toast({ title: 'Membros adicionados com sucesso!' });
             setPotentialMembers([]);
+            setLoneWolves([]);
             setSelectedNewMembers(new Set());
         } else {
             toast({ variant: 'destructive', title: 'Falha ao adicionar membros', description: result.error });
@@ -205,45 +232,15 @@ export default function ClanDashboardPage({ params }: { params: { clanId: string
         </Button>
       </div>
 
-      {potentialMembers.length > 0 && (
-          <Card className="mb-6">
-              <CardHeader>
-                  <CardTitle>Membros Sugeridos</CardTitle>
-                  <CardDescription>Estes jogadores usam a tag do seu clã mas ainda não estão na lista oficial. Selecione quem deseja adicionar.</CardDescription>
-              </CardHeader>
-              <CardContent>
-                  <div className="space-y-2 max-h-60 overflow-y-auto">
-                      {potentialMembers.map(player => (
-                          <div key={player.id} onClick={() => handleToggleSelectNewMember(player.id)} className="flex items-center gap-3 p-2 rounded-md hover:bg-muted cursor-pointer">
-                              {selectedNewMembers.has(player.id) ? <CheckSquare className="h-5 w-5 text-accent" /> : <Square className="h-5 w-5 text-muted-foreground" />}
-                              <span>{player.latestPlayerName}</span>
-                          </div>
-                      ))}
-                  </div>
-              </CardContent>
-              <CardFooter className="flex items-center gap-4">
-                  <Button onClick={handleAddSelectedMembers} disabled={isAdding || selectedNewMembers.size === 0}>
-                      {isAdding ? 'Adicionando...' : `Adicionar ${selectedNewMembers.size} Membros`}
-                  </Button>
-                   <Button variant="outline" onClick={handleToggleSelectAll} disabled={isAdding}>
-                      {selectedNewMembers.size === potentialMembers.length ? 'Desmarcar Todos' : 'Marcar Todos'}
-                  </Button>
-              </CardFooter>
-          </Card>
-      )}
-      
       <Tabs defaultValue="list">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4">
-            <TabsList>
-                <TabsTrigger value="list"><List className="mr-2 h-4 w-4"/>Lista de Membros</TabsTrigger>
+            <TabsList className="grid w-full grid-cols-4">
+                <TabsTrigger value="list"><List className="mr-2 h-4 w-4"/>Lista</TabsTrigger>
                 <TabsTrigger value="hierarchy"><Users className="mr-2 h-4 w-4"/>Hierarquia</TabsTrigger>
                 <TabsTrigger value="promotions"><Medal className="mr-2 h-4 w-4"/>Promoções</TabsTrigger>
+                <TabsTrigger value="recruitment"><Search className="mr-2 h-4 w-4"/>Recrutar</TabsTrigger>
             </TabsList>
             <div className='flex items-center gap-4'>
-                 <Button onClick={handleSync} disabled={isSyncing || isPromoting}>
-                    <RefreshCw className={`mr-2 h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} />
-                    {isSyncing ? 'Buscando...' : 'Sincronizar por Tag'}
-                 </Button>
                 <div className="text-right">
                    {isLoadingMembers ? (
                       <Skeleton className="h-7 w-12" />
@@ -258,13 +255,47 @@ export default function ClanDashboardPage({ params }: { params: { clanId: string
         <TabsContent value="list">
             <Card>
                 <CardHeader>
-                    <CardTitle className="text-xl flex items-center gap-2">
-                        <Users className="h-5 w-5"/>
-                        <span>Membros do Clã</span>
-                    </CardTitle>
-                    <CardDescription>Gerencie as patentes e status dos jogadores.</CardDescription>
+                    <div className="flex justify-between items-center">
+                        <div>
+                            <CardTitle className="text-xl flex items-center gap-2">
+                                <Users className="h-5 w-5"/>
+                                <span>Membros do Clã</span>
+                            </CardTitle>
+                            <CardDescription>Gerencie as patentes e status dos jogadores.</CardDescription>
+                        </div>
+                         <Button onClick={handleSync} disabled={isSyncing || isPromoting}>
+                            <RefreshCw className={`mr-2 h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} />
+                            {isSyncing ? 'Buscando...' : 'Sincronizar por Tag'}
+                         </Button>
+                    </div>
                 </CardHeader>
                 <CardContent>
+                 {potentialMembers.length > 0 && (
+                      <Card className="mb-6 bg-muted/30">
+                          <CardHeader>
+                              <CardTitle>Membros Sugeridos (por Tag)</CardTitle>
+                              <CardDescription>Estes jogadores usam a tag do seu clã mas ainda não estão na lista oficial. Selecione quem deseja adicionar.</CardDescription>
+                          </CardHeader>
+                          <CardContent>
+                              <div className="space-y-2 max-h-60 overflow-y-auto">
+                                  {potentialMembers.map(player => (
+                                      <div key={player.id} onClick={() => handleToggleSelectNewMember(player.id)} className="flex items-center gap-3 p-2 rounded-md hover:bg-muted cursor-pointer">
+                                          {selectedNewMembers.has(player.id) ? <CheckSquare className="h-5 w-5 text-accent" /> : <Square className="h-5 w-5 text-muted-foreground" />}
+                                          <span>{player.latestPlayerName}</span>
+                                      </div>
+                                  ))}
+                              </div>
+                          </CardContent>
+                          <CardFooter className="flex items-center gap-4">
+                              <Button onClick={handleAddSelectedMembers} disabled={isAdding || selectedNewMembers.size === 0}>
+                                  {isAdding ? 'Adicionando...' : `Adicionar ${selectedNewMembers.size} Selecionados`}
+                              </Button>
+                               <Button variant="outline" onClick={() => handleToggleSelectAll('potential')} disabled={isAdding}>
+                                  {selectedNewMembers.size === potentialMembers.length ? 'Desmarcar Todos' : 'Marcar Todos'}
+                              </Button>
+                          </CardFooter>
+                      </Card>
+                  )}
                 <div className="overflow-x-auto">
                     <Table>
                     <TableHeader>
@@ -348,6 +379,54 @@ export default function ClanDashboardPage({ params }: { params: { clanId: string
              ) : (
                 <RecentPromotions promotions={sortedPromotions || []} />
              )}
+        </TabsContent>
+         <TabsContent value="recruitment">
+            <Card>
+                <CardHeader>
+                    <CardTitle>Recrutamento de Talentos</CardTitle>
+                    <CardDescription>Encontre os melhores jogadores do mês que ainda não pertencem a um clã.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <Button onClick={handleFindLoneWolves} disabled={isFindingWolves}>
+                        <Search className={`mr-2 h-4 w-4 ${isFindingWolves ? 'animate-spin' : ''}`} />
+                        {isFindingWolves ? 'Buscando...' : 'Buscar Lobos Solitários'}
+                    </Button>
+
+                     {isFindingWolves && (
+                         <div className="mt-4 space-y-2">
+                             {Array.from({ length: 5 }).map((_, i) => (
+                                 <Skeleton key={i} className="h-10 w-full" />
+                            ))}
+                         </div>
+                     )}
+
+                    {loneWolves.length > 0 && (
+                         <div className="mt-6">
+                            <h3 className="text-lg font-semibold mb-2">Jogadores Encontrados</h3>
+                             <div className="space-y-2 max-h-96 overflow-y-auto">
+                                 {loneWolves.map(player => (
+                                     <div key={player.id} onClick={() => handleToggleSelectNewMember(player.id)} className="flex items-center gap-3 p-2 rounded-md hover:bg-muted cursor-pointer">
+                                         <div className="w-8">
+                                            {selectedNewMembers.has(player.id) ? <CheckSquare className="h-5 w-5 text-accent" /> : <Square className="h-5 w-5 text-muted-foreground" />}
+                                         </div>
+                                         <span className="flex-1 font-medium">{player.latestPlayerName}</span>
+                                         <span className="w-24 text-sm">Kills: {(player.totalKills || 0).toLocaleString()}</span>
+                                         <span className="w-24 text-sm">Score: {(((player.totalCombat || 0) + (player.totalDefense || 0) + (player.totalSupport || 0) + (player.totalOffense || 0))).toLocaleString()}</span>
+                                     </div>
+                                 ))}
+                             </div>
+                             <div className="flex items-center gap-4 mt-4">
+                                <Button onClick={handleAddSelectedMembers} disabled={isAdding || selectedNewMembers.size === 0}>
+                                    {isAdding ? 'Adicionando...' : `Adicionar ${selectedNewMembers.size} Recrutas`}
+                                </Button>
+                                 <Button variant="outline" onClick={() => handleToggleSelectAll('wolves')} disabled={isAdding}>
+                                    {selectedNewMembers.size === loneWolves.length ? 'Desmarcar Todos' : 'Marcar Todos'}
+                                </Button>
+                            </div>
+                         </div>
+                     )}
+                </CardContent>
+            </Card>
         </TabsContent>
       </Tabs>
     </div>
