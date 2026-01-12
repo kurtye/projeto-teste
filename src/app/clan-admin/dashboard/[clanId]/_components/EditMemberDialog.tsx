@@ -28,22 +28,23 @@ const ranks = [
     'Recruta',
     'Soldado',
     'Cabo',
-    'Terceiro-Sargento',
-    'Segundo-Sargento',
-    'Primeiro-Sargento',
+    '3-sargento',
+    '2-sargento',
+    '1-sargento',
     'Subtenente',
     'Aspirante',
-    'Segundo-Tenente',
-    'Primeiro-Tenente',
+    '2-tenente',
+    '1-tenente',
     'Capitão',
     'Major',
     'Tenente-Coronel',
     'Coronel',
-    'General de Brigada',
-    'General de Divisão',
-    'General de Exército',
+    'General-de-Brigada',
+    'General-de-Divisao',
+    'General-de-Exercito',
     'Marechal'
 ];
+
 const statuses: ClanMember['status'][] = ['active', 'inactive', 'trial'];
 
 export function EditMemberDialog({ isOpen, onOpenChange, member, clanId }: EditMemberDialogProps) {

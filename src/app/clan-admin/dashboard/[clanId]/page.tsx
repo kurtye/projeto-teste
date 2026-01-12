@@ -78,10 +78,24 @@ export default function ClanDashboardPage({ params }: { params: { clanId: string
   }
   
   const ranksInOrder = [
-    'Marechal', 'General de Exército', 'General de Divisão', 'General de Brigada', 'Coronel', 
-    'Tenente-Coronel', 'Major', 'Capitão', 'Primeiro-Tenente', 'Segundo-Tenente', 
-    'Aspirante', 'Subtenente', 'Primeiro-Sargento', 'Segundo-Sargento', 'Terceiro-Sargento', 
-    'Cabo', 'Soldado', 'Recruta'
+    'Recruta',
+    'Soldado',
+    'Cabo',
+    '3-sargento',
+    '2-sargento',
+    '1-sargento',
+    'Subtenente',
+    'Aspirante',
+    '2-tenente',
+    '1-tenente',
+    'Capitão',
+    'Major',
+    'Tenente-Coronel',
+    'Coronel',
+    'General-de-Brigada',
+    'General-de-Divisao',
+    'General-de-Exercito',
+    'Marechal'
   ];
 
   const getStatusVariant = (status: ClanMember['status'] | undefined) => {
@@ -94,14 +108,14 @@ export default function ClanDashboardPage({ params }: { params: { clanId: string
   }
   
   const getRankImage = (rank: string) => {
-    const imageName = rank.toLowerCase().replace(/ /g, '-').replace('ê', 'e') + '.png';
+    const imageName = `${rank}.jpeg`;
     return (
         <Image 
             src={`/patentes/${imageName}`} 
             alt={rank} 
             width={20} 
             height={20} 
-            className="w-5 h-5"
+            className="w-5 h-5 object-contain"
         />
     );
   };
@@ -210,7 +224,7 @@ export default function ClanDashboardPage({ params }: { params: { clanId: string
       const rankA = ranksInOrder.indexOf(a.rank);
       const rankB = ranksInOrder.indexOf(b.rank);
       if (rankA !== rankB) {
-        return rankA - rankB;
+        return rankB - rankA; // Sort descending by rank index (Marechal first)
       }
       return a.playerName.localeCompare(b.playerName);
     });
@@ -330,7 +344,7 @@ export default function ClanDashboardPage({ params }: { params: { clanId: string
                                 <TableCell className="font-medium">{member.playerName}</TableCell>
                                 <TableCell className="flex items-center gap-2">
                                     {getRankImage(member.rank)}
-                                    {member.rank}
+                                    {member.rank.replace(/-/g, ' ')}
                                 </TableCell>
                                 <TableCell>
                                 <Badge variant={getStatusVariant(member.status)}>{member.status}</Badge>

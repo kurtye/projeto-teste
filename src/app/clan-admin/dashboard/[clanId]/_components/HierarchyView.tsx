@@ -1,3 +1,4 @@
+
 'use client';
 
 import type { ClanMember } from '@/lib/types';
@@ -12,35 +13,28 @@ interface HierarchyViewProps {
 
 const ranksInOrder = [
     'Marechal',
-    'General de Exército',
-    'General de Divisão',
-    'General de Brigada',
+    'General-de-Exercito',
+    'General-de-Divisao',
+    'General-de-Brigada',
     'Coronel',
     'Tenente-Coronel',
     'Major',
     'Capitão',
-    'Primeiro-Tenente',
-    'Segundo-Tenente',
+    '1-tenente',
+    '2-tenente',
     'Aspirante',
     'Subtenente',
-    'Primeiro-Sargento',
-    'Segundo-Sargento',
-    'Terceiro-Sargento',
+    '1-sargento',
+    '2-sargento',
+    '3-sargento',
     'Cabo',
     'Soldado',
     'Recruta'
-];
+].reverse(); // Reverse to have Recruta at the bottom
 
 const getRankImage = (rank: string) => {
-    // Converts rank name to the file name format e.g. "General de Divisão" -> "General-de-Divisao.jpeg"
-    const imageName = rank
-      .replace(/ /g, '-')
-      .replace('Primeiro-Sargento', '1-sargento')
-      .replace('Segundo-Sargento', '2-sargento')
-      .replace('Terceiro-Sargento', '3-sargento')
-      .replace('Primeiro-Tenente', '1-tenente')
-      .replace('Segundo-Tenente', '2-tenente') + '.jpeg';
-    return `/patentes/${imageName}`;
+    // Just use the rank name directly as it matches the file name.
+    return `/patentes/${rank}.jpeg`;
 };
 
 export function HierarchyView({ members }: HierarchyViewProps) {
@@ -49,7 +43,7 @@ export function HierarchyView({ members }: HierarchyViewProps) {
       rank,
       members: members.filter(member => member.rank === rank),
     };
-  });
+  }).reverse(); // Reverse back for display order (Marechal on top)
 
   return (
     <div className="space-y-6">
@@ -67,7 +61,7 @@ export function HierarchyView({ members }: HierarchyViewProps) {
                  </div>
                  <div>
                     <CardTitle className="text-xl font-headline">
-                        {rank}
+                        {rank.replace(/-/g, ' ')}
                     </CardTitle>
                     <p className="text-sm text-muted-foreground">{members.length} membro(s)</p>
                  </div>
