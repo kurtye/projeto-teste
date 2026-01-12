@@ -32,8 +32,14 @@ const ranksInOrder = [
 ];
 
 const getRankImage = (rank: string) => {
-    // Correctly forms the image name, preserving case and using the .jpeg extension.
-    const imageName = rank.replace(/ /g, '-') + '.jpeg';
+    // Converts rank name to the file name format e.g. "General de Divisão" -> "General-de-Divisao.jpeg"
+    const imageName = rank
+      .replace(/ /g, '-')
+      .replace('Primeiro-Sargento', '1-sargento')
+      .replace('Segundo-Sargento', '2-sargento')
+      .replace('Terceiro-Sargento', '3-sargento')
+      .replace('Primeiro-Tenente', '1-tenente')
+      .replace('Segundo-Tenente', '2-tenente') + '.jpeg';
     return `/patentes/${imageName}`;
 };
 
