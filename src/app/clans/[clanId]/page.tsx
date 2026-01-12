@@ -33,10 +33,24 @@ interface ClanPageProps {
 }
 
 const ranksInOrder = [
-    'Marechal', 'General de Exército', 'General de Divisão', 'General de Brigada', 'Coronel', 
-    'Tenente-Coronel', 'Major', 'Capitão', 'Primeiro-Tenente', 'Segundo-Tenente', 
-    'Aspirante', 'Subtenente', 'Primeiro-Sargento', 'Segundo-Sargento', 'Terceiro-Sargento', 
-    'Cabo', 'Soldado', 'Recruta'
+    'Recruta',
+    'Soldado',
+    'Cabo',
+    'Terceiro-Sargento',
+    'Segundo-Sargento',
+    'Primeiro-Sargento',
+    'Subtenente',
+    'Aspirante',
+    'Segundo-Tenente',
+    'Primeiro-Tenente',
+    'Capitão',
+    'Major',
+    'Tenente-Coronel',
+    'Coronel',
+    'General-de-Brigada',
+    'General-de-Divisao',
+    'General-de-Exercito',
+    'Marechal'
 ];
 
 export default function ClanPage({ params }: ClanPageProps) {
@@ -58,7 +72,7 @@ export default function ClanPage({ params }: ClanPageProps) {
       const rankA = ranksInOrder.indexOf(a.rank);
       const rankB = ranksInOrder.indexOf(b.rank);
       if (rankA !== rankB) {
-        return rankA - rankB;
+        return rankB - rankA; // Sort descending by rank
       }
       return a.playerName.localeCompare(b.playerName);
     });
@@ -130,7 +144,7 @@ export default function ClanPage({ params }: ClanPageProps) {
                                     sortedMembers.map((member) => (
                                         <TableRow key={member.id}>
                                             <TableCell className="font-medium">{member.playerName}</TableCell>
-                                            <TableCell>{member.rank}</TableCell>
+                                            <TableCell>{member.rank.replace(/-/g, ' ')}</TableCell>
                                             <TableCell>
                                                 <Badge variant={getStatusVariant(member.status)}>{member.status}</Badge>
                                             </TableCell>
