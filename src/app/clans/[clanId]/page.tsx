@@ -111,7 +111,7 @@ export default function ClanPage({ params }: ClanPageProps) {
         </Button>
       </div>
       
-       <Tabs defaultValue="list">
+       <Tabs defaultValue="hierarchy">
             <TabsList className="grid w-full grid-cols-2">
                 <TabsTrigger value="list"><List className="mr-2 h-4 w-4"/>Lista de Membros</TabsTrigger>
                 <TabsTrigger value="hierarchy"><Users className="mr-2 h-4 w-4"/>Hierarquia</TabsTrigger>
@@ -176,5 +176,4 @@ export default function ClanPage({ params }: ClanPageProps) {
     </div>
   );
 }
-
     
