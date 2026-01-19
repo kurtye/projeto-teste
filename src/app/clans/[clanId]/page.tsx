@@ -33,24 +33,24 @@ interface ClanPageProps {
 }
 
 const ranksInOrder = [
-    'Recruta',
-    'Soldado',
-    'Cabo',
-    'Terceiro-Sargento',
-    'Segundo-Sargento',
-    'Primeiro-Sargento',
-    'Subtenente',
-    'Aspirante',
-    'Segundo-Tenente',
-    'Primeiro-Tenente',
-    'Capitao',
-    'Major',
-    'Tenente-Coronel',
-    'Coronel',
-    'General-de-Brigada',
-    'General-de-Divisao',
+    'Marechal',
     'General-de-Exercito',
-    'Marechal'
+    'General-de-Divisao',
+    'General-de-Brigada',
+    'Coronel',
+    'Tenente-Coronel',
+    'Major',
+    'Capitao',
+    'Primeiro-Tenente',
+    'Segundo-Tenente',
+    'Aspirante',
+    'Subtenente',
+    'Primeiro-Sargento',
+    'Segundo-Sargento',
+    'Terceiro-Sargento',
+    'Cabo',
+    'Soldado',
+    'Recruta'
 ];
 
 export default function ClanPage({ params }: ClanPageProps) {
@@ -66,9 +66,15 @@ export default function ClanPage({ params }: ClanPageProps) {
 
   const { data: members, isLoading: isLoadingMembers } = useCollection<ClanMember>(membersQuery);
 
-  const sortedMembers = useMemo(() => {
+  // Filter out 'trial' members for the public view
+  const publicMembers = useMemo(() => {
     if (!members) return [];
-    return [...members].sort((a, b) => {
+    return members.filter(member => member.status !== 'trial');
+  }, [members]);
+
+  const sortedMembers = useMemo(() => {
+    if (!publicMembers) return [];
+    return [...publicMembers].sort((a, b) => {
       const rankA = ranksInOrder.indexOf(a.rank);
       const rankB = ranksInOrder.indexOf(b.rank);
       if (rankA !== rankB) {
@@ -76,7 +82,7 @@ export default function ClanPage({ params }: ClanPageProps) {
       }
       return a.playerName.localeCompare(b.playerName);
     });
-  }, [members]);
+  }, [publicMembers]);
 
   const getStatusVariant = (status: ClanMember['status'] | undefined) => {
     switch (status) {
@@ -169,7 +175,7 @@ export default function ClanPage({ params }: ClanPageProps) {
                         <Skeleton className="h-48 w-full" />
                     </div>
                 ) : (
-                    <HierarchyView members={members || []} />
+                    <HierarchyView members={publicMembers || []} />
                 )}
             </TabsContent>
         </Tabs>
