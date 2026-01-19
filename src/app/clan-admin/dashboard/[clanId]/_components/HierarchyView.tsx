@@ -1,3 +1,4 @@
+
 'use client';
 
 import type { ClanMember } from '@/lib/types';
@@ -19,7 +20,7 @@ const ranksInOrder = [
     'Coronel',
     'Tenente-Coronel',
     'Major',
-    'Capitão',
+    'Capitao',
     'Primeiro-Tenente',
     'Segundo-Tenente',
     'Aspirante',
@@ -60,7 +61,7 @@ export function HierarchyView({ members }: HierarchyViewProps) {
                  </div>
                  <div>
                     <CardTitle className="text-xl font-headline">
-                        {rank.replace(/-/g, ' ')}
+                        {rank.replace(/-/g, ' ').replace('Capitao', 'Capitão')}
                     </CardTitle>
                     <p className="text-sm text-muted-foreground">{members.length} membro(s)</p>
                  </div>
@@ -94,3 +95,5 @@ export function HierarchyView({ members }: HierarchyViewProps) {
     </div>
   );
 }
+
+    

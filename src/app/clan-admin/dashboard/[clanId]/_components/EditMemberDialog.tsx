@@ -35,7 +35,7 @@ const ranks = [
     'Aspirante',
     'Segundo-Tenente',
     'Primeiro-Tenente',
-    'Capitão',
+    'Capitao',
     'Major',
     'Tenente-Coronel',
     'Coronel',
@@ -95,7 +95,7 @@ export function EditMemberDialog({ isOpen, onOpenChange, member, clanId }: EditM
                     <SelectValue placeholder="Selecione a patente" />
                 </SelectTrigger>
                 <SelectContent>
-                    {ranks.map(r => <SelectItem key={r} value={r}>{r.replace(/-/g, ' ')}</SelectItem>)}
+                    {ranks.map(r => <SelectItem key={r} value={r}>{r.replace(/-/g, ' ').replace('Capitao', 'Capitão')}</SelectItem>)}
                 </SelectContent>
             </Select>
           </div>
@@ -121,3 +121,5 @@ export function EditMemberDialog({ isOpen, onOpenChange, member, clanId }: EditM
     </Dialog>
   );
 }
+
+    

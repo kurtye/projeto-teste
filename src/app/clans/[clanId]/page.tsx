@@ -43,7 +43,7 @@ const ranksInOrder = [
     'Aspirante',
     'Segundo-Tenente',
     'Primeiro-Tenente',
-    'Capitão',
+    'Capitao',
     'Major',
     'Tenente-Coronel',
     'Coronel',
@@ -144,7 +144,7 @@ export default function ClanPage({ params }: ClanPageProps) {
                                     sortedMembers.map((member) => (
                                         <TableRow key={member.id}>
                                             <TableCell className="font-medium">{member.playerName}</TableCell>
-                                            <TableCell>{member.rank.replace(/-/g, ' ')}</TableCell>
+                                            <TableCell>{member.rank.replace(/-/g, ' ').replace('Capitao', 'Capitão')}</TableCell>
                                             <TableCell>
                                                 <Badge variant={getStatusVariant(member.status)}>{member.status}</Badge>
                                             </TableCell>
@@ -176,3 +176,5 @@ export default function ClanPage({ params }: ClanPageProps) {
     </div>
   );
 }
+
+    

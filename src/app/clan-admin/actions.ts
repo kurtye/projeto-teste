@@ -31,7 +31,7 @@ const RANKS = [
     'Aspirante',
     'Segundo-Tenente',
     'Primeiro-Tenente',
-    'Capitão',
+    'Capitao',
     'Major',
     'Tenente-Coronel',
     'Coronel',
@@ -230,4 +230,6 @@ export async function findLoneWolves(): Promise<{ success: boolean, players?: Pl
         return { success: false, error: "Falha ao buscar jogadores sem clã." };
     }
 }
+    
+
     

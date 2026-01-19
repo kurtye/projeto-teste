@@ -88,7 +88,7 @@ export default function ClanDashboardPage({ params }: { params: { clanId: string
     'Aspirante',
     'Segundo-Tenente',
     'Primeiro-Tenente',
-    'Capitão',
+    'Capitao',
     'Major',
     'Tenente-Coronel',
     'Coronel',
@@ -344,7 +344,7 @@ export default function ClanDashboardPage({ params }: { params: { clanId: string
                                 <TableCell className="font-medium">{member.playerName}</TableCell>
                                 <TableCell className="flex items-center gap-2">
                                     {getRankImage(member.rank)}
-                                    {member.rank.replace(/-/g, ' ')}
+                                    {member.rank.replace(/-/g, ' ').replace('Capitao', 'Capitão')}
                                 </TableCell>
                                 <TableCell>
                                 <Badge variant={getStatusVariant(member.status)}>{member.status}</Badge>
@@ -451,3 +451,5 @@ export default function ClanDashboardPage({ params }: { params: { clanId: string
     </div>
   );
 }
+
+    
