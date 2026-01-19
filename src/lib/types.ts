@@ -51,6 +51,7 @@ export interface Clan {
   name: string;
   tag: string;
   adminEmails: string[];
+  logoUrl?: string;
 }
 
 export interface ClanMember {

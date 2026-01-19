@@ -24,6 +24,7 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
+import Image from 'next/image';
 
 
 interface ClanPageProps {
@@ -101,8 +102,14 @@ export default function ClanPage({ params }: ClanPageProps) {
     <div className="container mx-auto px-4 py-8 mb-16 md:mb-0">
       <div className="flex flex-col sm:flex-row items-center justify-between gap-6 mb-8">
         <div className="flex items-center gap-6">
-            <Avatar className="h-24 w-24 border-4 border-primary">
-              <AvatarFallback className="text-4xl">{clan.tag}</AvatarFallback>
+            <Avatar className="h-24 w-24 border-4 border-primary bg-background">
+              {clan.logoUrl ? (
+                <div className="relative w-full h-full rounded-full overflow-hidden">
+                  <Image src={clan.logoUrl} alt={`${clan.name} logo`} fill className="object-cover" />
+                </div>
+              ) : (
+                <AvatarFallback className="text-4xl">{clan.tag}</AvatarFallback>
+              )}
             </Avatar>
             <div>
               <h1 className="text-3xl md:text-4xl font-bold font-headline">{clan.name}</h1>

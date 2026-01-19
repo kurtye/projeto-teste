@@ -2,7 +2,7 @@
 import type { Clan } from './types';
 
 export const clans: Clan[] = [
-    { id: 'smk', name: 'Smoking Snakes', tag: 'SMK', adminEmails: ['smk@test.com'] },
+    { id: 'smk', name: 'Smoking Snakes', tag: 'SMK', adminEmails: ['smk@test.com'], logoUrl: '/clan/smk.jpg' },
     { id: 'hrb', name: 'Hellraiser Brasil', tag: 'HRB', adminEmails: ['hrb@test.com'] },
     { id: 'rzn', name: 'RedZone Brasil', tag: 'RZN', adminEmails: ['rzn@test.com'] },
     { id: 'ocl', name: 'O Caba Lá', tag: 'OCL', adminEmails: ['ocl@test.com'] },

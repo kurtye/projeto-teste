@@ -1,5 +1,6 @@
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Users, ChevronRight } from 'lucide-react';
 import { clans } from '@/lib/clans';
@@ -25,8 +26,14 @@ export default function ClansPage() {
             <Card className="h-full transition-all duration-200 hover:border-accent hover:shadow-lg">
               <CardHeader>
                 <div className="flex items-center gap-4">
-                  <Avatar className="h-12 w-12 border-2 border-primary">
-                    <AvatarFallback className="text-xl">{clan.tag}</AvatarFallback>
+                  <Avatar className="h-12 w-12 border-2 border-primary bg-background">
+                    {clan.logoUrl ? (
+                      <div className="relative w-full h-full rounded-full overflow-hidden">
+                        <Image src={clan.logoUrl} alt={`${clan.name} logo`} fill className="object-cover" />
+                      </div>
+                    ) : (
+                      <AvatarFallback className="text-xl">{clan.tag}</AvatarFallback>
+                    )}
                   </Avatar>
                   <div>
                     <CardTitle className="text-xl font-headline group-hover:text-accent transition-colors">{clan.name}</CardTitle>
