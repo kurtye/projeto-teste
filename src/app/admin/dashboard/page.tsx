@@ -2,12 +2,12 @@
 'use client';
 
 import { useState, useEffect, useTransition } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
-import { importServerData, getServerSyncStatus, getPlayerCount, importSpecificMatches, importMatchRange, updateGlobalStats } from '../actions';
+import { importServerData, getServerSyncStatus, getPlayerCount, importSpecificMatches, importMatchRange, updateGlobalStats, importHistoricalMatchRange } from '../actions';
 import { Progress } from '@/components/ui/progress';
-import { Database, DownloadCloud, History, ServerIcon, Users, Edit, RefreshCw, BarChart, BetweenHorizontalStart } from 'lucide-react';
+import { Database, DownloadCloud, History, ServerIcon, Users, Edit, RefreshCw, BarChart, BetweenHorizontalStart, Archive } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
@@ -45,6 +45,11 @@ const servers = [
     name: 'SAP',
     apiUrl: 'https://sap-stats.hlladmin.com/api',
   },
+  {
+    id: 'FEFE',
+    name: 'FEFE',
+    apiUrl: 'https://fefestats.hellletloose.com.br/api'
+  },
 ];
 
 type Server = (typeof servers)[0];
@@ -81,6 +86,12 @@ export default function AdminDashboardPage() {
   const [rangeStartId, setRangeStartId] = useState('');
   const [rangeEndId, setRangeEndId] = useState('');
   const [isRangeImporting, setIsRangeImporting] = useState(false);
+  
+  const [historicalImportServer, setHistoricalImportServer] = useState<string>('');
+  const [historicalStartId, setHistoricalStartId] = useState('');
+  const [historicalEndId, setHistoricalEndId] = useState('');
+  const [isHistoricalImporting, setIsHistoricalImporting] = useState(false);
+
 
   const { toast } = useToast();
 
@@ -101,7 +112,7 @@ export default function AdminDashboardPage() {
     fetchStats();
   }, []);
   
-  const anyImportInProgress = Object.values(importStates).some(s => s.isImporting) || isManualImporting || isUpdatingGlobalStats || isRangeImporting;
+  const anyImportInProgress = Object.values(importStates).some(s => s.isImporting) || isManualImporting || isUpdatingGlobalStats || isRangeImporting || isHistoricalImporting;
 
   const handleUpdateGlobalStats = () => {
     startUpdatingGlobalStats(async () => {
@@ -256,6 +267,50 @@ export default function AdminDashboardPage() {
     }
   };
 
+  const handleHistoricalImport = async () => {
+    const startId = parseInt(historicalStartId, 10);
+    const endId = parseInt(historicalEndId, 10);
+    
+    if (!historicalImportServer || !startId || !endId || startId <= 0 || endId < startId) {
+      toast({
+        variant: 'destructive',
+        title: 'Dados Incompletos ou Inválidos',
+        description: 'Selecione um servidor e insira um intervalo de IDs válido.',
+      });
+      return;
+    }
+
+    setIsHistoricalImporting(true);
+    const server = servers.find(s => s.id === historicalImportServer);
+    if (!server) {
+        setIsHistoricalImporting(false);
+        toast({ variant: 'destructive', title: 'Erro', description: 'Servidor selecionado não encontrado.' });
+        return;
+    }
+
+    toast({ title: 'Iniciando Importação Histórica', description: `De ${startId} a ${endId} para ${server.name}...` });
+
+    try {
+      const result = await importHistoricalMatchRange(server.name, server.apiUrl, startId, endId);
+      if (result.success) {
+        toast({
+          title: 'Importação Histórica Concluída',
+          description: `${result.matchesProcessed} de ${result.totalToProcess} partidas foram processadas.`,
+        });
+        setHistoricalStartId('');
+        setHistoricalEndId('');
+        setHistoricalImportServer('');
+        fetchStats();
+      } else {
+        throw new Error(result.error || 'Ocorreu um erro desconhecido.');
+      }
+    } catch (error: any) {
+      toast({ variant: 'destructive', title: 'Falha na Importação Histórica', description: error.message });
+    } finally {
+      setIsHistoricalImporting(false);
+    }
+  };
+
   return (
     <div className="container mx-auto px-4 py-8">
       <Card>
@@ -382,7 +437,7 @@ export default function AdminDashboardPage() {
             </div>
           </div>
           
-           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             <Card className="bg-card">
                 <CardHeader>
                     <CardTitle className="flex items-center gap-2 text-lg">
@@ -485,6 +540,68 @@ export default function AdminDashboardPage() {
                     </Button>
                 </CardContent>
             </Card>
+
+            <Card className="bg-card border-amber-500/50">
+                <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-lg text-amber-500">
+                        <Archive className="h-5 w-5" />
+                        Importação Histórica por Intervalo
+                    </CardTitle>
+                    <CardDescription>
+                        Use para carregar partidas antigas. <strong>Não afetará</strong> os rankings semanais ou mensais, apenas o geral.
+                    </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                            <Label htmlFor="historical-start-id">De (ID)</Label>
+                            <Input
+                                id="historical-start-id"
+                                type="number"
+                                placeholder="Ex: 1"
+                                value={historicalStartId}
+                                onChange={(e) => setHistoricalStartId(e.target.value)}
+                                disabled={anyImportInProgress}
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="historical-end-id">Até (ID)</Label>
+                            <Input
+                                id="historical-end-id"
+                                type="number"
+                                placeholder="Ex: 500"
+                                value={historicalEndId}
+                                onChange={(e) => setHistoricalEndId(e.target.value)}
+                                disabled={anyImportInProgress}
+                            />
+                        </div>
+                    </div>
+                    <div className="space-y-2">
+                        <Label htmlFor="historical-server">Servidor</Label>
+                        <Select
+                          value={historicalImportServer}
+                          onValueChange={setHistoricalImportServer}
+                          disabled={anyImportInProgress}
+                        >
+                            <SelectTrigger id="historical-server">
+                                <SelectValue placeholder="Selecione um servidor" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {servers.map(server => (
+                                    <SelectItem key={server.id} value={server.id}>
+                                        {server.name}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    <Button onClick={handleHistoricalImport} disabled={anyImportInProgress} variant="secondary">
+                        <DownloadCloud className={`mr-2 h-4 w-4 ${isHistoricalImporting ? 'animate-spin' : ''}`} />
+                        {isHistoricalImporting ? 'Importando...' : 'Importar Dados Históricos'}
+                    </Button>
+                </CardContent>
+            </Card>
+
            </div>
         </CardContent>
       </Card>

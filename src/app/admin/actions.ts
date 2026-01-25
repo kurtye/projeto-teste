@@ -43,6 +43,7 @@ const serversConfig = [
   { id: 'GOAT', name: 'GOAT', apiUrl: 'https://goat-stats.hlladmin.com/api' },
   { id: 'OCL', name: 'OCL', apiUrl: 'https://ocabala-stats.hlladmin.com/api' },
   { id: 'SAP', name: 'SAP', apiUrl: 'https://sap-stats.hlladmin.com/api' },
+  { id: 'FEFE', name: 'FEFE', apiUrl: 'https://fefestats.hellletloose.com.br/api' },
 ];
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -350,6 +351,69 @@ export async function importMatchRange(
 
   } catch (error: any) {
     console.error('[ERRO GERAL] Erro na importação por intervalo:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+export async function importHistoricalMatchRange(
+  serverName: string,
+  apiUrl: string,
+  startId: number,
+  endId: number
+): Promise<{ success: boolean; matchesProcessed?: number; totalToProcess?: number; error?: string }> {
+  console.log(`[LOG INICIAL] Importação HISTÓRICA por intervalo iniciada para o servidor: ${serverName}, de ${startId} a ${endId}`);
+
+  if (!serverName || !apiUrl || !startId || !endId || startId <= 0 || endId < startId) {
+    return { success: false, error: "Parâmetros inválidos. Verifique servidor, IDs e intervalo." };
+  }
+
+  const matchIdsToImport = Array.from({ length: endId - startId + 1 }, (_, i) => startId + i);
+  const totalToProcess = matchIdsToImport.length;
+  console.log(`[LOG] Total de partidas para importar no intervalo histórico: ${totalToProcess}`);
+  
+  try {
+    const fetchOptions = { headers: { 'Content-Type': 'application/json' } };
+    let matchesProcessed = 0;
+
+    for (const matchId of matchIdsToImport) {
+      try {
+        await delay(250); // Delay para não sobrecarregar a API
+        
+        const mapUrl = `${apiUrl}/get_map_scoreboard?map_id=${matchId}`;
+        console.log(`[LOG HISTÓRICO] Processando partida ID: ${matchId}`);
+        
+        const mapResponse = await fetch(mapUrl, fetchOptions);
+
+        if (!mapResponse.ok) {
+          const errorText = await mapResponse.text();
+          console.warn(`[LOG HISTÓRICO] Falha ao buscar partida ID ${matchId}. Status: ${mapResponse.status}. Corpo: ${errorText}. Pulando.`);
+          continue;
+        }
+
+        const mapData: MapScoreboardResponse = await mapResponse.json();
+        const matchInfo = mapData.result;
+
+        if (!matchInfo || !matchInfo.player_stats) {
+            console.warn(`[LOG HISTÓRICO] Dados da partida ID ${matchId} estão incompletos. Pulando.`);
+            continue;
+        }
+
+        const batch = writeBatch(db);
+        const matchDocRef = doc(db, 'rawMatchResults', matchInfo.id.toString());
+        batch.set(matchDocRef, { ...matchInfo, numeric_id: matchInfo.id, server: serverName, historical: true });
+
+        await batch.commit();
+        matchesProcessed++;
+      } catch (innerError: any) {
+        console.error(`[LOG HISTÓRICO] Erro processando partida ID ${matchId}:`, innerError.message);
+      }
+    }
+
+    console.log(`[LOG FINAL] Importação histórica por intervalo concluída. ${matchesProcessed} de ${totalToProcess} partidas processadas.`);
+    return { success: true, matchesProcessed, totalToProcess };
+
+  } catch (error: any) {
+    console.error('[ERRO GERAL] Erro na importação histórica por intervalo:', error);
     return { success: false, error: error.message };
   }
 }

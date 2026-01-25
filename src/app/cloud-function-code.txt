@@ -43,6 +43,7 @@ interface MatchData {
   numeric_id: number;
   server: string;
   player_stats: PlayerStats[];
+  historical?: boolean;
 }
 
 /**
@@ -95,10 +96,13 @@ export const aggregatePlayerStats = onDocumentCreated(
     const matchNumericId = matchData.numeric_id || matchData.id;
     const weekId = getWeekId();
     const monthId = getMonthId();
+    const isHistorical = matchData.historical === true;
 
     const logPrefix = `Partida ${matchNumericId} (Servidor: ${serverName})`;
-    logger.log(`Iniciando agregação para ${logPrefix}`);
-    logger.log(`Períodos: Semana=${weekId}, Mês=${monthId}`);
+    logger.log(`Iniciando agregação para ${logPrefix}. Histórico: ${isHistorical}`);
+    if (!isHistorical) {
+      logger.log(`Períodos: Semana=${weekId}, Mês=${monthId}`);
+    }
 
     if (!matchData.player_stats || matchData.player_stats.length === 0) {
       logger.log(`${logPrefix} não contém 'player_stats'. Excluindo.`);
@@ -183,53 +187,55 @@ export const aggregatePlayerStats = onDocumentCreated(
         });
 
         // --- ATUALIZAÇÕES PARA ESTATÍSTICAS SEMANAIS E MENSAIS ---
-        const periodBatch = db.batch();
-        const periodIncrementData = {
-          totalKills: admin.firestore.FieldValue.increment(
-            playerStat.kills || 0
-          ),
-          totalDeaths: admin.firestore.FieldValue.increment(
-            playerStat.deaths || 0
-          ),
-          totalCombat: admin.firestore.FieldValue.increment(
-            playerStat.combat || 0
-          ),
-          totalOffense: admin.firestore.FieldValue.increment(
-            playerStat.offense || 0
-          ),
-          totalDefense: admin.firestore.FieldValue.increment(
-            playerStat.defense || 0
-          ),
-          totalSupport: admin.firestore.FieldValue.increment(
-            playerStat.support || 0
-          ),
-          totalTimeSeconds: admin.firestore.FieldValue.increment(
-            playerStat.time_seconds || 0
-          ),
-          totalTeamKills: admin.firestore.FieldValue.increment(
-            playerStat.teamkills || 0
-          ),
-          totalDeathsByTK: admin.firestore.FieldValue.increment(
-            playerStat.deaths_by_tk || 0
-          ),
-          // NOTE: A lógica de 'longestLife' sobrescreve,
-          // pois agregações de 'max' são complexas em batches.
-          longestLifeSecs: playerStat.longest_life_secs || 0,
-        };
-        const basePeriodData = {
-          playerId: playerId,
-          latestPlayerName: playerName,
-        };
+        if (!isHistorical) {
+          const periodBatch = db.batch();
+          const periodIncrementData = {
+            totalKills: admin.firestore.FieldValue.increment(
+              playerStat.kills || 0
+            ),
+            totalDeaths: admin.firestore.FieldValue.increment(
+              playerStat.deaths || 0
+            ),
+            totalCombat: admin.firestore.FieldValue.increment(
+              playerStat.combat || 0
+            ),
+            totalOffense: admin.firestore.FieldValue.increment(
+              playerStat.offense || 0
+            ),
+            totalDefense: admin.firestore.FieldValue.increment(
+              playerStat.defense || 0
+            ),
+            totalSupport: admin.firestore.FieldValue.increment(
+              playerStat.support || 0
+            ),
+            totalTimeSeconds: admin.firestore.FieldValue.increment(
+              playerStat.time_seconds || 0
+            ),
+            totalTeamKills: admin.firestore.FieldValue.increment(
+              playerStat.teamkills || 0
+            ),
+            totalDeathsByTK: admin.firestore.FieldValue.increment(
+              playerStat.deaths_by_tk || 0
+            ),
+            // NOTE: A lógica de 'longestLife' sobrescreve,
+            // pois agregações de 'max' são complexas em batches.
+            longestLifeSecs: playerStat.longest_life_secs || 0,
+          };
+          const basePeriodData = {
+            playerId: playerId,
+            latestPlayerName: playerName,
+          };
 
-        // Atualização Semanal
-        periodBatch.set(weeklyRef, {
-          ...basePeriodData, periodId: weekId, ...periodIncrementData,
-        }, {merge: true});
-        // Atualização Mensal
-        periodBatch.set(monthlyRef, {
-          ...basePeriodData, periodId: monthId, ...periodIncrementData,
-        }, {merge: true});
-        await periodBatch.commit();
+          // Atualização Semanal
+          periodBatch.set(weeklyRef, {
+            ...basePeriodData, periodId: weekId, ...periodIncrementData,
+          }, {merge: true});
+          // Atualização Mensal
+          periodBatch.set(monthlyRef, {
+            ...basePeriodData, periodId: monthId, ...periodIncrementData,
+          }, {merge: true});
+          await periodBatch.commit();
+        }
       });
 
       await Promise.all(playerPromises);
