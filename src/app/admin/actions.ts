@@ -2,7 +2,7 @@
 'use server';
 
 import { db } from '@/firebase/server';
-import { collection, writeBatch, doc, query, getDocs, where, getCountFromServer, orderBy, limit, setDoc } from 'firebase/firestore';
+import { collection, writeBatch, doc, query, getDocs, where, getCountFromServer, orderBy, limit, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
 
 interface ScoreboardMapsResponse {
   result: {
@@ -43,7 +43,7 @@ const serversConfig = [
   { id: 'GOAT', name: 'GOAT', apiUrl: 'https://goat-stats.hlladmin.com/api' },
   { id: 'OCL', name: 'OCL', apiUrl: 'https://ocabala-stats.hlladmin.com/api' },
   { id: 'SAP', name: 'SAP', apiUrl: 'https://sap-stats.hlladmin.com/api' },
-  { id: 'FEFE', name: 'FEFE', apiUrl: 'https://fefestats.hellletloose.com.br/api' },
+  { id: 'SOH', name: 'SOH', apiUrl: 'https://sohhllbr-stats.hlladmin.com/api' },
 ];
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -92,20 +92,24 @@ async function fetchAllMatchIds(apiUrl: string, fetchOptions: RequestInit): Prom
 }
 
 async function getLastImportedMatchIdForServer(serverName: string): Promise<number> {
-    const aggregatesRef = collection(db, 'playerAggregates');
-    const q = query(aggregatesRef, where(`processedServers.${serverName}`, '>', 0));
-    const querySnapshot = await getDocs(q);
+    console.log(`[LOG] Buscando último ID de partida processado para ${serverName} a partir do novo sistema.`);
+    const syncStatusRef = doc(db, 'serverSyncStatus', serverName);
+    try {
+        const docSnap = await getDoc(syncStatusRef);
 
-    let maxId = 0;
-    querySnapshot.forEach(doc => {
-        const serverId = doc.data().processedServers[serverName];
-        if (serverId > maxId) {
-            maxId = serverId;
+        if (docSnap.exists()) {
+            const lastId = docSnap.data().lastProcessedId || 0;
+            console.log(`[LOG] Último ID encontrado para ${serverName}: ${lastId}`);
+            return lastId;
+        } else {
+            console.log(`[LOG] Nenhum status de sincronização encontrado para ${serverName}. Retornando 0.`);
+            return 0;
         }
-    });
-
-    console.log(`[LOG] Último ID de partida processado encontrado para ${serverName}: ${maxId}`);
-    return maxId;
+    } catch (error) {
+        console.error(`Erro ao buscar status de sincronização para ${serverName}:`, error);
+        // Fallback to 0 in case of error
+        return 0;
+    }
 }
 
 
@@ -175,6 +179,7 @@ export async function importServerData(
     }
 
     let matchesProcessed = 0;
+    let highestSuccessfullyProcessedId = lastImportedId;
     const loopLimit = matchIdsToImport.length;
     console.log(`[LOG] Iniciando loop de importação para ${loopLimit} partidas.`);
 
@@ -202,16 +207,25 @@ export async function importServerData(
             continue;
         }
 
-        const batch = writeBatch(db);
         const matchDocRef = doc(db, 'rawMatchResults', matchInfo.id.toString());
-        batch.set(matchDocRef, { ...matchInfo, numeric_id: matchInfo.id, server: serverName });
+        await setDoc(matchDocRef, { ...matchInfo, numeric_id: matchInfo.id, server: serverName });
 
-        await batch.commit();
         matchesProcessed++;
+        highestSuccessfullyProcessedId = matchId;
 
       } catch (innerError: any) {
         console.error(`Erro processando partida ID ${matchId}:`, innerError.message);
       }
+    }
+
+    if (highestSuccessfullyProcessedId > lastImportedId) {
+        const syncStatusRef = doc(db, 'serverSyncStatus', serverName);
+        await setDoc(syncStatusRef, { 
+            lastProcessedId: highestSuccessfullyProcessedId,
+            serverName: serverName,
+            lastChecked: serverTimestamp()
+        }, { merge: true });
+        console.log(`[LOG] Status de sincronização para ${serverName} atualizado para a partida ID: ${highestSuccessfullyProcessedId}`);
     }
 
     console.log(`[LOG FINAL] Importação concluída. ${matchesProcessed} partidas processadas.`);

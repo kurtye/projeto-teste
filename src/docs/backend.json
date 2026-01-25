@@ -191,7 +191,7 @@
       "type": "object",
       "description": "Represents a member within a clan.",
       "properties": {
-        "playerId": { "type": "string", "description": "The ID of the player from the playerAggregates collection." },
+        "playerId": { "type": "string", "description": "The ID of the player from the playerAggregATES collection." },
         "rank": { "type": "string", "description": "The member's rank or title within the clan." },
         "status": { "type": "string", "enum": ["active", "inactive", "trial"] }
       },
@@ -210,6 +210,28 @@
             "promotionDate": { "type": "string", "format": "date-time" }
         },
         "required": ["playerId", "playerName", "oldRank", "newRank", "promotionDate"]
+    },
+    "ServerSyncState": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "ServerSyncState",
+      "type": "object",
+      "description": "Stores the synchronization state for a single server, including the ID of the last match successfully processed.",
+      "properties": {
+        "serverName": {
+          "type": "string",
+          "description": "The name of the server."
+        },
+        "lastProcessedId": {
+          "type": "number",
+          "description": "The numeric ID of the last match that was successfully imported and processed from this server."
+        },
+        "lastChecked": {
+            "type": "string",
+            "format": "date-time",
+            "description": "The timestamp of when the server was last checked for new matches."
+        }
+      },
+      "required": ["serverName", "lastProcessedId"]
     }
   },
   "auth": {
@@ -258,6 +280,10 @@
     "/clans/{clanId}/promotionLog/{logId}": {
         "schema": { "$ref": "#/entities/PromotionLog" },
         "description": "Subcollection to log member promotions."
+    },
+    "/serverSyncStatus/{serverName}": {
+      "schema": { "$ref": "#/entities/ServerSyncState" },
+      "description": "Collection to store the last processed match ID for each server to optimize data import."
     }
   }
 }
