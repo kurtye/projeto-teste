@@ -46,9 +46,9 @@ const servers = [
     apiUrl: 'https://sap-stats.hlladmin.com/api',
   },
   {
-    id: 'FEFE',
-    name: 'FEFE',
-    apiUrl: 'https://fefestats.hellletloose.com.br/api'
+    id: 'SOH',
+    name: 'SOH',
+    apiUrl: 'https://sohhllbr-stats.hlladmin.com/api'
   },
 ];
 
@@ -614,3 +614,4 @@ export default function AdminDashboardPage() {
     
 
     
+
