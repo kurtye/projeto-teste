@@ -121,14 +121,12 @@ export async function getServerSyncStatus(): Promise<Record<string, { processed:
     for (const server of serversConfig) {
         try {
             const allMatchIds = await fetchAllMatchIds(server.apiUrl, fetchOptions);
-            const total = allMatchIds.length;
+            const total = allMatchIds.length > 0 ? Math.max(...allMatchIds) : 0;
             
-            const q = query(collection(db, 'rawMatchResults'), where('server', '==', server.name));
-            const processedSnapshot = await getCountFromServer(q);
-            const processed = total - processedSnapshot.data().count; 
+            const processed = await getLastImportedMatchIdForServer(server.name);
 
-            status[server.name] = { processed: Math.max(0, processed), total };
-            console.log(`[LOG] Status para ${server.name}: ${status[server.name].processed}/${status[server.name].total}`);
+            status[server.name] = { processed, total };
+            console.log(`[LOG] Status para ${server.name}: ${processed}/${total}`);
 
         } catch (error) {
             console.error(`Erro ao obter status para ${server.name}:`, error);
