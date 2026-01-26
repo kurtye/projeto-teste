@@ -3,8 +3,9 @@
 
 import { db } from '@/firebase/server';
 import { collection, query, orderBy, limit, getDocs, where } from 'firebase/firestore';
-import type { PlayerAggregates } from '@/lib/types';
+import type { PlayerAggregates, ClanMember, ClanMemberInfo } from '@/lib/types';
 import { getWeek, getWeekYear, format } from 'date-fns';
+import { clans } from '@/lib/clans';
 
 const QUERY_LIMIT = 2000;
 
@@ -60,4 +61,32 @@ export async function getPlayerPeriodStats(period: 'weekly' | 'monthly'): Promis
         ...doc.data(),
         id: doc.data().playerId // O ID do documento é composto, então pegamos o playerId de dentro dos dados
     } as PlayerAggregates));
+}
+
+export async function getAllClanMembers(): Promise<Record<string, ClanMemberInfo>> {
+    const memberMap: Record<string, ClanMemberInfo> = {};
+
+    const allClans = clans; 
+
+    for (const clan of allClans) {
+        const membersCollectionRef = collection(db, 'clans', clan.id, 'members');
+        const membersQuery = query(membersCollectionRef);
+        try {
+            const membersSnapshot = await getDocs(membersQuery);
+            membersSnapshot.forEach(doc => {
+                const memberData = doc.data() as ClanMember;
+                memberMap[memberData.playerId] = {
+                    clanId: clan.id,
+                    clanTag: clan.tag,
+                    clanName: clan.name,
+                    clanLogoUrl: clan.logoUrl,
+                    rank: memberData.rank,
+                };
+            });
+        } catch (error) {
+            console.error(`Error fetching members for clan ${clan.id}:`, error);
+        }
+    }
+
+    return memberMap;
 }

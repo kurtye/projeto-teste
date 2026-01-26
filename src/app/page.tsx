@@ -12,7 +12,7 @@ import { collection, query, orderBy, limit, getDocs } from 'firebase/firestore';
 import type { PlayerAggregates } from '@/lib/types';
 import { Ranking } from '@/components/Ranking';
 import { AdBanner } from '@/components/AdBanner';
-import { getPlayerAggregates, getPlayerPeriodStats } from '@/app/ranking/actions';
+import { getPlayerAggregates, getPlayerPeriodStats, getAllClanMembers } from '@/app/ranking/actions';
 
 // Force dynamic rendering to always get the latest data
 export const dynamic = 'force-dynamic';
@@ -48,10 +48,11 @@ export default async function Home() {
   }
 
   // Fetch all rankings in parallel
-  const [geral, mensal, semanal] = await Promise.all([
+  const [geral, mensal, semanal, clanMembers] = await Promise.all([
     getPlayerAggregates(),
     getPlayerPeriodStats('monthly'),
-    getPlayerPeriodStats('weekly')
+    getPlayerPeriodStats('weekly'),
+    getAllClanMembers(),
   ]);
 
   const initialRankings = { geral, mensal, semanal };
@@ -62,6 +63,7 @@ export default async function Home() {
         <Ranking 
           initialRankings={initialRankings} 
           initialHallOfFame={fameMap} 
+          initialClanMembers={clanMembers}
         />
       </div>
     </div>

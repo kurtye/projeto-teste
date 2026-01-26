@@ -3,6 +3,7 @@
 
 import { useState, useMemo, ReactNode, useEffect } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import {
   Table,
   TableBody,
@@ -16,7 +17,7 @@ import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Search, Trophy, Skull, Crosshair, BarChart2, ShieldAlert, Target, Award, LayoutGrid, List } from 'lucide-react';
-import type { PlayerAggregates } from '@/lib/types';
+import type { PlayerAggregates, ClanMemberInfo } from '@/lib/types';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -162,13 +163,15 @@ const RankingDisplay = ({
     viewMode, 
     hallOfFame,
     sortConfig,
-    requestSort
+    requestSort,
+    clanMembers
 }: { 
     players: PlayerAggregates[], 
     viewMode: ViewMode,
     hallOfFame: HallOfFameMap,
     sortConfig: SortConfig,
-    requestSort: (key: SortKey) => void
+    requestSort: (key: SortKey) => void,
+    clanMembers: Record<string, ClanMemberInfo>
 }) => {
 
     const KingBadge = ({ playerId }: { playerId: string }) => {
@@ -241,6 +244,7 @@ const RankingDisplay = ({
                     <TableBody>
                         {players.map((player, index) => {
                             const rank = index + 1;
+                            const clanInfo = clanMembers[player.id];
                             return (
                                 <TableRow key={player.id}>
                                     <TableCell className="p-2 md:p-4">
@@ -249,13 +253,35 @@ const RankingDisplay = ({
                                             <RankIndicator rank={rank} />
                                         </div>
                                         <Avatar>
-                                        <AvatarFallback>{player.latestPlayerName.charAt(0)}</AvatarFallback>
+                                            {clanInfo && clanInfo.clanLogoUrl ? (
+                                                <Image src={clanInfo.clanLogoUrl} alt={clanInfo.clanName} fill className="object-cover" />
+                                            ) : (
+                                                <AvatarFallback>{player.latestPlayerName.charAt(0)}</AvatarFallback>
+                                            )}
                                         </Avatar>
                                         <div className="flex items-center">
                                             <span className="font-medium group-hover:text-accent transition-colors truncate">{player.latestPlayerName}</span>
                                             <KingBadge playerId={player.id} />
                                         </div>
-                                        {player.status === 'retired' && <Badge variant="secondary">Aposentado</Badge>}
+                                        {clanInfo && (
+                                            <TooltipProvider>
+                                                <Tooltip>
+                                                    <TooltipTrigger>
+                                                        <Image 
+                                                            src={`/patentes/${clanInfo.rank === 'Comandante' || clanInfo.rank === 'Subcomandante' ? 'Marechal' : clanInfo.rank}.jpeg`} 
+                                                            alt={clanInfo.rank} 
+                                                            width={20} 
+                                                            height={20} 
+                                                            className="ml-2 h-5 w-5 object-contain"
+                                                        />
+                                                    </TooltipTrigger>
+                                                    <TooltipContent>
+                                                        <p>{clanInfo.rank.replace(/-/g, ' ').replace('Capitao', 'Capitão')}</p>
+                                                    </TooltipContent>
+                                                </Tooltip>
+                                            </TooltipProvider>
+                                        )}
+                                        {player.status === 'retired' && <Badge variant="secondary" className='ml-2'>Aposentado</Badge>}
                                     </Link>
                                     </TableCell>
                                     <TableCell className="hidden text-center font-semibold md:table-cell">{(player.totalScore || 0).toLocaleString()}</TableCell>
@@ -277,6 +303,7 @@ const RankingDisplay = ({
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mt-4">
             {players.flatMap((player, index) => {
                 const rank = index + 1;
+                const clanInfo = clanMembers[player.id];
                 const cardHighlightClass = 
                     rank === 1 ? "border-yellow-400 shadow-yellow-400/20" :
                     rank === 2 ? "border-slate-400 shadow-slate-400/20" :
@@ -285,10 +312,14 @@ const RankingDisplay = ({
 
                 const playerCard = (
                     <Link key={player.id} href={`/player/${encodeURIComponent(player.id)}`} className="group">
-                        <Card className={cn("h-full transition-all duration-200", cardHighlightClass)}>
+                        <Card className={cn("h-full transition-all duration-200 relative", cardHighlightClass)}>
                             <CardHeader className="flex-row items-center gap-4 space-y-0 p-4">
                                 <Avatar className="h-12 w-12 border-2 border-transparent group-hover:border-primary">
-                                    <AvatarFallback className="text-xl font-bold bg-green-500/20 text-green-400 border-green-500/30">{rank}</AvatarFallback>
+                                    {clanInfo && clanInfo.clanLogoUrl ? (
+                                        <Image src={clanInfo.clanLogoUrl} alt={clanInfo.clanName} fill className="object-cover" />
+                                    ) : (
+                                        <AvatarFallback className="text-xl font-bold bg-green-500/20 text-green-400 border-green-500/30">{rank}</AvatarFallback>
+                                    )}
                                 </Avatar>
                                 <div className="flex-1 overflow-hidden">
                                     <div className="flex items-center">
@@ -297,9 +328,8 @@ const RankingDisplay = ({
                                     </div>
                                     <CardRankIndicator rank={rank} />
                                 </div>
-                                 {player.status === 'retired' && <Badge variant="secondary" className="absolute top-2 right-2">Aposentado</Badge>}
                             </CardHeader>
-                            <CardContent className="p-4 pt-0">
+                             <CardContent className="p-4 pt-0">
                                 <div className="grid grid-cols-3 gap-2 text-sm">
                                     <div>
                                         <p className="font-bold text-lg">{player.kdRatio?.toFixed(2)}</p>
@@ -315,6 +345,25 @@ const RankingDisplay = ({
                                     </div>
                                 </div>
                             </CardContent>
+                             {clanInfo && (
+                                <TooltipProvider>
+                                    <Tooltip>
+                                        <TooltipTrigger className="absolute top-2 right-2">
+                                            <Image 
+                                                src={`/patentes/${clanInfo.rank === 'Comandante' || clanInfo.rank === 'Subcomandante' ? 'Marechal' : clanInfo.rank}.jpeg`} 
+                                                alt={clanInfo.rank} 
+                                                width={28} 
+                                                height={28}
+                                                className="h-7 w-7 object-contain"
+                                            />
+                                        </TooltipTrigger>
+                                        <TooltipContent>
+                                            <p>{clanInfo.rank.replace(/-/g, ' ').replace('Capitao', 'Capitão')}</p>
+                                        </TooltipContent>
+                                    </Tooltip>
+                                </TooltipProvider>
+                            )}
+                            {player.status === 'retired' && <Badge variant="secondary" className="absolute top-2 left-2">Aposentado</Badge>}
                         </Card>
                     </Link>
                 );
@@ -330,7 +379,11 @@ const RankingDisplay = ({
 };
 
 
-export function Ranking({ initialRankings, initialHallOfFame }: { initialRankings: RankingsData, initialHallOfFame: HallOfFameMap }) {
+export function Ranking({ initialRankings, initialHallOfFame, initialClanMembers }: { 
+    initialRankings: RankingsData, 
+    initialHallOfFame: HallOfFameMap,
+    initialClanMembers: Record<string, ClanMemberInfo>
+}) {
   const [searchQuery, setSearchQuery] = useState('');
   const [clanFilter, setClanFilter] = useState<string | null>(null);
   const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'totalScore', direction: 'descending' });
@@ -511,13 +564,13 @@ export function Ranking({ initialRankings, initialHallOfFame }: { initialRanking
             </div>
 
             <TabsContent value="geral">
-                <RankingDisplay players={sortedAndFilteredPlayers} viewMode={viewMode} hallOfFame={initialHallOfFame} sortConfig={sortConfig} requestSort={requestSort}/>
+                <RankingDisplay players={sortedAndFilteredPlayers} viewMode={viewMode} hallOfFame={initialHallOfFame} sortConfig={sortConfig} requestSort={requestSort} clanMembers={initialClanMembers}/>
             </TabsContent>
             <TabsContent value="mensal">
-                <RankingDisplay players={sortedAndFilteredPlayers} viewMode={viewMode} hallOfFame={initialHallOfFame} sortConfig={sortConfig} requestSort={requestSort}/>
+                <RankingDisplay players={sortedAndFilteredPlayers} viewMode={viewMode} hallOfFame={initialHallOfFame} sortConfig={sortConfig} requestSort={requestSort} clanMembers={initialClanMembers}/>
             </TabsContent>
             <TabsContent value="semanal">
-                <RankingDisplay players={sortedAndFilteredPlayers} viewMode={viewMode} hallOfFame={initialHallOfFame} sortConfig={sortConfig} requestSort={requestSort}/>
+                <RankingDisplay players={sortedAndFilteredPlayers} viewMode={viewMode} hallOfFame={initialHallOfFame} sortConfig={sortConfig} requestSort={requestSort} clanMembers={initialClanMembers}/>
             </TabsContent>
         </Tabs>
     </>

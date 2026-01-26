@@ -74,3 +74,11 @@ export interface PromotionLog {
         nanoseconds: number;
     } | Date;
 }
+
+export interface ClanMemberInfo {
+  clanId: string;
+  clanTag: string;
+  clanName: string;
+  clanLogoUrl?: string;
+  rank: string;
+}
