@@ -13,6 +13,8 @@ interface HierarchyViewProps {
 }
 
 const ranksInOrder = [
+    'Comandante',
+    'Subcomandante',
     'Marechal',
     'General-de-Exercito',
     'General-de-Divisao',
@@ -34,6 +36,9 @@ const ranksInOrder = [
 ];
 
 const getRankImage = (rank: string) => {
+    if (rank === 'Comandante' || rank === 'Subcomandante') {
+        return '/patentes/Marechal.jpeg';
+    }
     // Just use the rank name directly as it matches the file name.
     return `/patentes/${rank}.jpeg`;
 };

@@ -38,7 +38,9 @@ const RANKS = [
     'General-de-Brigada',
     'General-de-Divisao',
     'General-de-Exercito',
-    'Marechal'
+    'Marechal',
+    'Subcomandante',
+    'Comandante'
 ];
 
 const CLAN_TAGS = ['SMK', 'HRB', 'RZN', 'OCL', '3LPZ', 'WRT', 'SAP', 'BOLD', 'IDG', 'SOH'];

@@ -34,6 +34,8 @@ interface ClanPageProps {
 }
 
 const ranksInOrder = [
+    'Comandante',
+    'Subcomandante',
     'Marechal',
     'General-de-Exercito',
     'General-de-Divisao',
@@ -79,7 +81,7 @@ export default function ClanPage({ params }: ClanPageProps) {
       const rankA = ranksInOrder.indexOf(a.rank);
       const rankB = ranksInOrder.indexOf(b.rank);
       if (rankA !== rankB) {
-        return rankB - rankA; // Sort descending by rank
+        return rankA - rankB; 
       }
       return a.playerName.localeCompare(b.playerName);
     });
@@ -190,3 +192,4 @@ export default function ClanPage({ params }: ClanPageProps) {
   );
 }
     
+

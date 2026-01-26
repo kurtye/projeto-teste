@@ -42,7 +42,9 @@ const ranks = [
     'General-de-Brigada',
     'General-de-Divisao',
     'General-de-Exercito',
-    'Marechal'
+    'Marechal',
+    'Subcomandante',
+    'Comandante'
 ];
 
 const statuses: ClanMember['status'][] = ['active', 'inactive', 'trial'];

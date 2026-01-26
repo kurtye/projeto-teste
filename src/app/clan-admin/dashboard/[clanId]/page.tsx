@@ -95,7 +95,9 @@ export default function ClanDashboardPage({ params }: { params: { clanId: string
     'General-de-Brigada',
     'General-de-Divisao',
     'General-de-Exercito',
-    'Marechal'
+    'Marechal',
+    'Subcomandante',
+    'Comandante'
   ];
 
   const getStatusVariant = (status: ClanMember['status'] | undefined) => {
@@ -108,7 +110,7 @@ export default function ClanDashboardPage({ params }: { params: { clanId: string
   }
   
   const getRankImage = (rank: string) => {
-    const imageName = `${rank}.jpeg`;
+    const imageName = (rank === 'Comandante' || rank === 'Subcomandante') ? 'Marechal.jpeg' : `${rank}.jpeg`;
     return (
         <Image 
             src={`/patentes/${imageName}`} 
@@ -354,7 +356,7 @@ export default function ClanDashboardPage({ params }: { params: { clanId: string
                                         variant="ghost" 
                                         size="icon" 
                                         onClick={() => handlePromote(member)}
-                                        disabled={isPromoting || member.rank === 'Marechal'}
+                                        disabled={isPromoting || member.rank === 'Comandante'}
                                         title="Promover"
                                     >
                                         <ArrowUp className="h-4 w-4" />
