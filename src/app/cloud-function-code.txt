@@ -3,12 +3,32 @@
  * =================================================================
  * CÓDIGO DA CLOUD FUNCTION - COPIE PARA "functions/src/index.ts"
  * =================================================================
+ *
+ * NOTAS DE DEPLOY:
+ *
+ * 1. A função `aggregatePlayerStats` é acionada por eventos do Firestore.
+ *
+ * 2. A nova função `autoSyncPublicMatches` é acionada por agendamento (Pub/Sub).
+ *    Para implantar, você precisará habilitar a API do Cloud Scheduler no seu projeto Google Cloud.
+ *    O Firebase CLI irá configurar o tópico Pub/Sub e o job do Scheduler para você durante o deploy.
+ *    O agendamento está definido como "a cada 3 horas".
+ *
+ * 3. Copie o conteúdo deste arquivo para o arquivo `src/index.ts` dentro da
+ *    sua pasta `functions` do Firebase.
+ *
+ * 4. Copie o conteúdo de `functions.package.json.txt` para o arquivo `package.json`
+ *    dentro da sua pasta `functions`.
+ *
+ * 5. Execute `npm install` dentro da pasta `functions`.
+ *
+ * 6. Execute `firebase deploy --only functions` para implantar as funções.
+ *
  */
 
-import {logger} from "firebase-functions";
+import {logger, pubsub} from "firebase-functions";
 import {onDocumentCreated} from "firebase-functions/v2/firestore";
 import * as admin from "firebase-admin";
-import {getWeek, getYear, getWeekYear} from "date-fns";
+import {getWeek, getWeekYear} from "date-fns";
 
 // Inicializa o Firebase Admin SDK.
 admin.initializeApp();
@@ -269,3 +289,151 @@ export const aggregatePlayerStats = onDocumentCreated(
     }
   }
 );
+
+
+// =================================================================
+// NOVA FUNÇÃO DE SINCRONIZAÇÃO AUTOMÁTICA
+// =================================================================
+
+const serversConfig = [
+  {id: "3LPZ", name: "3LPZ", apiUrl: "https://3lpz-stats.hlladmin.com/api"},
+  {id: "HRB", name: "HRB", apiUrl: "https://hrb-stats.hlladmin.com/api"},
+  {id: "RZN", name: "RZN", apiUrl: "https://rzn-stats.crcon.cc/api"},
+  {id: "GOAT", name: "GOAT", apiUrl: "https://goat-stats.hlladmin.com/api"},
+  {id: "OCL", name: "OCL", apiUrl: "https://ocabala-stats.hlladmin.com/api"},
+  {id: "SAP", name: "SAP", apiUrl: "https://sap-stats.hlladmin.com/api"},
+  {id: "SOH", name: "SOH", apiUrl: "https://sohhllbr-stats.hlladmin.com/api"},
+];
+
+const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+interface ScoreboardMapsResponse {
+  result: {
+    total: number;
+    page_size: number;
+    maps: { id: number }[];
+  };
+}
+
+// Reutilizando interface de MatchData e PlayerStats de cima
+
+async function fetchAllMatchIds(apiUrl: string): Promise<number[]> {
+  let allIds: number[] = [];
+  let currentPage = 1;
+  let totalPages = 1;
+
+  logger.log(`[SYNC] Buscando todos os IDs de partida de ${apiUrl}`);
+
+  try {
+    do {
+      const url = `${apiUrl}/get_scoreboard_maps?page=${currentPage}&limit=100`;
+      // A API de fetch é global no ambiente do Node.js 18+ do Cloud Functions
+      const response = await fetch(url);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        logger.error(`[SYNC] Falha ao buscar a página ${currentPage} de mapas. Status: ${response.status}, Corpo: ${errorText}`);
+        throw new Error(`Falha ao buscar a lista de mapas na página ${currentPage}: ${response.statusText}`);
+      }
+
+      const data: ScoreboardMapsResponse = await response.json();
+
+      if (currentPage === 1) {
+        const totalMatches = data.result.total;
+        const pageSize = data.result.page_size;
+        totalPages = Math.ceil(totalMatches / pageSize);
+        logger.log(`[SYNC] Total de partidas na API: ${totalMatches}. Total de páginas a buscar: ${totalPages}.`);
+      }
+
+      const pageIds = data.result.maps.map((m) => m.id);
+      allIds = allIds.concat(pageIds);
+
+      currentPage++;
+      if (currentPage <= totalPages) {
+        await delay(200);
+      }
+    } while (currentPage <= totalPages);
+
+    logger.log(`[SYNC] Busca de IDs concluída. Total de IDs encontrados: ${allIds.length}`);
+    return allIds;
+  } catch (error) {
+    logger.error(`[SYNC] Erro ao buscar todos os IDs de partida de ${apiUrl}:`, error);
+    throw error;
+  }
+}
+
+/**
+ * Função agendada para sincronizar automaticamente novas partidas de servidores públicos.
+ * Acionada a cada 3 horas.
+ */
+export const autoSyncPublicMatches = pubsub.schedule("every 3 hours").onRun(async (context) => {
+  logger.info("Iniciando rotina de sincronização automática de partidas.");
+
+  for (const server of serversConfig) {
+    logger.info(`[SYNC] Sincronizando servidor: ${server.name}`);
+    try {
+      const syncStatusRef = db.collection("serverSyncStatus").doc(server.name);
+      const syncDoc = await syncStatusRef.get();
+      const lastProcessedId = syncDoc.exists ? (syncDoc.data()?.lastProcessedId || 0) : 0;
+      logger.info(`[SYNC] Último ID processado para ${server.name}: ${lastProcessedId}`);
+
+      const allMatchIds = await fetchAllMatchIds(server.apiUrl);
+      if (allMatchIds.length === 0) {
+        logger.warn(`[SYNC] Nenhum ID de partida encontrado para ${server.name}. Pulando.`);
+        continue;
+      }
+
+      const matchIdsToImport = allMatchIds.filter((id) => id > lastProcessedId).sort((a, b) => a - b);
+      if (matchIdsToImport.length === 0) {
+        logger.info(`[SYNC] Nenhuma partida nova para importar de ${server.name}.`);
+        continue;
+      }
+
+      logger.info(`[SYNC] Encontradas ${matchIdsToImport.length} novas partidas para importar de ${server.name}.`);
+      let matchesProcessedCount = 0;
+      let highestIdInBatch = 0;
+
+      for (const matchId of matchIdsToImport) {
+        try {
+          await delay(250);
+          const mapUrl = `${server.apiUrl}/get_map_scoreboard?map_id=${matchId}`;
+          const response = await fetch(mapUrl);
+
+          if (!response.ok) {
+            logger.warn(`[SYNC] Falha ao buscar partida ID ${matchId} de ${server.name}. Status: ${response.status}. Pulando.`);
+            continue;
+          }
+
+          const mapData = await response.json();
+          const matchInfo: MatchData = mapData.result;
+
+          if (!matchInfo || !matchInfo.player_stats) {
+            logger.warn(`[SYNC] Dados da partida ID ${matchId} de ${server.name} incompletos. Pulando.`);
+            continue;
+          }
+
+          const matchDocRef = db.collection("rawMatchResults").doc(matchInfo.id.toString());
+          await matchDocRef.set({...matchInfo, numeric_id: matchInfo.id, server: server.name});
+
+          matchesProcessedCount++;
+          highestIdInBatch = Math.max(highestIdInBatch, matchId);
+        } catch (innerError: any) {
+          logger.error(`[SYNC] Erro processando partida ID ${matchId} de ${server.name}:`, innerError.message);
+        }
+      }
+
+      if (highestIdInBatch > lastProcessedId) {
+        await syncStatusRef.set({
+          lastProcessedId: highestIdInBatch,
+          serverName: server.name,
+          lastChecked: admin.firestore.FieldValue.serverTimestamp(),
+        }, {merge: true});
+        logger.info(`[SYNC] Status de sincronização para ${server.name} atualizado para ID: ${highestIdInBatch}. Total processado no lote: ${matchesProcessedCount}.`);
+      }
+    } catch (error: any) {
+      logger.error(`[ERRO GERAL SYNC] Falha na sincronização do servidor ${server.name}:`, error);
+    }
+  }
+  logger.info("Rotina de sincronização automática concluída.");
+  return null;
+});
