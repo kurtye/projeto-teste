@@ -436,5 +436,4 @@ export const autoSyncPublicMatches = onSchedule("every 3 hours", async (event) =
     }
   }
   logger.info("Rotina de sincronização automática concluída.");
-  return null;
 });
