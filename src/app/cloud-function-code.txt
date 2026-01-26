@@ -8,7 +8,7 @@
  *
  * 1. A função `aggregatePlayerStats` é acionada por eventos do Firestore.
  *
- * 2. A nova função `autoSyncPublicMatches` é acionada por agendamento (Pub/Sub).
+ * 2. A nova função `autoSyncPublicMatches` é acionada por agendamento (Scheduler).
  *    Para implantar, você precisará habilitar a API do Cloud Scheduler no seu projeto Google Cloud.
  *    O Firebase CLI irá configurar o tópico Pub/Sub e o job do Scheduler para você durante o deploy.
  *    O agendamento está definido como "a cada 3 horas".
@@ -25,8 +25,9 @@
  *
  */
 
-import {logger, pubsub} from "firebase-functions";
+import {logger} from "firebase-functions";
 import {onDocumentCreated} from "firebase-functions/v2/firestore";
+import {onSchedule} from "firebase-functions/v2/scheduler";
 import * as admin from "firebase-admin";
 import {getWeek, getWeekYear} from "date-fns";
 
@@ -366,7 +367,7 @@ async function fetchAllMatchIds(apiUrl: string): Promise<number[]> {
  * Função agendada para sincronizar automaticamente novas partidas de servidores públicos.
  * Acionada a cada 3 horas.
  */
-export const autoSyncPublicMatches = pubsub.schedule("every 3 hours").onRun(async (context) => {
+export const autoSyncPublicMatches = onSchedule("every 3 hours", async (event) => {
   logger.info("Iniciando rotina de sincronização automática de partidas.");
 
   for (const server of serversConfig) {
