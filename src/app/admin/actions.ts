@@ -388,6 +388,8 @@ export async function importHistoricalMatchRange(
   try {
     const fetchOptions = { headers: { 'Content-Type': 'application/json' } };
     let matchesProcessed = 0;
+    const lastImportedId = await getLastImportedMatchIdForServer(serverName);
+    let highestSuccessfullyProcessedId = lastImportedId;
 
     for (const matchId of matchIdsToImport) {
       try {
@@ -412,16 +414,26 @@ export async function importHistoricalMatchRange(
             continue;
         }
 
-        const batch = writeBatch(db);
         const matchDocRef = doc(db, 'rawMatchResults', matchInfo.id.toString());
-        batch.set(matchDocRef, { ...matchInfo, numeric_id: matchInfo.id, server: serverName, historical: true });
+        await setDoc(matchDocRef, { ...matchInfo, numeric_id: matchInfo.id, server: serverName, historical: true });
 
-        await batch.commit();
         matchesProcessed++;
+        highestSuccessfullyProcessedId = Math.max(highestSuccessfullyProcessedId, matchId);
       } catch (innerError: any) {
         console.error(`[LOG HISTÓRICO] Erro processando partida ID ${matchId}:`, innerError.message);
       }
     }
+    
+    if (highestSuccessfullyProcessedId > lastImportedId) {
+        const syncStatusRef = doc(db, 'serverSyncStatus', serverName);
+        await setDoc(syncStatusRef, { 
+            lastProcessedId: highestSuccessfullyProcessedId,
+            serverName: serverName,
+            lastChecked: serverTimestamp()
+        }, { merge: true });
+        console.log(`[LOG HISTÓRICO] Status de sincronização para ${serverName} atualizado para a partida ID: ${highestSuccessfullyProcessedId}`);
+    }
+
 
     console.log(`[LOG FINAL] Importação histórica por intervalo concluída. ${matchesProcessed} de ${totalToProcess} partidas processadas.`);
     return { success: true, matchesProcessed, totalToProcess };
@@ -474,6 +486,8 @@ export async function updateGlobalStats(): Promise<{ success: boolean; error?: s
     return { success: false, error: error.message };
   }
 }
+
+    
 
     
 
