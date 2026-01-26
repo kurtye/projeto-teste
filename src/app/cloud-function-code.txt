@@ -41,34 +41,34 @@ interface PlayerStats {
 interface MatchData {
   id: number;
   numeric_id: number;
+  creation_time: string;
   server: string;
   player_stats: PlayerStats[];
   historical?: boolean;
 }
 
 /**
- * Retorna o identificador da semana no formato "YYYY-WW".
- * Usa getWeekYear para garantir que o ano correto seja usado na virada do ano.
+ * Retorna o identificador da semana no formato "YYYY-WW" para uma data.
+ * @param {Date} date A data para a qual o ID da semana será gerado.
  * @return {string} O identificador da semana.
  */
-function getWeekId(): string {
-  const now = new Date();
+function getWeekId(date: Date): string {
   // Usa getWeekYear para lidar corretamente com a virada do ano.
-  const year = getWeekYear(now, {weekStartsOn: 1});
+  const year = getWeekYear(date, {weekStartsOn: 1});
   // Começa na segunda-feira
-  const week = getWeek(now, {weekStartsOn: 1});
+  const week = getWeek(date, {weekStartsOn: 1});
   return `week_${year}-${week.toString().padStart(2, "0")}`;
 }
 
 
 /**
- * Retorna o identificador do mês no formato "YYYY-MM".
+ * Retorna o identificador do mês no formato "YYYY-MM" para uma data.
+ * @param {Date} date A data para a qual o ID do mês será gerado.
  * @return {string} O identificador do mês.
  */
-function getMonthId(): string {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = (now.getMonth() + 1).toString().padStart(2, "0");
+function getMonthId(date: Date): string {
+  const year = date.getFullYear();
+  const month = (date.getMonth() + 1).toString().padStart(2, "0");
   return `month_${year}-${month}`;
 }
 
@@ -94,15 +94,17 @@ export const aggregatePlayerStats = onDocumentCreated(
     const matchData = snapshot.data() as MatchData;
     const serverName = matchData.server;
     const matchNumericId = matchData.numeric_id || matchData.id;
-    const weekId = getWeekId();
-    const monthId = getMonthId();
     const isHistorical = matchData.historical === true;
 
+    // A data da partida é extraída do documento,
+    // com fallback para a data atual.
+    const matchDate = matchData.creation_time ?
+      new Date(matchData.creation_time) : new Date();
+
     const logPrefix = `Partida ${matchNumericId} (Servidor: ${serverName})`;
-    logger.log(`Iniciando agregação para ${logPrefix}. Histórico: ${isHistorical}`);
-    if (!isHistorical) {
-      logger.log(`Períodos: Semana=${weekId}, Mês=${monthId}`);
-    }
+    logger.log(`Iniciando agregação para ${logPrefix}. ` +
+      `Data da partida: ${matchDate.toISOString()}. ` +
+      `Histórico: ${isHistorical}`);
 
     if (!matchData.player_stats || matchData.player_stats.length === 0) {
       logger.log(`${logPrefix} não contém 'player_stats'. Excluindo.`);
@@ -124,15 +126,11 @@ export const aggregatePlayerStats = onDocumentCreated(
 
         const playerId = playerStat.player_id;
         const playerName = playerStat.player;
-        const weeklyDocId = `${playerId}_${weekId}`;
-        const monthlyDocId = `${playerId}_${monthId}`;
 
-        const aggregatesRef = db.collection("playerAggregates").doc(playerId);
-        const weeklyRef = db.collection("playerWeeklyStats").doc(weeklyDocId);
-        const monthlyRef = db.collection("playerMonthlyStats")
-          .doc(monthlyDocId);
         // --- TRANSAÇÃO PARA ESTATÍSTICAS GERAIS ---
         await db.runTransaction(async (transaction) => {
+          const aggregatesRef = db.collection("playerAggregates")
+            .doc(playerId);
           const playerDoc = await transaction.get(aggregatesRef);
           const currentData = playerDoc.data() || {};
           const currentProcessed = currentData.processedServers || {};
@@ -188,7 +186,15 @@ export const aggregatePlayerStats = onDocumentCreated(
 
         // --- ATUALIZAÇÕES PARA ESTATÍSTICAS SEMANAIS E MENSAIS ---
         if (!isHistorical) {
+          const currentDate = new Date();
+          const matchWeekId = getWeekId(matchDate);
+          const currentWeekId = getWeekId(currentDate);
+          const matchMonthId = getMonthId(matchDate);
+          const currentMonthId = getMonthId(currentDate);
+
           const periodBatch = db.batch();
+          let periodUpdatesMade = false;
+
           const periodIncrementData = {
             totalKills: admin.firestore.FieldValue.increment(
               playerStat.kills || 0
@@ -217,8 +223,6 @@ export const aggregatePlayerStats = onDocumentCreated(
             totalDeathsByTK: admin.firestore.FieldValue.increment(
               playerStat.deaths_by_tk || 0
             ),
-            // NOTE: A lógica de 'longestLife' sobrescreve,
-            // pois agregações de 'max' são complexas em batches.
             longestLifeSecs: playerStat.longest_life_secs || 0,
           };
           const basePeriodData = {
@@ -226,15 +230,31 @@ export const aggregatePlayerStats = onDocumentCreated(
             latestPlayerName: playerName,
           };
 
-          // Atualização Semanal
-          periodBatch.set(weeklyRef, {
-            ...basePeriodData, periodId: weekId, ...periodIncrementData,
-          }, {merge: true});
-          // Atualização Mensal
-          periodBatch.set(monthlyRef, {
-            ...basePeriodData, periodId: monthId, ...periodIncrementData,
-          }, {merge: true});
-          await periodBatch.commit();
+          // Agrega para a semana APENAS se a partida for da semana atual
+          if (matchWeekId === currentWeekId) {
+            const weeklyDocId = `${playerId}_${currentWeekId}`;
+            const weeklyRef = db.collection("playerWeeklyStats")
+              .doc(weeklyDocId);
+            periodBatch.set(weeklyRef, {
+              ...basePeriodData, periodId: currentWeekId, ...periodIncrementData,
+            }, {merge: true});
+            periodUpdatesMade = true;
+          }
+
+          // Agrega para o mês APENAS se a partida for do mês atual
+          if (matchMonthId === currentMonthId) {
+            const monthlyDocId = `${playerId}_${currentMonthId}`;
+            const monthlyRef = db.collection("playerMonthlyStats")
+              .doc(monthlyDocId);
+            periodBatch.set(monthlyRef, {
+              ...basePeriodData, periodId: currentMonthId, ...periodIncrementData,
+            }, {merge: true});
+            periodUpdatesMade = true;
+          }
+
+          if (periodUpdatesMade) {
+            await periodBatch.commit();
+          }
         }
       });
 
