@@ -1,10 +1,9 @@
-
 'use client';
 
 import { notFound } from 'next/navigation';
 import { useCollection, useFirestore, useMemoFirebase } from '@/firebase';
 import { collection, query, orderBy } from 'firebase/firestore';
-import { useMemo } from 'react';
+import { useMemo, use } from 'react';
 import { clans } from '@/lib/clans';
 import type { ClanMember } from '@/lib/types';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -57,7 +56,8 @@ const ranksInOrder = [
 ];
 
 export default function ClanPage({ params }: ClanPageProps) {
-  const { clanId } = params;
+  const resolvedParams = use(params);
+  const { clanId } = resolvedParams;
   const firestore = useFirestore();
 
   const clan = clans.find(c => c.id === clanId);
@@ -192,4 +192,3 @@ export default function ClanPage({ params }: ClanPageProps) {
   );
 }
     
-
