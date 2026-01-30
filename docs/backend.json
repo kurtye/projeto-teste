@@ -146,6 +146,109 @@
         }
       },
       "required": ["name", "count"]
+    },
+    "GlobalWeaponStats": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "GlobalWeaponStats",
+      "type": "object",
+      "description": "Aggregated statistics for a single weapon across all matches and players.",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "The name of the weapon."
+        },
+        "totalKills": {
+          "type": "number",
+          "description": "The total number of kills with this weapon across all players."
+        }
+      },
+      "required": ["name", "totalKills"]
+    },
+    "PlayerPeriodStats": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "PlayerPeriodStats",
+      "type": "object",
+      "description": "Aggregated statistics for a single player for a specific period (week or month).",
+      "properties": {
+        "playerId": { "type": "string" },
+        "latestPlayerName": { "type": "string" },
+        "periodId": { "type": "string", "description": "Identifier for the period, e.g., 'week_2024-32' or 'month_2024-08'."},
+        "totalTimeSeconds": { "type": "number" },
+        "longestLifeSecs": { "type": "number" },
+        "totalKills": { "type": "number" },
+        "totalDeaths": { "type": "number" },
+        "totalCombat": { "type": "number" },
+        "totalOffense": { "type": "number" },
+        "totalDefense": { "type": "number" },
+        "totalSupport": { "type": "number" },
+        "totalTeamKills": { "type": "number" },
+        "totalDeathsByTK": { "type": "number" }
+      },
+      "required": ["playerId", "latestPlayerName", "periodId"]
+    },
+     "Clan": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Clan",
+      "type": "object",
+      "description": "Represents a clan.",
+      "properties": {
+        "name": { "type": "string" },
+        "tag": { "type": "string" },
+        "adminUids": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Array of Firebase Auth UIDs of users who are admins of this clan."
+        }
+      },
+      "required": ["name", "tag"]
+    },
+    "ClanMember": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "ClanMember",
+      "type": "object",
+      "description": "Represents a member within a clan.",
+      "properties": {
+        "playerId": { "type": "string", "description": "The ID of the player from the playerAggregATES collection." },
+        "rank": { "type": "string", "description": "The member's rank or title within the clan." },
+        "status": { "type": "string", "enum": ["active", "inactive", "trial"] }
+      },
+      "required": ["playerId", "rank", "status"]
+    },
+    "PromotionLog": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "title": "PromotionLog",
+        "type": "object",
+        "description": "Represents a log entry for a member's promotion.",
+        "properties": {
+            "playerId": { "type": "string" },
+            "playerName": { "type": "string" },
+            "oldRank": { "type": "string" },
+            "newRank": { "type": "string" },
+            "promotionDate": { "type": "string", "format": "date-time" }
+        },
+        "required": ["playerId", "playerName", "oldRank", "newRank", "promotionDate"]
+    },
+    "ServerSyncState": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "ServerSyncState",
+      "type": "object",
+      "description": "Stores the synchronization state for a single server, including the ID of the last match successfully processed.",
+      "properties": {
+        "serverName": {
+          "type": "string",
+          "description": "The name of the server."
+        },
+        "lastProcessedId": {
+          "type": "number",
+          "description": "The numeric ID of the last match that was successfully imported and processed from this server."
+        },
+        "lastChecked": {
+            "type": "string",
+            "format": "date-time",
+            "description": "The timestamp of when the server was last checked for new matches."
+        }
+      },
+      "required": ["serverName", "lastProcessedId"]
     }
   },
   "auth": {
@@ -156,15 +259,11 @@
   },
   "firestore": {
     "/rawMatchResults/{matchId}": {
-      "schema": {
-        "$ref": "#/entities/Match"
-      },
+      "schema": { "$ref": "#/entities/Match" },
       "description": "Collection to store raw match data from the external API. Documents in this collection trigger the aggregation Cloud Function and are deleted after successful processing."
     },
     "/playerAggregates/{playerId}": {
-      "schema": {
-        "$ref": "#/entities/PlayerAggregates"
-      },
+      "schema": { "$ref": "#/entities/PlayerAggregates" },
       "description": "Global collection of aggregated player statistics. Each document represents a single player and contains their consolidated stats from all processed matches."
     },
     "/playerAggregates/{playerId}/killedBy/{killerName}": {
@@ -178,6 +277,34 @@
     "/playerAggregates/{playerId}/weaponUsage/{weaponName}": {
         "schema": { "$ref": "#/entities/WeaponUsage" },
         "description": "Subcollection tracking the kill count for each weapon used by the player."
+    },
+    "/playerWeeklyStats/{docId}": {
+      "schema": { "$ref": "#/entities/PlayerPeriodStats" },
+      "description": "Aggregated weekly stats for players. Document ID is a composite of player ID and week ID."
+    },
+    "/playerMonthlyStats/{docId}": {
+      "schema": { "$ref": "#/entities/PlayerPeriodStats" },
+      "description": "Aggregated monthly stats for players. Document ID is a composite of player ID and month ID."
+    },
+     "/clans/{clanId}": {
+      "schema": { "$ref": "#/entities/Clan" },
+      "description": "Collection to store information about each clan."
+    },
+    "/clans/{clanId}/members/{playerId}": {
+      "schema": { "$ref": "#/entities/ClanMember" },
+      "description": "Subcollection to store members of a clan and their specific data like rank."
+    },
+    "/clans/{clanId}/promotionLog/{logId}": {
+        "schema": { "$ref": "#/entities/PromotionLog" },
+        "description": "Subcollection to log member promotions."
+    },
+    "/serverSyncStatus/{serverName}": {
+      "schema": { "$ref": "#/entities/ServerSyncState" },
+      "description": "Collection to store the last processed match ID for each server to optimize data import."
+    },
+    "/globalWeaponStats/{weaponName}": {
+      "schema": { "$ref": "#/entities/GlobalWeaponStats" },
+      "description": "Global collection of aggregated weapon statistics. Each document represents a single weapon and its total kill count."
     }
   }
 }

@@ -82,3 +82,9 @@ export interface ClanMemberInfo {
   clanLogoUrl?: string;
   rank: string;
 }
+
+export interface GlobalWeaponStats {
+  id: string;
+  name: string;
+  totalKills: number;
+}

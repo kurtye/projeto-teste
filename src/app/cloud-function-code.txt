@@ -205,6 +205,66 @@ export const aggregatePlayerStats = onDocumentCreated(
           transaction.set(aggregatesRef, updates, {merge: true});
         });
 
+        // --- BATCH PARA SUBCOLEÇÕES E ESTATÍSTICAS GLOBAIS ---
+        const subcollectionBatch = db.batch();
+        const aggregatesRef = db.collection("playerAggregates").doc(playerId);
+
+        // Agrega estatísticas de armas (por jogador e global)
+        if (playerStat.weapons) {
+          const weaponsRef = aggregatesRef.collection("weaponUsage");
+          for (const weapon in playerStat.weapons) {
+            const kills = playerStat.weapons[weapon];
+            if (kills > 0) {
+              const weaponDocRef = weaponsRef.doc(weapon);
+              subcollectionBatch.set(
+                weaponDocRef,
+                {name: weapon, count: admin.firestore.FieldValue.increment(kills)},
+                {merge: true}
+              );
+              // Incrementa estatísticas globais de armas
+              const globalWeaponRef = db.collection("globalWeaponStats").doc(weapon);
+              subcollectionBatch.set(globalWeaponRef, {
+                name: weapon,
+                totalKills: admin.firestore.FieldValue.increment(kills),
+              }, {merge: true});
+            }
+          }
+        }
+
+        // Agrega estatísticas de 'morto por'
+        if (playerStat.death_by) {
+            const killedByRef = aggregatesRef.collection("killedBy");
+            for (const killer in playerStat.death_by) {
+                const times = playerStat.death_by[killer];
+                if (times > 0) {
+                    const killerDocRef = killedByRef.doc(killer);
+                    subcollectionBatch.set(
+                        killerDocRef,
+                        {name: killer, count: admin.firestore.FieldValue.increment(times)},
+                        {merge: true}
+                    );
+                }
+            }
+        }
+
+        // Agrega estatísticas de 'mais matou'
+        if (playerStat.most_killed) {
+            const killedPlayersRef = aggregatesRef.collection("killedPlayers");
+            for (const victim in playerStat.most_killed) {
+                const times = playerStat.most_killed[victim];
+                if (times > 0) {
+                    const victimDocRef = killedPlayersRef.doc(victim);
+                    subcollectionBatch.set(
+                        victimDocRef,
+                        {name: victim, count: admin.firestore.FieldValue.increment(times)},
+                        {merge: true}
+                    );
+                }
+            }
+        }
+        await subcollectionBatch.commit();
+
+
         // --- ATUALIZAÇÕES PARA ESTATÍSTICAS SEMANAIS E MENSAIS ---
         if (!isHistorical) {
           const currentDate = new Date();
