@@ -88,3 +88,9 @@ export interface GlobalWeaponStats {
   name: string;
   totalKills: number;
 }
+
+export interface WeaponLeaderboardEntry {
+  playerId: string;
+  playerName: string;
+  kills: number;
+}
