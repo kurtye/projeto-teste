@@ -148,10 +148,9 @@ export const aggregatePlayerStats = onDocumentCreated(
         const playerId = playerStat.player_id;
         const playerName = playerStat.player;
 
-        // --- TRANSAÇÃO PARA ESTATÍSTICAS GERAIS ---
+        // --- TRANSAÇÃO ATÔMICA PARA ESTATÍSTICAS GERAIS E SUBCOLEÇÕES ---
         await db.runTransaction(async (transaction) => {
-          const aggregatesRef = db.collection("playerAggregates")
-            .doc(playerId);
+          const aggregatesRef = db.collection("playerAggregates").doc(playerId);
           const playerDoc = await transaction.get(aggregatesRef);
           const currentData = playerDoc.data() || {};
           const currentProcessed = currentData.processedServers || {};
@@ -170,99 +169,76 @@ export const aggregatePlayerStats = onDocumentCreated(
 
           const updates = {
             matchesPlayed: admin.firestore.FieldValue.increment(1),
-            totalKills: admin.firestore.FieldValue.increment(
-              playerStat.kills || 0
-            ),
-            totalDeaths: admin.firestore.FieldValue.increment(
-              playerStat.deaths || 0
-            ),
-            totalCombat: admin.firestore.FieldValue.increment(
-              playerStat.combat || 0
-            ),
-            totalOffense: admin.firestore.FieldValue.increment(
-              playerStat.offense || 0
-            ),
-            totalDefense: admin.firestore.FieldValue.increment(
-              playerStat.defense || 0
-            ),
-            totalSupport: admin.firestore.FieldValue.increment(
-              playerStat.support || 0
-            ),
-            totalTimeSeconds: admin.firestore.FieldValue.increment(
-              playerStat.time_seconds || 0
-            ),
-            totalTeamKills: admin.firestore.FieldValue.increment(
-              playerStat.teamkills || 0
-            ),
-            totalDeathsByTK: admin.firestore.FieldValue.increment(
-              playerStat.deaths_by_tk || 0
-            ),
+            totalKills: admin.firestore.FieldValue.increment(playerStat.kills || 0),
+            totalDeaths: admin.firestore.FieldValue.increment(playerStat.deaths || 0),
+            totalCombat: admin.firestore.FieldValue.increment(playerStat.combat || 0),
+            totalOffense: admin.firestore.FieldValue.increment(playerStat.offense || 0),
+            totalDefense: admin.firestore.FieldValue.increment(playerStat.defense || 0),
+            totalSupport: admin.firestore.FieldValue.increment(playerStat.support || 0),
+            totalTimeSeconds: admin.firestore.FieldValue.increment(playerStat.time_seconds || 0),
+            totalTeamKills: admin.firestore.FieldValue.increment(playerStat.teamkills || 0),
+            totalDeathsByTK: admin.firestore.FieldValue.increment(playerStat.deaths_by_tk || 0),
             longestLifeSecs: newLongestLife,
             playerId: playerId,
             latestPlayerName: playerName,
             [`processedServers.${serverName}`]: matchNumericId,
           };
           transaction.set(aggregatesRef, updates, {merge: true});
-        });
 
-        // --- BATCH PARA SUBCOLEÇÕES E ESTATÍSTICAS GLOBAIS ---
-        const subcollectionBatch = db.batch();
-        const aggregatesRef = db.collection("playerAggregates").doc(playerId);
 
-        // Agrega estatísticas de armas (por jogador e global)
-        if (playerStat.weapons) {
-          const weaponsRef = aggregatesRef.collection("weaponUsage");
-          for (const weapon in playerStat.weapons) {
-            const kills = playerStat.weapons[weapon];
-            if (kills > 0) {
-              const weaponDocRef = weaponsRef.doc(weapon);
-              subcollectionBatch.set(
-                weaponDocRef,
-                {name: weapon, count: admin.firestore.FieldValue.increment(kills)},
-                {merge: true}
-              );
-              // Incrementa estatísticas globais de armas
-              const globalWeaponRef = db.collection("globalWeaponStats").doc(weapon);
-              subcollectionBatch.set(globalWeaponRef, {
-                name: weapon,
-                totalKills: admin.firestore.FieldValue.increment(kills),
-              }, {merge: true});
+          // Agrega estatísticas de armas (por jogador e global)
+          if (playerStat.weapons) {
+            const weaponsRef = aggregatesRef.collection("weaponUsage");
+            for (const weapon in playerStat.weapons) {
+              const kills = playerStat.weapons[weapon];
+              if (kills > 0) {
+                const weaponDocRef = weaponsRef.doc(weapon);
+                transaction.set(
+                  weaponDocRef,
+                  {name: weapon, count: admin.firestore.FieldValue.increment(kills)},
+                  {merge: true}
+                );
+                const globalWeaponRef = db.collection("globalWeaponStats").doc(weapon);
+                transaction.set(globalWeaponRef, {
+                  name: weapon,
+                  totalKills: admin.firestore.FieldValue.increment(kills),
+                }, {merge: true});
+              }
             }
           }
-        }
 
-        // Agrega estatísticas de 'morto por'
-        if (playerStat.death_by) {
-            const killedByRef = aggregatesRef.collection("killedBy");
-            for (const killer in playerStat.death_by) {
-                const times = playerStat.death_by[killer];
-                if (times > 0) {
-                    const killerDocRef = killedByRef.doc(killer);
-                    subcollectionBatch.set(
-                        killerDocRef,
-                        {name: killer, count: admin.firestore.FieldValue.increment(times)},
-                        {merge: true}
-                    );
-                }
-            }
-        }
+          // Agrega estatísticas de 'morto por'
+          if (playerStat.death_by) {
+              const killedByRef = aggregatesRef.collection("killedBy");
+              for (const killer in playerStat.death_by) {
+                  const times = playerStat.death_by[killer];
+                  if (times > 0) {
+                      const killerDocRef = killedByRef.doc(killer);
+                      transaction.set(
+                          killerDocRef,
+                          {name: killer, count: admin.firestore.FieldValue.increment(times)},
+                          {merge: true}
+                      );
+                  }
+              }
+          }
 
-        // Agrega estatísticas de 'mais matou'
-        if (playerStat.most_killed) {
-            const killedPlayersRef = aggregatesRef.collection("killedPlayers");
-            for (const victim in playerStat.most_killed) {
-                const times = playerStat.most_killed[victim];
-                if (times > 0) {
-                    const victimDocRef = killedPlayersRef.doc(victim);
-                    subcollectionBatch.set(
-                        victimDocRef,
-                        {name: victim, count: admin.firestore.FieldValue.increment(times)},
-                        {merge: true}
-                    );
-                }
-            }
-        }
-        await subcollectionBatch.commit();
+          // Agrega estatísticas de 'mais matou'
+          if (playerStat.most_killed) {
+              const killedPlayersRef = aggregatesRef.collection("killedPlayers");
+              for (const victim in playerStat.most_killed) {
+                  const times = playerStat.most_killed[victim];
+                  if (times > 0) {
+                      const victimDocRef = killedPlayersRef.doc(victim);
+                      transaction.set(
+                          victimDocRef,
+                          {name: victim, count: admin.firestore.FieldValue.increment(times)},
+                          {merge: true}
+                      );
+                  }
+              }
+          }
+        });
 
 
         // --- ATUALIZAÇÕES PARA ESTATÍSTICAS SEMANAIS E MENSAIS ---
@@ -277,33 +253,15 @@ export const aggregatePlayerStats = onDocumentCreated(
           let periodUpdatesMade = false;
 
           const periodIncrementData = {
-            totalKills: admin.firestore.FieldValue.increment(
-              playerStat.kills || 0
-            ),
-            totalDeaths: admin.firestore.FieldValue.increment(
-              playerStat.deaths || 0
-            ),
-            totalCombat: admin.firestore.FieldValue.increment(
-              playerStat.combat || 0
-            ),
-            totalOffense: admin.firestore.FieldValue.increment(
-              playerStat.offense || 0
-            ),
-            totalDefense: admin.firestore.FieldValue.increment(
-              playerStat.defense || 0
-            ),
-            totalSupport: admin.firestore.FieldValue.increment(
-              playerStat.support || 0
-            ),
-            totalTimeSeconds: admin.firestore.FieldValue.increment(
-              playerStat.time_seconds || 0
-            ),
-            totalTeamKills: admin.firestore.FieldValue.increment(
-              playerStat.teamkills || 0
-            ),
-            totalDeathsByTK: admin.firestore.FieldValue.increment(
-              playerStat.deaths_by_tk || 0
-            ),
+            totalKills: admin.firestore.FieldValue.increment(playerStat.kills || 0),
+            totalDeaths: admin.firestore.FieldValue.increment(playerStat.deaths || 0),
+            totalCombat: admin.firestore.FieldValue.increment(playerStat.combat || 0),
+            totalOffense: admin.firestore.FieldValue.increment(playerStat.offense || 0),
+            totalDefense: admin.firestore.FieldValue.increment(playerStat.defense || 0),
+            totalSupport: admin.firestore.FieldValue.increment(playerStat.support || 0),
+            totalTimeSeconds: admin.firestore.FieldValue.increment(playerStat.time_seconds || 0),
+            totalTeamKills: admin.firestore.FieldValue.increment(playerStat.teamkills || 0),
+            totalDeathsByTK: admin.firestore.FieldValue.increment(playerStat.deaths_by_tk || 0),
             longestLifeSecs: playerStat.longest_life_secs || 0,
           };
           const basePeriodData = {
@@ -314,8 +272,7 @@ export const aggregatePlayerStats = onDocumentCreated(
           // Agrega para a semana APENAS se a partida for da semana atual
           if (matchWeekId === currentWeekId) {
             const weeklyDocId = `${playerId}_${currentWeekId}`;
-            const weeklyRef = db.collection("playerWeeklyStats")
-              .doc(weeklyDocId);
+            const weeklyRef = db.collection("playerWeeklyStats").doc(weeklyDocId);
             periodBatch.set(weeklyRef, {
               ...basePeriodData, periodId: currentWeekId, ...periodIncrementData,
             }, {merge: true});
@@ -325,8 +282,7 @@ export const aggregatePlayerStats = onDocumentCreated(
           // Agrega para o mês APENAS se a partida for do mês atual
           if (matchMonthId === currentMonthId) {
             const monthlyDocId = `${playerId}_${currentMonthId}`;
-            const monthlyRef = db.collection("playerMonthlyStats")
-              .doc(monthlyDocId);
+            const monthlyRef = db.collection("playerMonthlyStats").doc(monthlyDocId);
             periodBatch.set(monthlyRef, {
               ...basePeriodData, periodId: currentMonthId, ...periodIncrementData,
             }, {merge: true});
