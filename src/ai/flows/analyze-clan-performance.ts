@@ -23,27 +23,6 @@ export async function analyzeClanPerformance(input: AnalyzeClanPerformanceInput)
   return analyzeClanPerformanceFlow(input);
 }
 
-const prompt = ai.definePrompt({
-  name: 'analyzeClanPerformancePrompt',
-  input: {schema: AnalyzeClanPerformanceInputSchema},
-  output: {schema: AnalyzeClanPerformanceOutputSchema},
-  prompt: `
-    Você é um analista experiente do jogo Hell Let Loose.
-    Sua tarefa é analisar os dados estatísticos mensais de um clã e gerar um relatório em formato Markdown.
-
-    Destaques esperados:
-    - Use títulos (###) para cada categoria.
-    - Identifique o jogador com mais abates (MVP).
-    - Identifique um jogador com boa pontuação de suporte ou defesa.
-    - Identifique um jogador com pontuações bem equilibradas.
-    - Escreva uma breve conclusão sobre o desempenho do clã.
-    - Baseie-se apenas nos dados fornecidos em JSON. Não invente jogadores.
-
-    Dados:
-    {{{statsJson}}}
-  `,
-});
-
 const analyzeClanPerformanceFlow = ai.defineFlow(
   {
     name: 'analyzeClanPerformanceFlow',
@@ -51,15 +30,33 @@ const analyzeClanPerformanceFlow = ai.defineFlow(
     outputSchema: AnalyzeClanPerformanceOutputSchema,
   },
   async (input) => {
-    const response = await prompt(input);
-    const report = response.output;
+    // Using ai.generate directly for more control and to bypass potential schema validation issues.
+    const response = await ai.generate({
+        prompt: `
+          Você é um analista experiente do jogo Hell Let Loose.
+          Sua tarefa é analisar os dados estatísticos mensais de um clã e gerar um relatório conciso em formato Markdown.
+
+          A partir dos dados em JSON abaixo, identifique:
+          - O jogador com mais abates (MVP do mês).
+          - Um jogador destaque em Suporte ou Defesa.
+          - Um jogador com pontuações bem equilibradas entre combate, ataque, defesa e suporte.
+          - Escreva uma breve conclusão sobre o desempenho geral do clã no mês.
+
+          Formate a saída estritamente como um texto Markdown. Use títulos com '###'.
+          Baseie-se APENAS nos dados fornecidos. Não invente jogadores ou estatísticas.
+
+          Dados:
+          ${input.statsJson}
+        `,
+    });
+
+    const report = response.text;
 
     // Validate that the output is a non-empty string.
     if (typeof report === 'string' && report.trim().length > 0) {
       return report;
     }
-
-    // If we get here, the output is not valid.
+    
     console.error("AI analysis failed. Raw response from model:", JSON.stringify(response));
     throw new Error("A IA não conseguiu gerar um relatório. A resposta estava vazia ou em formato inválido.");
   }
