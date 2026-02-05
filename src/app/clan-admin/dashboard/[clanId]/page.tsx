@@ -25,7 +25,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { useState, useTransition, useMemo, useEffect } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
-import { findPotentialMembersByTag, addMembersToClan, promoteClanMember, getClanMonthlyStats } from '../../actions';
+import { findPotentialMembersByTag, addMembersToClan, promoteClanMember, getClanMonthlyStats, findUnclaimedPlayers } from '../../actions';
 import { useToast } from '@/hooks/use-toast';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -53,6 +53,12 @@ export default function ClanDashboardPage({ params }: { params: { clanId: string
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear().toString());
   const [selectedMonth, setSelectedMonth] = useState((new Date().getMonth() + 1).toString().padStart(2, '0'));
   
+  // State for recruitment tab
+  const [isFindingTalents, startFindingTalents] = useTransition();
+  const [unclaimedPlayers, setUnclaimedPlayers] = useState<PlayerPeriodStats[]>([]);
+  const [selectedTalents, setSelectedTalents] = useState<Set<string>>(new Set());
+  const [isAddingTalents, startAddingTalents] = useTransition();
+
   // This effect ensures that if a user lands on the wrong clan dashboard, they are redirected.
   useEffect(() => {
     if (clan && clan.id !== clanId) {
@@ -222,6 +228,72 @@ export default function ClanDashboardPage({ params }: { params: { clanId: string
         }
     });
 };
+
+  const handleFindTalents = () => {
+    startFindingTalents(async () => {
+      setUnclaimedPlayers([]);
+      setSelectedTalents(new Set());
+      const result = await findUnclaimedPlayers();
+      if (result.success && result.players) {
+        setUnclaimedPlayers(result.players);
+        toast({
+          title: 'Busca Concluída',
+          description: `Encontrados ${result.players.length} jogadores promissores este mês.`,
+        });
+      } else {
+        toast({
+          variant: 'destructive',
+          title: 'Falha na Busca',
+          description: result.error || 'Ocorreu um erro desconhecido.',
+        });
+      }
+    });
+  };
+
+  const handleToggleSelectTalent = (playerId: string) => {
+    setSelectedTalents(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(playerId)) {
+        newSet.delete(playerId);
+      } else {
+        newSet.add(playerId);
+      }
+      return newSet;
+    });
+  };
+
+  const handleToggleSelectAllTalents = () => {
+    if (selectedTalents.size === unclaimedPlayers.length) {
+        setSelectedTalents(new Set());
+    } else {
+        setSelectedTalents(new Set(unclaimedPlayers.map(p => p.playerId)));
+    }
+  };
+
+  const handleAddSelectedTalents = () => {
+    startAddingTalents(async () => {
+        const playersToAdd: PlayerAggregates[] = unclaimedPlayers
+            .filter(p => selectedTalents.has(p.playerId))
+            .map(p => ({
+                id: p.playerId,
+                playerId: p.playerId,
+                latestPlayerName: p.latestPlayerName,
+            }));
+
+        if (playersToAdd.length === 0) {
+            toast({ variant: 'destructive', title: 'Nenhum jogador selecionado.' });
+            return;
+        }
+        
+        const result = await addMembersToClan(clan.id, playersToAdd);
+        if (result.success) {
+            toast({ title: 'Membros adicionados com sucesso!' });
+            handleFindTalents();
+        } else {
+            toast({ variant: 'destructive', title: 'Falha ao adicionar membros', description: result.error });
+        }
+    });
+  };
 
   const sortedMembers = useMemo(() => {
     if (!members) return [];
@@ -421,14 +493,43 @@ export default function ClanDashboardPage({ params }: { params: { clanId: string
                 <RecentPromotions promotions={sortedPromotions || []} />
              )}
         </TabsContent>
-         <TabsContent value="recruitment">
+        <TabsContent value="recruitment">
             <Card>
                 <CardHeader>
                     <CardTitle>Recrutamento de Talentos</CardTitle>
-                    <CardDescription>Esta função foi descontinuada. Use a "Sincronização por Tag" na aba "Lista".</CardDescription>
+                    <CardDescription>Encontre jogadores ativos e sem clã com base no desempenho do mês atual.</CardDescription>
                 </CardHeader>
                 <CardContent>
-                    <p className="text-muted-foreground">A nova ferramenta de "Membros Sugeridos" na aba de lista de membros é mais eficiente para encontrar jogadores que já usam a tag do seu clã.</p>
+                    <Button onClick={handleFindTalents} disabled={isFindingTalents || isAddingTalents}>
+                        <Search className={`mr-2 h-4 w-4 ${isFindingTalents ? 'animate-spin' : ''}`} />
+                        {isFindingTalents ? 'Buscando...' : 'Buscar Talentos do Mês'}
+                    </Button>
+
+                    {unclaimedPlayers.length > 0 && (
+                        <div className="mt-6">
+                            <h3 className="text-lg font-semibold mb-2">Jogadores Encontrados ({unclaimedPlayers.length})</h3>
+                            <div className="space-y-2 max-h-96 overflow-y-auto border p-2 rounded-md bg-muted/30">
+                                {unclaimedPlayers.map(player => (
+                                    <div key={player.playerId} onClick={() => handleToggleSelectTalent(player.playerId)} className="flex items-center gap-3 p-2 rounded-md hover:bg-muted cursor-pointer">
+                                        {selectedTalents.has(player.playerId) ? <CheckSquare className="h-5 w-5 text-accent" /> : <Square className="h-5 w-5 text-muted-foreground" />}
+                                        <div className="flex-1">
+                                            <span className="font-semibold">{player.latestPlayerName}</span>
+                                            <p className="text-xs text-muted-foreground">Kills no mês: {(player.totalKills || 0).toLocaleString()}</p>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                            <div className="mt-4 flex flex-wrap items-center gap-4">
+                                <Button onClick={handleAddSelectedTalents} disabled={isAddingTalents || selectedTalents.size === 0}>
+                                    <UserPlus className={`mr-2 h-4 w-4 ${isAddingTalents ? 'animate-spin' : ''}`} />
+                                    {isAddingTalents ? 'Adicionando...' : `Adicionar ${selectedTalents.size} Selecionados`}
+                                </Button>
+                                <Button variant="outline" onClick={handleToggleSelectAllTalents} disabled={isAddingTalents || isFindingTalents}>
+                                    {selectedTalents.size === unclaimedPlayers.length ? 'Desmarcar Todos' : 'Marcar Todos'}
+                                </Button>
+                            </div>
+                        </div>
+                    )}
                 </CardContent>
             </Card>
         </TabsContent>

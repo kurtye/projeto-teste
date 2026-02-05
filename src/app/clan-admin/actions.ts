@@ -18,6 +18,7 @@ import {
 } from 'firebase/firestore';
 import type { ClanMember, PlayerAggregates, PromotionLog, PlayerPeriodStats } from '@/lib/types';
 import { revalidatePath } from 'next/cache';
+import { clans } from '@/lib/clans';
 
 const RANKS = [
     'Recruta',
@@ -251,6 +252,53 @@ export async function removeClanMember(clanId: string, memberId: string): Promis
         return { success: false, error: error.message };
     }
 }
+
+/**
+ * Finds top active players in the current month who are not yet in any clan.
+ */
+export async function findUnclaimedPlayers(): Promise<{ success: boolean, players?: PlayerPeriodStats[], error?: string }> {
+    try {
+        // 1. Get all player IDs that are already in a clan
+        const allClanMemberIds = new Set<string>();
+        for (const clan of clans) {
+            const membersSnapshot = await getDocs(collection(db, 'clans', clan.id, 'members'));
+            membersSnapshot.forEach(doc => {
+                allClanMemberIds.add(doc.id);
+            });
+        }
+
+        // 2. Determine current month periodId
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = (now.getMonth() + 1).toString().padStart(2, '0');
+        const periodId = `month_${year}-${month}`;
+
+        // 3. Fetch top players from this month's stats
+        const monthlyStatsQuery = query(
+            collection(db, 'playerMonthlyStats'),
+            where('periodId', '==', periodId),
+            orderBy('totalKills', 'desc'),
+            limit(200) // Fetch top 200 players of the month
+        );
+
+        const monthlyStatsSnapshot = await getDocs(monthlyStatsQuery);
+        if (monthlyStatsSnapshot.empty) {
+            return { success: true, players: [] };
+        }
+        
+        const topMonthlyPlayers = monthlyStatsSnapshot.docs.map(doc => doc.data() as PlayerPeriodStats);
+
+        // 4. Filter out players who are already in a clan
+        const unclaimedPlayers = topMonthlyPlayers.filter(player => !allClanMemberIds.has(player.playerId));
+        
+        return { success: true, players: unclaimedPlayers };
+
+    } catch (error: any) {
+        console.error("Error finding unclaimed players:", error);
+        return { success: false, error: "Falha ao buscar jogadores sem clã." };
+    }
+}
     
+
 
 
