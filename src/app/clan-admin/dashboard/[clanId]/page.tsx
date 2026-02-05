@@ -5,8 +5,8 @@ import { useClanAuth } from '../../layout';
 import { useRouter } from 'next/navigation';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { LogOut, Users, Edit, UserPlus, RefreshCw, CheckSquare, Square, List, Trophy, Shield, Star, Crown, ArrowUp, Diamond, Award, Medal, Search, CalendarDays, Trash2 } from 'lucide-react';
-import { useCollection, useFirestore, useMemoFirebase } from '@/firebase';
+import { LogOut, Users, Edit, UserPlus, RefreshCw, CheckSquare, Square, List, Trophy, Shield, Star, Crown, ArrowUp, Diamond, Award, Medal, Search, CalendarDays, Trash2, Sparkles } from 'lucide-react';
+import { useCollection, useMemoFirebase, useFirestore } from '@/firebase';
 import { collection, query, orderBy } from 'firebase/firestore';
 import type { PlayerAggregates, ClanMember, PromotionLog, PlayerPeriodStats } from '@/lib/types';
 import { EditMemberDialog } from './_components/EditMemberDialog';
@@ -25,7 +25,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { useState, useTransition, useMemo, useEffect } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
-import { findPotentialMembersByTag, addMembersToClan, promoteClanMember, getClanMonthlyStats, findUnclaimedPlayers } from '../../actions';
+import { findPotentialMembersByTag, addMembersToClan, promoteClanMember, getClanMonthlyStats, findUnclaimedPlayers, generateMonthlyReportAction } from '../../actions';
 import { useToast } from '@/hooks/use-toast';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -98,6 +98,10 @@ export default function ClanDashboardPage({ params }: { params: { clanId: string
   const [unclaimedPlayers, setUnclaimedPlayers] = useState<PlayerPeriodStats[]>([]);
   const [selectedTalents, setSelectedTalents] = useState<Set<string>>(new Set());
   const [isAddingTalents, startAddingTalents] = useTransition();
+  
+  // State for AI Report
+  const [aiReport, setAiReport] = useState<string | null>(null);
+  const [isGeneratingReport, startGeneratingReport] = useTransition();
 
   // This effect ensures that if a user lands on the wrong clan dashboard, they are redirected.
   useEffect(() => {
@@ -249,27 +253,28 @@ export default function ClanDashboardPage({ params }: { params: { clanId: string
   };
 
     const handleFetchMonthlyStats = () => {
-    startFetchingMonthlyStats(async () => {
-        const periodId = `month_${selectedYear}-${selectedMonth}`;
-        setMonthlyStats([]);
-        const result = await getClanMonthlyStats(clan.id, periodId);
-        if (result.success && result.stats) {
-            setMonthlyStats(result.stats);
-            if (result.stats.length > 0) {
+        startFetchingMonthlyStats(async () => {
+            const periodId = `month_${selectedYear}-${selectedMonth}`;
+            setMonthlyStats([]);
+            setAiReport(null);
+            const result = await getClanMonthlyStats(clan.id, periodId);
+            if (result.success && result.stats) {
+                setMonthlyStats(result.stats);
+                if (result.stats.length > 0) {
+                    toast({
+                        title: 'Estatísticas Carregadas',
+                        description: `Exibindo dados para ${selectedMonth}/${selectedYear}.`,
+                    });
+                }
+            } else {
                 toast({
-                    title: 'Estatísticas Carregadas',
-                    description: `Exibindo dados para ${selectedMonth}/${selectedYear}.`,
+                    variant: 'destructive',
+                    title: 'Falha ao buscar estatísticas',
+                    description: result.error,
                 });
             }
-        } else {
-            toast({
-                variant: 'destructive',
-                title: 'Falha ao buscar estatísticas',
-                description: result.error,
-            });
-        }
-    });
-};
+        });
+    };
 
   const handleFindTalents = () => {
     startFindingTalents(async () => {
@@ -336,6 +341,26 @@ export default function ClanDashboardPage({ params }: { params: { clanId: string
         }
     });
   };
+  
+    const handleGenerateReport = () => {
+        startGeneratingReport(async () => {
+            setAiReport(null);
+            const result = await generateMonthlyReportAction(monthlyStats);
+            if (result.success && result.report) {
+                setAiReport(result.report);
+                 toast({
+                    title: 'Relatório Gerado!',
+                    description: 'A análise de desempenho mensal está pronta.',
+                });
+            } else {
+                 toast({
+                    variant: 'destructive',
+                    title: 'Falha na Análise',
+                    description: result.error,
+                });
+            }
+        });
+    };
 
   const sortedMembers = useMemo(() => {
     if (!members) return [];
@@ -631,10 +656,16 @@ export default function ClanDashboardPage({ params }: { params: { clanId: string
                                 </Select>
                             </div>
                         </div>
-                        <Button onClick={handleFetchMonthlyStats} disabled={isFetchingMonthlyStats} className="w-full sm:w-auto self-end">
-                            <Search className={`mr-2 h-4 w-4 ${isFetchingMonthlyStats ? 'animate-spin' : ''}`} />
-                            {isFetchingMonthlyStats ? 'Buscando...' : 'Buscar'}
-                        </Button>
+                        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto self-end">
+                            <Button onClick={handleFetchMonthlyStats} disabled={isFetchingMonthlyStats || isGeneratingReport} className="w-full sm:w-auto">
+                                <Search className={`mr-2 h-4 w-4 ${isFetchingMonthlyStats ? 'animate-spin' : ''}`} />
+                                {isFetchingMonthlyStats ? 'Buscando...' : 'Buscar'}
+                            </Button>
+                            <Button onClick={handleGenerateReport} disabled={isFetchingMonthlyStats || monthlyStats.length === 0 || isGeneratingReport} className="w-full sm:w-auto">
+                                <Sparkles className={`mr-2 h-4 w-4 ${isGeneratingReport ? 'animate-spin' : ''}`} />
+                                {isGeneratingReport ? 'Analisando...' : 'Analisar com IA'}
+                            </Button>
+                        </div>
                     </div>
                     
                     <Table>
@@ -683,6 +714,32 @@ export default function ClanDashboardPage({ params }: { params: { clanId: string
                             )}
                         </TableBody>
                     </Table>
+
+                    {isGeneratingReport && (
+                        <div className="space-y-4 mt-6 p-4 border rounded-lg bg-muted/30">
+                            <div className="flex items-center gap-2">
+                                <Skeleton className="h-6 w-6 rounded-full" />
+                                <Skeleton className="h-6 w-48" />
+                            </div>
+                            <Skeleton className="h-4 w-full" />
+                            <Skeleton className="h-4 w-full" />
+                            <Skeleton className="h-4 w-3/4" />
+                        </div>
+                    )}
+                    {aiReport && (
+                        <Card className="mt-6 bg-card/80">
+                            <CardHeader>
+                                <CardTitle className="flex items-center gap-2 text-xl">
+                                    <Sparkles className="h-5 w-5 text-accent" />
+                                    Análise de Desempenho (IA)
+                                </CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                                <div className="text-sm text-foreground/90 whitespace-pre-wrap leading-relaxed" dangerouslySetInnerHTML={{ __html: aiReport.replace(/### (.*?)\n/g, '<h3 class="text-lg font-semibold mt-4 mb-2 font-headline text-accent">$1</h3>').replace(/\* \*\*(.*?)\*\*/g, '<p class="font-bold mt-2">$1</p>') }} />
+                            </CardContent>
+                        </Card>
+                    )}
+
                 </CardContent>
             </Card>
         </TabsContent>

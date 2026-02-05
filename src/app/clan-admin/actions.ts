@@ -19,6 +19,7 @@ import {
 import type { ClanMember, PlayerAggregates, PromotionLog, PlayerPeriodStats } from '@/lib/types';
 import { revalidatePath } from 'next/cache';
 import { clans } from '@/lib/clans';
+import { analyzeClanPerformance } from '@/ai/flows/analyze-clan-performance';
 
 const RANKS = [
     'Recruta',
@@ -311,7 +312,28 @@ export async function findUnclaimedPlayers(): Promise<{ success: boolean, player
         return { success: false, error: "Falha ao buscar jogadores sem clã." };
     }
 }
+
+/**
+ * Generates a performance report for the given monthly stats using an AI model.
+ */
+export async function generateMonthlyReportAction(
+  stats: PlayerPeriodStats[]
+): Promise<{ success: boolean; report?: string; error?: string }> {
+  if (!stats || stats.length === 0) {
+    return { success: false, error: 'Não há dados para analisar.' };
+  }
+
+  try {
+    const statsString = JSON.stringify(stats);
+    const report = await analyzeClanPerformance(statsString);
+    return { success: true, report };
+  } catch (error: any) {
+    console.error('Error generating AI report:', error);
+    return { success: false, error: 'Falha ao gerar o relatório de IA.' };
+  }
+}
     
+
 
 
 
