@@ -128,37 +128,39 @@ export async function updateClanMember(clanId: string, playerId: string, data: P
 
 /**
  * Finds players whose names match the clan tag but are not yet members.
- * This function is more robust and uses a simpler query with server-side filtering.
+ * It fetches the top 2000 players by kills and filters them.
  */
 export async function findPotentialMembersByTag(clanId: string, clanTag: string): Promise<{ success: boolean, players?: PlayerAggregates[], error?: string }> {
   try {
-    
-    // This query is broad but necessary to find names that contain the tag anywhere.
-    const playersQuery = query(collection(db, 'playerAggregates'));
+    const playersQuery = query(
+      collection(db, 'playerAggregates'),
+      orderBy('totalKills', 'desc'),
+      limit(2000) // Fetch top 2000 to have a good pool
+    );
     
     const querySnapshot = await getDocs(playersQuery);
-    
-    const potentialPlayers = querySnapshot.docs
-      .map(doc => ({ id: doc.id, ...doc.data() } as PlayerAggregates))
-      // Filter on the server side to find tags anywhere in the name
-      .filter(p => {
-        const upperName = p.latestPlayerName.toUpperCase();
-        return upperName.includes(clanTag.toUpperCase());
-      });
+    const topPlayers = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PlayerAggregates));
 
-    // Get all current members of the clan to avoid suggesting existing ones
     const membersCollection = collection(db, 'clans', clanId, 'members');
     const membersSnapshot = await getDocs(membersCollection);
     const existingMemberIds = new Set(membersSnapshot.docs.map(doc => doc.id));
 
-    // Filter out players who are already members
-    const newPlayers = potentialPlayers.filter(p => !existingMemberIds.has(p.id));
+    // A more flexible check for tags like [TAG], -TAG-, etc.
+    const tagUpper = clanTag.toUpperCase();
+    const potentialPlayers = topPlayers.filter(p => {
+      if (!p.latestPlayerName) return false;
+      if (existingMemberIds.has(p.id)) return false;
 
-    if (newPlayers.length === 0) {
+      // Split player name by common delimiters to find clan tag as a "word"
+      const nameParts = p.latestPlayerName.toUpperCase().split(/[\s\[\]\-|\\/._,()<>*+!?¿¡'"]+/);
+      return nameParts.includes(tagUpper);
+    });
+
+    if (potentialPlayers.length === 0) {
         console.log(`[LOG] No new potential members found for tag: ${clanTag}`);
     }
 
-    return { success: true, players: newPlayers };
+    return { success: true, players: potentialPlayers };
   } catch (error: any) {
     console.error("Error finding potential members:", error);
     return { success: false, error: "Falha ao buscar jogadores. Verifique as permissões ou tente mais tarde." };

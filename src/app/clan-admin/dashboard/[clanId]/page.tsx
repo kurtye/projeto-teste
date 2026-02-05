@@ -2,7 +2,7 @@
 'use client';
 
 import { useClanAuth } from '../../layout';
-import { notFound } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { LogOut, Users, Edit, UserPlus, RefreshCw, CheckSquare, Square, List, Trophy, Shield, Star, Crown, ArrowUp, Diamond, Award, Medal, Search } from 'lucide-react';
@@ -22,18 +22,17 @@ import {
 } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { useState, use, useTransition, useMemo, useEffect } from 'react';
+import { useState, useTransition, useMemo, useEffect } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { findPotentialMembersByTag, addMembersToClan, promoteClanMember, findLoneWolves } from '../../actions';
 import { useToast } from '@/hooks/use-toast';
-import { notFound as notFoundError } from 'next/navigation';
 import Image from 'next/image';
 
 export default function ClanDashboardPage({ params }: { params: { clanId: string } }) {
-  const resolvedParams = use(params);
-  const clanId = resolvedParams.clanId;
+  const { clanId } = params;
   const { clan, user, logout } = useClanAuth();
   const firestore = useFirestore();
+  const router = useRouter();
   const { toast } = useToast();
   
   const [memberToEdit, setMemberToEdit] = useState<ClanMember | null>(null);
@@ -45,6 +44,13 @@ export default function ClanDashboardPage({ params }: { params: { clanId: string
   const [isPromoting, startPromotingTransition] = useTransition();
   const [isFindingWolves, startFindingWolvesTransition] = useTransition();
   const [loneWolves, setLoneWolves] = useState<PlayerAggregates[]>([]);
+
+  useEffect(() => {
+    if (clan && clan.id !== clanId) {
+      // If the user is on the wrong dashboard URL, redirect them to the correct one.
+      router.replace(`/clan-admin/dashboard/${clan.id}`);
+    }
+  }, [clan, clanId, router]);
   
   // Query for clan members
   const membersQuery = useMemoFirebase(() => {
@@ -72,9 +78,15 @@ export default function ClanDashboardPage({ params }: { params: { clanId: string
     });
   }, [promotions]);
 
-  
   if (!clan || clan.id !== clanId) {
-    return notFoundError();
+    // Render a loading state or nothing while the redirect in useEffect happens
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <div className="flex h-64 items-center justify-center">
+          <p>Verificando acesso...</p>
+        </div>
+      </div>
+    );
   }
   
   const ranksInOrder = [

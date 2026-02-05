@@ -1,7 +1,7 @@
 
 'use client';
 
-import { usePathname, useRouter, notFound } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { createContext, useContext, useState, useEffect, ReactNode, useMemo } from 'react';
 import { useUser, useAuth as useFirebaseAuth } from '@/firebase';
 import type { User } from 'firebase/auth';
@@ -37,28 +37,37 @@ export default function ClanAdminLayout({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (isUserLoading) {
-        setIsAuthenticating(true);
-        return;
+      return; // Wait until user loading is complete
     }
-
     if (user) {
-        const adminClan = clans.find(c => c.adminEmails.includes(user.email || ''));
-        if (adminClan) {
-            setClan(adminClan);
-        } else {
-            setClan(null); // User is logged in but not a clan admin
-            if (pathname.startsWith('/clan-admin/dashboard')) {
-                router.push('/clan-admin/login?error=not_admin');
-            }
-        }
+      const adminClan = clans.find(c => c.adminEmails.includes(user.email || ''));
+      setClan(adminClan || null);
     } else {
-        setClan(null);
-        if (!pathname.includes('/clan-admin/login')) {
-            router.push('/clan-admin/login');
-        }
+      setClan(null);
     }
     setIsAuthenticating(false);
-  }, [user, isUserLoading, pathname, router]);
+  }, [user, isUserLoading]);
+
+  useEffect(() => {
+    if (isAuthenticating) {
+      return; // Don't redirect until authentication check is complete
+    }
+
+    const onLoginPage = pathname === '/clan-admin/login';
+    const hasAdminAccess = !!user && !!clan;
+
+    if (hasAdminAccess) {
+      if (onLoginPage) {
+        router.replace(`/clan-admin/dashboard/${clan.id}`);
+      }
+    } else {
+      if (!onLoginPage) {
+        const error = user ? 'not_admin' : undefined;
+        const redirectUrl = error ? `/clan-admin/login?error=${error}` : '/clan-admin/login';
+        router.replace(redirectUrl);
+      }
+    }
+  }, [isAuthenticating, user, clan, pathname, router]);
 
   const login = async (email: string, password: string) => {
     try {
@@ -96,25 +105,25 @@ export default function ClanAdminLayout({ children }: { children: ReactNode }) {
         </div>
       );
   }
-
-  if (!isAuthenticated && pathname !== '/clan-admin/login') {
-    // This part should be handled by the useEffect redirect, but as a fallback:
-    return null;
-  }
   
   // Allow access to login page even if not authenticated
-  if (pathname === '/clan-admin/login' && !isAuthenticated) {
+  if (pathname === '/clan-admin/login') {
      return <ClanAuthContext.Provider value={contextValue}>{children}</ClanAuthContext.Provider>;
   }
 
-  // If authenticated, but on login page, redirect to dashboard
-  if (pathname === '/clan-admin/login' && isAuthenticated) {
+  // If authenticated but trying to access a non-dashboard page, redirect
+  if (isAuthenticated && !pathname.startsWith(`/clan-admin/dashboard/${clan.id}`)) {
     router.replace(`/clan-admin/dashboard/${clan.id}`);
-    return null; // Show loading or nothing during redirect
+    return null;
   }
   
-  if (!clan && pathname !== '/clan-admin/login') {
-     return notFound();
+  // If not authenticated and not on login page, wait for redirect
+  if (!isAuthenticated && pathname !== '/clan-admin/login') {
+     return (
+        <div className="flex h-screen w-full items-center justify-center">
+            <div className="text-xl">Redirecionando para o login...</div>
+        </div>
+      );
   }
 
   return (
