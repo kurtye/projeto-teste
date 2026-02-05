@@ -11,14 +11,12 @@ import {
     getDocs,
     writeBatch,
     orderBy,
-    and,
     addDoc,
     serverTimestamp,
     limit,
 } from 'firebase/firestore';
-import type { ClanMember, PlayerAggregates, PromotionLog } from '@/lib/types';
+import type { ClanMember, PlayerAggregates, PromotionLog, PlayerPeriodStats } from '@/lib/types';
 import { revalidatePath } from 'next/cache';
-import { getWeek, getWeekYear } from 'date-fns';
 
 const RANKS = [
     'Recruta',
@@ -43,20 +41,6 @@ const RANKS = [
     'Comandante'
 ];
 
-const CLAN_TAGS = ['SMK', 'HRB', 'RZN', 'OCL', '3LPZ', 'WRT', 'SAP', 'BOLD', 'IDG', 'SOH'];
-
-/**
- * Checks if a player name contains any of the known clan tags.
- * The check is case-insensitive.
- * @param playerName - The name of the player.
- * @returns True if a clan tag is found, false otherwise.
- */
-function hasClanTag(playerName: string): boolean {
-  if (!playerName) return false;
-  const upperPlayerName = playerName.toUpperCase();
-  return CLAN_TAGS.some(tag => upperPlayerName.includes(`[${tag}]`) || upperPlayerName.includes(tag));
-}
-
 /**
  * Promotes a clan member to the next rank and logs the promotion.
  */
@@ -69,7 +53,6 @@ export async function promoteClanMember(clanId: string, memberId: string, curren
         
         const newRank = RANKS[currentIndex + 1];
 
-        const memberRef = doc(db, 'clans', clanId, 'members', memberId);
         const promotionLogRef = collection(db, 'clans', clanId, 'promotionLog');
 
         const memberDocQuery = query(collection(db, 'clans', clanId, 'members'), where('playerId', '==', memberId));
@@ -79,12 +62,13 @@ export async function promoteClanMember(clanId: string, memberId: string, curren
         if (memberDocSnapshot.empty) {
             return { success: false, error: "Membro não encontrado para registrar a promoção." };
         }
-        const memberData = memberDocSnapshot.docs[0].data() as ClanMember;
+        const memberDoc = memberDocSnapshot.docs[0];
+        const memberData = memberDoc.data() as ClanMember;
 
         const batch = writeBatch(db);
 
         // Update member's rank
-        batch.set(doc(db, 'clans', clanId, 'members', memberData.id), { rank: newRank }, { merge: true });
+        batch.set(doc(db, 'clans', clanId, 'members', memberDoc.id), { rank: newRank }, { merge: true });
 
         // Create promotion log entry
         const promotionLogEntry: Omit<PromotionLog, 'id' | 'promotionDate'> & { promotionDate: any } = {
@@ -135,7 +119,7 @@ export async function findPotentialMembersByTag(clanId: string, clanTag: string)
     const playersQuery = query(
       collection(db, 'playerAggregates'),
       orderBy('totalKills', 'desc'),
-      limit(2000) // Fetch top 2000 to have a good pool
+      limit(2000)
     );
     
     const querySnapshot = await getDocs(playersQuery);
@@ -145,13 +129,11 @@ export async function findPotentialMembersByTag(clanId: string, clanTag: string)
     const membersSnapshot = await getDocs(membersCollection);
     const existingMemberIds = new Set(membersSnapshot.docs.map(doc => doc.id));
 
-    // A more flexible check for tags like [TAG], -TAG-, etc.
     const tagUpper = clanTag.toUpperCase();
     const potentialPlayers = topPlayers.filter(p => {
       if (!p.latestPlayerName) return false;
       if (existingMemberIds.has(p.id)) return false;
 
-      // Split player name by common delimiters to find clan tag as a "word"
       const nameParts = p.latestPlayerName.toUpperCase().split(/[\s\[\]\-|\\/._,()<>*+!?¿¡'"]+/);
       return nameParts.includes(tagUpper);
     });
@@ -204,36 +186,54 @@ export async function addMembersToClan(clanId: string, players: PlayerAggregates
 }
 
 /**
- * Finds top players from the monthly stats who do not have a known clan tag.
+ * Fetches monthly stats for all members of a given clan for a specific period.
  */
-export async function findLoneWolves(): Promise<{ success: boolean, players?: PlayerAggregates[], error?: string }> {
+export async function getClanMonthlyStats(clanId: string, periodId: string): Promise<{ success: boolean, stats?: (PlayerPeriodStats & { playerName: string })[], error?: string }> {
     try {
-        const now = new Date();
-        const year = now.getFullYear();
-        const month = (now.getMonth() + 1).toString().padStart(2, "0");
-        const periodId = `month_${year}-${month}`;
+        // 1. Get all member IDs for the clan
+        const membersRef = collection(db, 'clans', clanId, 'members');
+        const membersSnapshot = await getDocs(membersRef);
+        if (membersSnapshot.empty) {
+            return { success: true, stats: [] };
+        }
+        const memberIds = membersSnapshot.docs.map(doc => doc.id);
+        const memberNamesMap = new Map(membersSnapshot.docs.map(doc => [doc.id, doc.data().playerName]));
 
-        const monthlyStatsQuery = query(
-            collection(db, 'playerMonthlyStats'),
-            where('periodId', '==', periodId),
-            orderBy('totalKills', 'desc'),
-            limit(100) // Fetch top 100 players of the month
-        );
+        // 2. Fetch monthly stats for those members for the given period
+        // Firestore 'in' query is limited to 30 items. If a clan has more, we need to do multiple queries.
+        const stats: (PlayerPeriodStats & { playerName: string })[] = [];
+        const chunkSize = 30;
+        for (let i = 0; i < memberIds.length; i += chunkSize) {
+            const chunk = memberIds.slice(i, i + chunkSize);
+            
+            const statsQuery = query(
+                collection(db, 'playerMonthlyStats'),
+                where('periodId', '==', periodId),
+                where('playerId', 'in', chunk)
+            );
 
-        const snapshot = await getDocs(monthlyStatsQuery);
+            const statsSnapshot = await getDocs(statsQuery);
+            statsSnapshot.forEach(doc => {
+                const data = doc.data() as PlayerPeriodStats;
+                stats.push({
+                    ...data,
+                    id: doc.id,
+                    playerId: data.playerId,
+                    playerName: memberNamesMap.get(data.playerId) || data.latestPlayerName,
+                });
+            });
+        }
         
-        const allMonthlyPlayers = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.data().playerId } as PlayerAggregates));
-        
-        // Filter out players who have a known clan tag
-        const loneWolves = allMonthlyPlayers.filter(player => !hasClanTag(player.latestPlayerName));
+        // 3. Sort the results by totalKills descending
+        stats.sort((a, b) => (b.totalKills || 0) - (a.totalKills || 0));
 
-        return { success: true, players: loneWolves };
-
+        return { success: true, stats };
     } catch (error: any) {
-        console.error("Error finding lone wolves:", error);
-        return { success: false, error: "Falha ao buscar jogadores sem clã." };
+        console.error("Error fetching clan monthly stats:", error);
+        return { success: false, error: "Falha ao buscar estatísticas mensais do clã." };
     }
 }
     
 
     
+

@@ -4,7 +4,6 @@ export interface PlayerAggregates {
   id: string; // This will be the document ID (player_id)
   playerId: string;
   latestPlayerName: string;
-  searchablePlayerName?: string; // For case-insensitive search
   processedServers?: { [key: string]: number }; // Map of serverName to lastProcessedMatchId
   matchesPlayed?: number;
   totalTimeSeconds?: number;
@@ -18,12 +17,29 @@ export interface PlayerAggregates {
   totalTeamKills?: number;
   totalDeathsByTK?: number;
   status?: 'retired'; // Field for player status
-  clanTag?: string; // Tag of the clan the player belongs to
 
   // Calculated in the frontend
   totalScore?: number;
   kdRatio?: number;
 }
+
+export interface PlayerPeriodStats {
+  id: string; // Document ID
+  playerId: string;
+  latestPlayerName: string;
+  periodId: string; // e.g., 'week_2024-32' or 'month_2024-08'
+  totalTimeSeconds?: number;
+  longestLifeSecs?: number;
+  totalKills?: number;
+  totalDeaths?: number;
+  totalCombat?: number;
+  totalOffense?: number;
+  totalDefense?: number;
+  totalSupport?: number;
+  totalTeamKills?: number;
+  totalDeathsByTK?: number;
+}
+
 
 export interface PlayerInteraction {
   id: string; // Will be the player name (or its Base64 representation)
