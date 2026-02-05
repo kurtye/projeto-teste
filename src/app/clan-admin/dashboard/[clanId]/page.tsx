@@ -5,11 +5,12 @@ import { useClanAuth } from '../../layout';
 import { useRouter } from 'next/navigation';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { LogOut, Users, Edit, UserPlus, RefreshCw, CheckSquare, Square, List, Trophy, Shield, Star, Crown, ArrowUp, Diamond, Award, Medal, Search, CalendarDays } from 'lucide-react';
+import { LogOut, Users, Edit, UserPlus, RefreshCw, CheckSquare, Square, List, Trophy, Shield, Star, Crown, ArrowUp, Diamond, Award, Medal, Search, CalendarDays, Trash2 } from 'lucide-react';
 import { useCollection, useFirestore, useMemoFirebase } from '@/firebase';
 import { collection, query, orderBy } from 'firebase/firestore';
 import type { PlayerAggregates, ClanMember, PromotionLog, PlayerPeriodStats } from '@/lib/types';
 import { EditMemberDialog } from './_components/EditMemberDialog';
+import { RemoveMemberDialog } from './_components/RemoveMemberDialog';
 import { HierarchyView } from './_components/HierarchyView';
 import { RecentPromotions } from './_components/RecentPromotions';
 import {
@@ -39,6 +40,7 @@ export default function ClanDashboardPage({ params }: { params: { clanId: string
   const { toast } = useToast();
   
   const [memberToEdit, setMemberToEdit] = useState<ClanMember | null>(null);
+  const [memberToRemove, setMemberToRemove] = useState<ClanMember | null>(null);
   
   const [isSyncing, startSyncTransition] = useTransition();
   const [potentialMembers, setPotentialMembers] = useState<PlayerAggregates[]>([]);
@@ -242,6 +244,13 @@ export default function ClanDashboardPage({ params }: { params: { clanId: string
         member={memberToEdit}
         clanId={clan.id}
       />
+      
+      <RemoveMemberDialog
+        isOpen={!!memberToRemove}
+        onOpenChange={(isOpen) => !isOpen && setMemberToRemove(null)}
+        member={memberToRemove}
+        clanId={clan.id}
+      />
 
       <div className="flex flex-col md:flex-row items-start md:items-center justify-between mb-6 gap-4">
         <div className='flex-1'>
@@ -365,6 +374,15 @@ export default function ClanDashboardPage({ params }: { params: { clanId: string
                                     </Button>
                                     <Button variant="ghost" size="icon" onClick={() => setMemberToEdit(member)} title="Editar">
                                         <Edit className="h-4 w-4" />
+                                    </Button>
+                                    <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        onClick={() => setMemberToRemove(member)}
+                                        title="Remover"
+                                        className="text-destructive/70 hover:text-destructive hover:bg-destructive/10"
+                                    >
+                                        <Trash2 className="h-4 w-4" />
                                     </Button>
                                 </TableCell>
                             </TableRow>

@@ -14,6 +14,7 @@ import {
     addDoc,
     serverTimestamp,
     limit,
+    deleteDoc,
 } from 'firebase/firestore';
 import type { ClanMember, PlayerAggregates, PromotionLog, PlayerPeriodStats } from '@/lib/types';
 import { revalidatePath } from 'next/cache';
@@ -234,6 +235,22 @@ export async function getClanMonthlyStats(clanId: string, periodId: string): Pro
     }
 }
     
+/**
+ * Removes a member from a clan.
+ */
+export async function removeClanMember(clanId: string, memberId: string): Promise<{ success: boolean; error?: string }> {
+    try {
+        const memberRef = doc(db, 'clans', clanId, 'members', memberId);
+        await deleteDoc(memberRef);
 
+        revalidatePath(`/clan-admin/dashboard/${clanId}`);
+        return { success: true };
+
+    } catch (error: any) {
+        console.error("Error removing clan member:", error);
+        return { success: false, error: error.message };
+    }
+}
     
+
 
