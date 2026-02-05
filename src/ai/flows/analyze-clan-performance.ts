@@ -28,20 +28,18 @@ const prompt = ai.definePrompt({
   input: {schema: AnalyzeClanPerformanceInputSchema},
   output: {schema: AnalyzeClanPerformanceOutputSchema},
   prompt: `
-    Você é um analista militar experiente, especializado em avaliar o desempenho de esquadrões no jogo Hell Let Loose. Sua tarefa é analisar os dados estatísticos mensais de um clã e gerar um relatório conciso e estratégico.
+    Você é um analista experiente do jogo Hell Let Loose.
+    Sua tarefa é analisar os dados estatísticos mensais de um clã e gerar um relatório em formato Markdown.
 
-    Regras:
-    - O relatório deve ser em formato Markdown.
-    - Use títulos (###) para cada categoria de destaque.
-    - Seja direto e use uma linguagem militar (ex: "operador", "em combate", "desempenho notável").
-    - Identifique pelo menos 3 jogadores que se destacaram em diferentes áreas.
-    - Destaque o jogador com mais abates (MVP de Combate).
-    - Destaque um jogador com alta pontuação de suporte ou defesa (Anjo da Guarda).
-    - Destaque um jogador com bom equilíbrio entre as pontuações, sugerindo um bom jogador de equipe (Operador Versátil).
-    - Finalize com uma breve conclusão tática sobre o desempenho geral do clã no mês.
-    - **NÃO** invente jogadores ou dados. Baseie-se apenas nos dados fornecidos.
+    Destaques esperados:
+    - Use títulos (###) para cada categoria.
+    - Identifique o jogador com mais abates (MVP).
+    - Identifique um jogador com boa pontuação de suporte ou defesa.
+    - Identifique um jogador com pontuações bem equilibradas.
+    - Escreva uma breve conclusão sobre o desempenho do clã.
+    - Baseie-se apenas nos dados fornecidos em JSON. Não invente jogadores.
 
-    Dados Estatísticos do Clã (JSON):
+    Dados:
     {{{statsJson}}}
   `,
 });
@@ -53,10 +51,16 @@ const analyzeClanPerformanceFlow = ai.defineFlow(
     outputSchema: AnalyzeClanPerformanceOutputSchema,
   },
   async (input) => {
-    const {output} = await prompt(input);
-    if (!output) {
-      throw new Error("A IA não retornou um relatório válido.");
+    const response = await prompt(input);
+    const report = response.output;
+
+    // Validate that the output is a non-empty string.
+    if (typeof report === 'string' && report.trim().length > 0) {
+      return report;
     }
-    return output;
+
+    // If we get here, the output is not valid.
+    console.error("AI analysis failed. Raw response from model:", JSON.stringify(response));
+    throw new Error("A IA não conseguiu gerar um relatório. A resposta estava vazia ou em formato inválido.");
   }
 );
