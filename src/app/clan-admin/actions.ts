@@ -255,10 +255,11 @@ export async function removeClanMember(clanId: string, memberId: string): Promis
 
 /**
  * Finds top active players in the current month who are not yet in any clan.
+ * It also filters out players who have a known clan tag in their name.
  */
 export async function findUnclaimedPlayers(): Promise<{ success: boolean, players?: PlayerPeriodStats[], error?: string }> {
     try {
-        // 1. Get all player IDs that are already in a clan
+        // 1. Get all player IDs that are already in a clan subcollection
         const allClanMemberIds = new Set<string>();
         for (const clan of clans) {
             const membersSnapshot = await getDocs(collection(db, 'clans', clan.id, 'members'));
@@ -288,8 +289,20 @@ export async function findUnclaimedPlayers(): Promise<{ success: boolean, player
         
         const topMonthlyPlayers = monthlyStatsSnapshot.docs.map(doc => doc.data() as PlayerPeriodStats);
 
-        // 4. Filter out players who are already in a clan
-        const unclaimedPlayers = topMonthlyPlayers.filter(player => !allClanMemberIds.has(player.playerId));
+        // 4. Filter out players who are already in a clan's member list
+        const playersNotInAClanList = topMonthlyPlayers.filter(player => !allClanMemberIds.has(player.playerId));
+        
+        // 5. Get all known clan tags for name filtering
+        const allClanTags = clans.map(c => c.tag.toUpperCase());
+
+        // 6. Filter out players who have a clan tag in their name from the remaining list
+        const unclaimedPlayers = playersNotInAClanList.filter(player => {
+            if (!player.latestPlayerName) return true; // Keep players without a name if any
+            const nameParts = player.latestPlayerName.toUpperCase().split(/[\s\[\]\-|\\/._,()<>*+!?¿¡'"]+/);
+            // Check if any part of the player's name matches a known clan tag
+            const hasKnownTag = nameParts.some(part => allClanTags.includes(part));
+            return !hasKnownTag; // Return true only if the player does NOT have a known tag in their name
+        });
         
         return { success: true, players: unclaimedPlayers };
 
@@ -299,6 +312,7 @@ export async function findUnclaimedPlayers(): Promise<{ success: boolean, player
     }
 }
     
+
 
 
 
