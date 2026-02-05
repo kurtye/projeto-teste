@@ -31,6 +31,41 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
+import { cn } from '@/lib/utils';
+
+type MonthlySortKey = keyof Pick<PlayerPeriodStats, 'totalTimeSeconds' | 'totalKills' | 'totalCombat' | 'totalOffense' | 'totalDefense' | 'totalSupport'>;
+
+const MonthlySortableHeader = ({
+  children,
+  sortKey,
+  sortConfig,
+  requestSort,
+  className,
+}: {
+  children: React.ReactNode;
+  sortKey: MonthlySortKey;
+  sortConfig: { key: MonthlySortKey; direction: string };
+  requestSort: (key: MonthlySortKey) => void;
+  className?: string;
+}) => {
+  const isActive = sortConfig.key === sortKey;
+  const directionIcon = sortConfig.direction === 'ascending' ? '▲' : '▼';
+
+  return (
+    <TableHead className={cn("text-right", className)}>
+      <Button variant="ghost" onClick={() => requestSort(sortKey)} className="group h-auto p-2 justify-end w-full">
+        {children}
+        <span className={cn(
+          "ml-2 transition-opacity text-xs",
+          isActive ? "opacity-100" : "opacity-0 group-hover:opacity-50"
+        )}>
+          {directionIcon}
+        </span>
+      </Button>
+    </TableHead>
+  );
+};
+
 
 export default function ClanDashboardPage({ params }: { params: { clanId: string } }) {
   const { clanId } = params;
@@ -53,6 +88,11 @@ export default function ClanDashboardPage({ params }: { params: { clanId: string
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear().toString());
   const [selectedMonth, setSelectedMonth] = useState((new Date().getMonth() + 1).toString().padStart(2, '0'));
   
+  const [monthlySortConfig, setMonthlySortConfig] = useState<{ key: MonthlySortKey, direction: 'ascending' | 'descending' }>({
+    key: 'totalKills',
+    direction: 'descending',
+  });
+
   // State for recruitment tab
   const [isFindingTalents, startFindingTalents] = useTransition();
   const [unclaimedPlayers, setUnclaimedPlayers] = useState<PlayerPeriodStats[]>([]);
@@ -215,10 +255,12 @@ export default function ClanDashboardPage({ params }: { params: { clanId: string
         const result = await getClanMonthlyStats(clan.id, periodId);
         if (result.success && result.stats) {
             setMonthlyStats(result.stats);
-            toast({
-                title: 'Estatísticas Carregadas',
-                description: `Exibindo dados para ${selectedMonth}/${selectedYear}.`,
-            });
+            if (result.stats.length > 0) {
+                toast({
+                    title: 'Estatísticas Carregadas',
+                    description: `Exibindo dados para ${selectedMonth}/${selectedYear}.`,
+                });
+            }
         } else {
             toast({
                 variant: 'destructive',
@@ -306,6 +348,34 @@ export default function ClanDashboardPage({ params }: { params: { clanId: string
       return a.playerName.localeCompare(b.playerName);
     });
   }, [members]);
+
+  const handleRequestMonthlySort = (key: MonthlySortKey) => {
+    let direction: 'ascending' | 'descending' = 'descending';
+    if (monthlySortConfig.key === key && monthlySortConfig.direction === 'descending') {
+      direction = 'ascending';
+    }
+    setMonthlySortConfig({ key, direction });
+  };
+  
+  const sortedMonthlyStats = useMemo(() => {
+    const sortableStats = [...monthlyStats];
+    sortableStats.sort((a, b) => {
+      const valA = a[monthlySortConfig.key] || 0;
+      const valB = b[monthlySortConfig.key] || 0;
+
+      if (valA < valB) {
+        return monthlySortConfig.direction === 'ascending' ? -1 : 1;
+      }
+      if (valA > valB) {
+        return monthlySortConfig.direction === 'ascending' ? 1 : -1;
+      }
+      if (monthlySortConfig.key !== 'totalKills') {
+         return (b.totalKills || 0) - (a.totalKills || 0);
+      }
+      return 0;
+    });
+    return sortableStats;
+  }, [monthlyStats, monthlySortConfig]);
 
 
   return (
@@ -571,12 +641,12 @@ export default function ClanDashboardPage({ params }: { params: { clanId: string
                         <TableHeader>
                             <TableRow>
                                 <TableHead>Jogador</TableHead>
-                                <TableHead className="text-right">Horas</TableHead>
-                                <TableHead className="text-right">Kills</TableHead>
-                                <TableHead className="text-right">Combate</TableHead>
-                                <TableHead className="text-right">Ataque</TableHead>
-                                <TableHead className="text-right">Defesa</TableHead>
-                                <TableHead className="text-right">Suporte</TableHead>
+                                <MonthlySortableHeader sortKey="totalTimeSeconds" sortConfig={monthlySortConfig} requestSort={handleRequestMonthlySort}>Horas</MonthlySortableHeader>
+                                <MonthlySortableHeader sortKey="totalKills" sortConfig={monthlySortConfig} requestSort={handleRequestMonthlySort}>Kills</MonthlySortableHeader>
+                                <MonthlySortableHeader sortKey="totalCombat" sortConfig={monthlySortConfig} requestSort={handleRequestMonthlySort}>Combate</MonthlySortableHeader>
+                                <MonthlySortableHeader sortKey="totalOffense" sortConfig={monthlySortConfig} requestSort={handleRequestMonthlySort}>Ataque</MonthlySortableHeader>
+                                <MonthlySortableHeader sortKey="totalDefense" sortConfig={monthlySortConfig} requestSort={handleRequestMonthlySort}>Defesa</MonthlySortableHeader>
+                                <MonthlySortableHeader sortKey="totalSupport" sortConfig={monthlySortConfig} requestSort={handleRequestMonthlySort}>Suporte</MonthlySortableHeader>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -592,8 +662,8 @@ export default function ClanDashboardPage({ params }: { params: { clanId: string
                                         <TableCell className="text-right"><Skeleton className="h-5 w-12 ml-auto" /></TableCell>
                                     </TableRow>
                                 ))
-                            ) : monthlyStats.length > 0 ? (
-                                monthlyStats.map(stat => (
+                            ) : sortedMonthlyStats.length > 0 ? (
+                                sortedMonthlyStats.map(stat => (
                                     <TableRow key={stat.playerId}>
                                         <TableCell className="font-medium">
                                             <Link href={`/player/${encodeURIComponent(stat.playerId)}`} className="hover:underline">
