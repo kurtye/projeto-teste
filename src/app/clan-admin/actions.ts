@@ -325,14 +325,15 @@ export async function generateMonthlyReportAction(
 
   try {
     const statsString = JSON.stringify(stats);
-    const report = await analyzeClanPerformance(statsString);
+    const report = await analyzeClanPerformance({ statsJson: statsString });
     return { success: true, report };
   } catch (error: any) {
     console.error('Error generating AI report:', error);
-    return { success: false, error: 'Falha ao gerar o relatório de IA.' };
+    return { success: false, error: error.message || 'Falha ao gerar o relatório de IA.' };
   }
 }
     
+
 
 
 

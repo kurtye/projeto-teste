@@ -1,3 +1,4 @@
+
 'use server';
 /**
  * @fileOverview An AI-powered tool to analyze clan monthly performance and generate a report.
@@ -10,14 +11,16 @@
 import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
 
-const AnalyzeClanPerformanceInputSchema = z.string().describe('A JSON string representing an array of player monthly statistics.');
-export type AnalyzeClanPerformanceInput = string;
+const AnalyzeClanPerformanceInputSchema = z.object({
+  statsJson: z.string().describe('A JSON string representing an array of player monthly statistics.')
+});
+export type AnalyzeClanPerformanceInput = z.infer<typeof AnalyzeClanPerformanceInputSchema>;
 
 const AnalyzeClanPerformanceOutputSchema = z.string().describe('A concise performance report in Markdown format, highlighting standout players.');
 export type AnalyzeClanPerformanceOutput = string;
 
-export async function analyzeClanPerformance(stats: AnalyzeClanPerformanceInput): Promise<AnalyzeClanPerformanceOutput> {
-  return analyzeClanPerformanceFlow(stats);
+export async function analyzeClanPerformance(input: AnalyzeClanPerformanceInput): Promise<AnalyzeClanPerformanceOutput> {
+  return analyzeClanPerformanceFlow(input);
 }
 
 const prompt = ai.definePrompt({
@@ -39,7 +42,7 @@ const prompt = ai.definePrompt({
     - **NÃO** invente jogadores ou dados. Baseie-se apenas nos dados fornecidos.
 
     Dados Estatísticos do Clã (JSON):
-    {{{input}}}
+    {{{statsJson}}}
   `,
 });
 
@@ -49,8 +52,11 @@ const analyzeClanPerformanceFlow = ai.defineFlow(
     inputSchema: AnalyzeClanPerformanceInputSchema,
     outputSchema: AnalyzeClanPerformanceOutputSchema,
   },
-  async (statsJson) => {
-    const {output} = await prompt(statsJson);
-    return output!;
+  async (input) => {
+    const {output} = await prompt(input);
+    if (!output) {
+      throw new Error("A IA não retornou um relatório válido.");
+    }
+    return output;
   }
 );
