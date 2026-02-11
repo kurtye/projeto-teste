@@ -263,7 +263,7 @@ const RankingDisplay = ({
                                             <span className="font-medium group-hover:text-accent transition-colors truncate">{player.latestPlayerName}</span>
                                             <KingBadge playerId={player.id} />
                                         </div>
-                                        {clanInfo && (
+                                        {clanInfo && clanInfo.rank !== 'Recruta' && (
                                             <TooltipProvider>
                                                 <Tooltip>
                                                     <TooltipTrigger>
@@ -345,7 +345,7 @@ const RankingDisplay = ({
                                     </div>
                                 </div>
                             </CardContent>
-                             {clanInfo && (
+                             {clanInfo && clanInfo.rank !== 'Recruta' && (
                                 <TooltipProvider>
                                     <Tooltip>
                                         <TooltipTrigger className="absolute top-2 right-2">
@@ -379,7 +379,11 @@ const RankingDisplay = ({
 };
 
 
-export function Ranking({ initialRankings, initialHallOfFame, initialClanMembers }: { 
+export function Ranking({ 
+    initialRankings, 
+    initialHallOfFame,
+    initialClanMembers
+}: { 
     initialRankings: RankingsData, 
     initialHallOfFame: HallOfFameMap,
     initialClanMembers: Record<string, ClanMemberInfo>
