@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useClanAuth } from '../../layout';
@@ -631,8 +630,23 @@ export default function ClanDashboardPage({ params }: { params: { clanId: string
          <TabsContent value="monthly-stats">
             <Card>
                 <CardHeader>
-                    <CardTitle>Estatísticas Mensais do Clã</CardTitle>
-                    <CardDescription>Veja o desempenho dos membros em um mês específico.</CardDescription>
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <CardTitle>Estatísticas Mensais do Clã</CardTitle>
+                            <CardDescription>Veja o desempenho dos membros em um mês específico.</CardDescription>
+                        </div>
+                        {isFetchingMonthlyStats ? (
+                            <div className="text-right">
+                                <Skeleton className="h-7 w-12" />
+                                <Skeleton className="h-4 w-24 mt-1" />
+                            </div>
+                        ) : monthlyStats.length > 0 ? (
+                            <div className="text-right">
+                                <p className="text-2xl font-bold text-accent">{monthlyStats.length}</p>
+                                <p className="text-sm text-muted-foreground">Jogadores Ativos</p>
+                            </div>
+                        ) : null}
+                    </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
                      <div className="flex flex-col sm:flex-row items-center gap-4 p-4 border rounded-lg bg-muted/30">
