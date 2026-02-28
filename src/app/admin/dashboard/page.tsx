@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useEffect, useTransition } from 'react';
@@ -7,12 +6,13 @@ import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { importServerData, getServerSyncStatus, getPlayerCount, importSpecificMatches, importMatchRange, updateGlobalStats, importHistoricalMatchRange } from '../actions';
 import { Progress } from '@/components/ui/progress';
-import { Database, DownloadCloud, History, ServerIcon, Users, Edit, RefreshCw, BarChart, BetweenHorizontalStart, Archive } from 'lucide-react';
+import { Database, DownloadCloud, History, ServerIcon, Users, Edit, RefreshCw, BarChart, BetweenHorizontalStart, Archive, Sparkles } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
+import Link from 'next/link';
 
 const servers = [
   {
@@ -314,11 +314,17 @@ export default function AdminDashboardPage() {
   return (
     <div className="container mx-auto px-4 py-8">
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0">
           <CardTitle className="flex items-center gap-2 text-xl font-headline md:text-2xl">
             <Database className="h-6 w-6 text-accent" />
             <span>Painel de Administração</span>
           </CardTitle>
+          <Button asChild variant="outline">
+            <Link href="/admin/match-analyzer">
+              <Sparkles className="mr-2 h-4 w-4 text-accent" />
+              Analisador de Batalha (IA)
+            </Link>
+          </Button>
         </CardHeader>
         <CardContent className="space-y-8">
           
@@ -608,10 +614,3 @@ export default function AdminDashboardPage() {
     </div>
   );
 }
-
-    
-
-    
-
-    
-

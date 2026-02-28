@@ -1,8 +1,8 @@
-
 'use server';
 
 import { db } from '@/firebase/server';
 import { collection, writeBatch, doc, query, getDocs, where, getCountFromServer, orderBy, limit, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
+import { analyzeMatch } from '@/ai/flows/analyze-match-flow';
 
 interface ScoreboardMapsResponse {
   result: {
@@ -496,9 +496,12 @@ export async function updateGlobalStats(): Promise<{ success: boolean; error?: s
   }
 }
 
-    
-
-    
-
-    
-
+export async function runMatchAnalysisAction(matchJson: string): Promise<{ success: boolean; report?: string; error?: string }> {
+  try {
+    const report = await analyzeMatch({ matchJson });
+    return { success: true, report };
+  } catch (error: any) {
+    console.error('Error in match analysis action:', error);
+    return { success: false, error: error.message || 'Falha ao analisar a partida.' };
+  }
+}
