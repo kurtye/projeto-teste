@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useTransition } from 'react';
@@ -5,14 +6,15 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
-import { runMatchAnalysisAction } from '../actions';
-import { Sparkles, FileJson, Sword, Shield, Target, Trophy, Info } from 'lucide-react';
+import { runMatchAnalysisAction, publishToCasernaAction } from '../actions';
+import { Sparkles, FileJson, Sword, Shield, Target, Trophy, Info, Send } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 
 export default function MatchAnalyzerPage() {
   const [matchJson, setMatchJson] = useState('');
   const [report, setReport] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const [isPublishing, startPublishTransition] = useTransition();
   const { toast } = useToast();
 
   const handleAnalyze = () => {
@@ -40,6 +42,28 @@ export default function MatchAnalyzerPage() {
           variant: 'destructive',
           title: 'Falha na Análise',
           description: result.error || 'Ocorreu um erro desconhecido.',
+        });
+      }
+    });
+  };
+
+  const handlePublish = () => {
+    if (!report) return;
+
+    startPublishTransition(async () => {
+      // Tenta extrair um título do relatório ou usa um padrão
+      const mapMatch = matchJson.match(/"map_name":\s*"(.*?)"/);
+      const mapName = mapMatch ? mapMatch[1].replace(/_/g, ' ').toUpperCase() : 'Batalha Desconhecida';
+      const title = `Relatório Tático: ${mapName}`;
+
+      const result = await publishToCasernaAction(title, report);
+      if (result.success) {
+        toast({ title: 'Publicado!', description: 'O relatório foi enviado para a Caserna.' });
+      } else {
+        toast({
+          variant: 'destructive',
+          title: 'Erro ao Publicar',
+          description: result.error,
         });
       }
     });
@@ -105,11 +129,15 @@ export default function MatchAnalyzerPage() {
 
         {report && (
           <Card className="bg-card/50 backdrop-blur-sm border-accent/20">
-            <CardHeader className="border-b border-border/50 bg-accent/5">
+            <CardHeader className="border-b border-border/50 bg-accent/5 flex flex-row items-center justify-between">
               <CardTitle className="flex items-center gap-2 text-xl text-accent">
                 <Trophy className="h-6 w-6" />
                 Relatório de Operações
               </CardTitle>
+              <Button onClick={handlePublish} disabled={isPublishing} variant="outline" size="sm">
+                <Send className={`mr-2 h-4 w-4 ${isPublishing ? 'animate-spin' : ''}`} />
+                {isPublishing ? 'Publicando...' : 'Publicar na Caserna'}
+              </Button>
             </CardHeader>
             <CardContent className="pt-6">
               <div 

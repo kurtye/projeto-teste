@@ -1,11 +1,14 @@
+
 import { notFound } from 'next/navigation';
-import { articles } from '@/lib/articles.tsx';
+import { articles as hardcodedArticles } from '@/lib/articles.tsx';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { ChevronLeft } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import { AdBanner } from '@/components/AdBanner';
+import { db } from '@/firebase/server';
+import { collection, query, where, getDocs, limit } from 'firebase/firestore';
 
 interface ArticlePageProps {
   params: {
@@ -13,13 +16,51 @@ interface ArticlePageProps {
   };
 }
 
-export default function ArticlePage({ params }: ArticlePageProps) {
+async function getArticle(slug: string) {
+  // Busca primeiro nos hardcoded
+  const hardcoded = hardcodedArticles.find((a) => a.slug === slug);
+  if (hardcoded) return hardcoded;
+
+  // Se não achar, busca no Firestore
+  const q = query(collection(db, 'articles'), where('slug', '==', slug), limit(1));
+  const snapshot = await getDocs(q);
+  
+  if (snapshot.empty) return null;
+  
+  const data = snapshot.docs[0].data();
+  return {
+    ...data,
+    id: snapshot.docs[0].id,
+  };
+}
+
+export default async function ArticlePage({ params }: ArticlePageProps) {
   const { slug } = params;
-  const article = articles.find((a) => a.slug === slug);
+  const article = await getArticle(slug);
 
   if (!article) {
     notFound();
   }
+
+  // Se o conteúdo for uma string (Markdown vindo do DB), renderiza formatado.
+  // Se for um componente React (hardcoded), renderiza direto.
+  const content = typeof article.content === 'string' ? (
+    <div 
+      className="prose prose-invert prose-lg max-w-none text-foreground/90 
+        prose-headings:text-accent prose-headings:font-headline prose-strong:text-foreground
+        prose-p:mb-4 prose-ul:list-disc prose-ul:pl-6 prose-li:mb-2"
+      dangerouslySetInnerHTML={{ 
+        __html: article.content
+          .replace(/### (.*?)\n/g, '<h3 class="text-2xl font-semibold mt-8 mb-4">$1</h3>')
+          .replace(/\* \*\*(.*?)\*\*/g, '<p class="mt-2"><strong>$1</strong></p>')
+          .replace(/\n\n/g, '<br/>')
+      }} 
+    />
+  ) : (
+    <div className="prose prose-invert prose-lg max-w-none text-foreground/90 prose-headings:text-accent prose-headings:font-headline prose-strong:text-foreground">
+      {article.content}
+    </div>
+  );
 
   return (
     <div className="container mx-auto max-w-4xl px-4 py-8 mb-16 md:mb-0">
@@ -39,7 +80,7 @@ export default function ArticlePage({ params }: ArticlePageProps) {
             {article.date}
           </CardDescription>
            <div className="flex flex-wrap gap-2 pt-4">
-              {article.tags.map(tag => (
+              {article.tags.map((tag: string) => (
                   <span key={tag} className="text-xs font-semibold bg-accent/20 text-accent-foreground py-1 px-3 rounded-full">
                       {tag}
                   </span>
@@ -48,9 +89,7 @@ export default function ArticlePage({ params }: ArticlePageProps) {
         </CardHeader>
         <Separator className="mx-6 w-auto" />
         <CardContent className="py-6">
-          <div className="prose prose-invert prose-lg max-w-none text-foreground/90 prose-headings:text-accent prose-headings:font-headline prose-strong:text-foreground">
-            {article.content}
-          </div>
+          {content}
             <div className="my-8">
               <AdBanner>
                   <ins className="adsbygoogle"
@@ -65,10 +104,4 @@ export default function ArticlePage({ params }: ArticlePageProps) {
       </Card>
     </div>
   );
-}
-
-export async function generateStaticParams() {
-  return articles.map((article) => ({
-    slug: article.slug,
-  }));
 }

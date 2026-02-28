@@ -30,6 +30,22 @@
         "steamId"
       ]
     },
+    "Article": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Article",
+      "type": "object",
+      "description": "Represents an article or match report in the Caserna.",
+      "properties": {
+        "slug": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "date": { "type": "string" },
+        "tags": { "type": "array", "items": { "type": "string" } },
+        "content": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["slug", "title", "content", "date"]
+    },
     "Match": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "Match",
@@ -305,6 +321,10 @@
     "/globalWeaponStats/{weaponName}": {
       "schema": { "$ref": "#/entities/GlobalWeaponStats" },
       "description": "Global collection of aggregated weapon statistics. Each document represents a single weapon and its total kill count."
+    },
+    "/articles/{articleId}": {
+      "schema": { "$ref": "#/entities/Article" },
+      "description": "Collection of articles and match reports displayed in the Caserna."
     }
   }
 }

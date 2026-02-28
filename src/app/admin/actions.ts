@@ -1,7 +1,8 @@
+
 'use server';
 
 import { db } from '@/firebase/server';
-import { collection, writeBatch, doc, query, getDocs, where, getCountFromServer, orderBy, limit, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, writeBatch, doc, query, getDocs, where, getCountFromServer, orderBy, limit, setDoc, getDoc, serverTimestamp, addDoc } from 'firebase/firestore';
 import { analyzeMatch } from '@/ai/flows/analyze-match-flow';
 
 interface ScoreboardMapsResponse {
@@ -503,5 +504,34 @@ export async function runMatchAnalysisAction(matchJson: string): Promise<{ succe
   } catch (error: any) {
     console.error('Error in match analysis action:', error);
     return { success: false, error: error.message || 'Falha ao analisar a partida.' };
+  }
+}
+
+export async function publishToCasernaAction(title: string, content: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const now = new Date();
+    const slug = title.toLowerCase()
+      .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9]/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '') + '-' + now.getTime();
+
+    const description = content.substring(0, 160).replace(/[#*]/g, '') + '...';
+    
+    const articleData = {
+      title,
+      slug,
+      description,
+      content,
+      date: now.toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' }),
+      tags: ['Relatório de Partida', 'IA'],
+      createdAt: now.toISOString(),
+    };
+
+    await addDoc(collection(db, 'articles'), articleData);
+    return { success: true };
+  } catch (error: any) {
+    console.error('Error publishing to Caserna:', error);
+    return { success: false, error: error.message || 'Falha ao publicar na Caserna.' };
   }
 }
