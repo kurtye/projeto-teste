@@ -35,24 +35,35 @@ const analyzeMatchFlow = ai.defineFlow(
         Sua tarefa é analisar o JSON de uma partida e gerar um relatório envolvente, técnico e detalhado em Markdown.
 
         **Instruções de Análise:**
-        1. **Visão Geral:** Identifique o mapa (map_name), quem venceu (allied vs axis) e a duração.
-        2. **Destaques da Partida (Os Melhores):**
-           - **MVP Absoluto:** Quem teve o maior impacto geral (equilíbrio entre combate, ataque, defesa e suporte).
-           - **Especialista em Blindados:** Identifique quem causou mais destruição usando tanques (baseado em kills_by_type.armor ou armas de veículos).
-           - **Mestre da Artilharia:** Verifique kills_by_type.artillery.
-           - **Líder de Logística:** Quem teve o maior score de 'support'.
-           - **Defensor Implacável:** Quem teve o maior score de 'defense'.
-        3. **Eficiência Letal:** Destaque jogadores com alta taxa de "Kills por Minuto" (kills_per_minute) e baixo número de mortes.
-        4. **Rivalidades e Curiosidades:** 
-           - Procure por "duelos" (jogadores que mataram muito um ao outro através do campo death_by).
-           - Mencione se houve muitos Teamkills e quem foi o mais "perigoso" para os aliados.
-        5. **Conclusão Estratégica:** Baseado nos scores de Offense vs Defense, a partida foi uma guerra de desgaste ou um atropelo rápido?
+        1. **Visão Geral:** Identifique o mapa (map_name), o resultado final (axis vs allied) e a duração aproximada.
+
+        2. **Comandantes e MVPs de Campo:**
+           - Identifique o **MVP dos Aliados (Allies)** e o **MVP do Eixo (Axis)**. Baseie sua escolha no equilíbrio entre kills, pontuação de combate e impacto nos objetivos.
+
+        3. **Elite da Batalha (Top 3 por Categoria):**
+           - Liste os 3 melhores jogadores (nome e pontuação) em:
+             - **### Operações Ofensivas (Offense)**
+             - **### Estratégia Defensiva (Defense)**
+             - **### Logística e Apoio (Support)**
+             - **### Eficiência em Combate (Combat)**
+
+        4. **Especialistas em Armamento:**
+           - **Predador de Infantaria:** Identifique o jogador com mais abates de infantaria (campo \`kills_by_type.infantry\`). ATENÇÃO: Ignore abates vindos de artilharia ou blindados para este destaque específico.
+           - **Arma de Infantaria Mais Letal:** Determine qual arma individual (ex: M1 Garand, Kar98k, MP40, STG44) causou o maior número total de mortes na partida (somando todos os jogadores).
+           - **Divisão de Blindados:** Destaque os melhores tanquistas (kills por armor/veículos).
+           - **Bateria de Artilharia:** Destaque quem operou a artilharia com mais precisão (\`kills_by_type.artillery\`).
+
+        5. **Rivalidades e Eficiência:** 
+           - Procure por "Duelos Mortais" (jogadores que se eliminaram mutuamente várias vezes).
+           - Mencione jogadores com K/D extremamente alto ou Kills por Minuto impressionantes.
+
+        6. **Conclusão Tática:** Com base nos dados de Offense e Defense das equipes, analise como a batalha se desenrolou (foi uma defesa heróica, um avanço imparável ou uma guerra de atrito?).
 
         **Regras de Formatação:**
         - Use títulos '###' para seções.
-        - Use negrito para nomes de jogadores.
-        - Seja imersivo, use termos militares (ex: "Setor Utah", "Linhas de Suprimento", "Guarnição").
+        - Use negrito para nomes de jogadores e armas.
         - O relatório deve ser em Português do Brasil.
+        - Seja imersivo, use termos como "Setor", "Linhas de Suprimento", "Guarnição".
 
         DADOS DA PARTIDA:
         ${input.matchJson}
