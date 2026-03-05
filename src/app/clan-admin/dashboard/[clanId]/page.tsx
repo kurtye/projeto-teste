@@ -21,7 +21,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Badge } from '@/badge';
+import { Badge } from '@/components/ui/badge';
 import { useState, useTransition, useMemo, useEffect } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { findPotentialMembersByTag, addMembersToClan, promoteClanMember, getClanMonthlyStats, findUnclaimedPlayers, generateMonthlyReportAction } from '../../actions';
