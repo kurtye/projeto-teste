@@ -16,7 +16,7 @@ const AnalyzeClanPerformanceInputSchema = z.object({
 });
 export type AnalyzeClanPerformanceInput = z.infer<typeof AnalyzeClanPerformanceInputSchema>;
 
-const AnalyzeClanPerformanceOutputSchema = z.string().describe('A concise performance report in Markdown format, highlighting standout players.');
+const AnalyzeClanPerformanceOutputSchema = z.string().describe('A detailed performance report in Markdown format, highlighting top performers and efficiency metrics.');
 export type AnalyzeClanPerformanceOutput = string;
 
 export async function analyzeClanPerformance(input: AnalyzeClanPerformanceInput): Promise<AnalyzeClanPerformanceOutput> {
@@ -32,47 +32,55 @@ const analyzeClanPerformanceFlow = ai.defineFlow(
   async (input) => {
     const response = await ai.generate({
         prompt: `
-          Você é um analista de dados especialista no jogo Hell Let Loose, encarregado de criar um relatório de desempenho mensal para um clã.
+          Você é um Analista de Inteligência Militar e Especialista de Dados do jogo Hell Let Loose.
+          Sua missão é processar as estatísticas mensais de um clã e gerar um Relatório de Operações Mensais (ROM) imersivo, estratégico e detalhado em Markdown.
 
-          Sua tarefa é analisar os dados estatísticos em JSON fornecidos e gerar um relatório detalhado e envolvente em formato Markdown. O relatório deve ser mais do que uma simples lista; deve contar uma história sobre o desempenho do clã no mês.
+          **Instruções de Análise e Estrutura:**
 
-          **Estrutura do Relatório:**
+          Use títulos com '###' para cada seção e negrito para nomes de jogadores.
 
-          Use títulos com '###' para cada seção.
+          1. **### 🏅 Pódio de Excelência (Top 3 por Categoria)**
+             Para cada categoria abaixo, liste os 3 melhores jogadores (Nome e Valor).
+             - **Ponta de Lança (Ofensiva):** Baseado em \`totalOffense\`.
+             - **Muralha Inabalável (Defensiva):** Baseado em \`totalDefense\`.
+             - **Espinha Dorsal (Suporte):** Baseado em \`totalSupport\`.
+             - **Mestres do Combate (Pontuação Geral):** Baseado em \`totalCombat\`.
+             - **Ceifadores (Total de Abates):** Baseado em \`totalKills\`.
+             - **Veteranos de Campo (Tempo de Jogo):** Baseado em \`totalTimeSeconds\` (converta para horas).
 
-          1.  **### Destaques do Mês**
-              Identifique os melhores jogadores nas seguintes categorias. Para cada um, mencione o nome do jogador e a estatística chave que o destacou.
-              - **MVP do Mês (Mais Abates):** O jogador com o maior \`totalKills\`.
-              - **Muralha de Aço (Melhor Defensor):** O jogador com a maior pontuação em \`totalDefense\`.
-              - **Ponta de Lança (Melhor Atacante):** O jogador com a maior pontuação em \`totalOffense\`.
-              - **Anjo da Guarda (Melhor Suporte):** O jogador com a maior pontuação em \`totalSupport\`.
-              - **O Mais Dedicado (Mais Horas Jogadas):** O jogador com o maior \`totalTimeSeconds\`.
-              - **Eficiência Letal (Melhor Taxa de Abates por Hora):** Calcule \`(totalKills / (totalTimeSeconds / 3600))\` para os jogadores com tempo significativo e destaque o melhor. Evite jogadores com pouquíssimo tempo de jogo para não distorcer a métrica.
+          2. **### ⚡ Índice de Eficiência Operacional**
+             Aqui você deve premiar a qualidade sobre a quantidade. Identifique jogadores que, proporcionalmente ao tempo que jogaram, entregaram resultados excepcionais. 
+             Analise os dados calculando métricas por hora (\`valor / (totalTimeSeconds / 3600)\`).
+             - **Letalidade Técnica:** Quem tem a melhor média de Kills/Hora (mencione os 2 melhores).
+             - **Utilidade Estratégica:** Quem gera mais pontos de Suporte por hora (mencione os 2 melhores).
+             - **Impacto em Combate:** Quem tem a maior pontuação de Combate por hora.
+             *Nota: Ignore jogadores com menos de 2 horas de jogo nesta seção para evitar distorções.*
 
-          2.  **### Pelotão de Honra**
-              Mencione 2 ou 3 outros jogadores que tiveram um desempenho notável, mesmo que não tenham sido os melhores em uma categoria específica. Pode ser por terem pontuações equilibradas, uma boa relação K/D, ou uma alta pontuação de combate geral.
+          3. **### 📋 Análise de Perfil do Clã**
+             Dê sua "opinião" profissional sobre o estado do clã neste mês.
+             - O clã é predominantemente ofensivo, defensivo ou focado em logística?
+             - Como está o equilíbrio entre os veteranos (muitas horas) e os talentos eficientes (muitos pontos em pouco tempo)?
+             - Qual setor (Ataque, Defesa ou Suporte) parece ser o ponto mais forte do grupo?
 
-          3.  **### Análise Geral do Clã**
-              Escreva uma conclusão sobre o desempenho geral do clã. Com base nos dados, o clã parece mais focado em ataque, defesa ou é equilibrado? Como foi o engajamento (total de horas jogadas pelo clã)?
+          4. **### 🎖️ Menções Honrosas**
+             Cite 2 jogadores que não entraram nos pódios mas que merecem destaque por serem equilibrados em todas as métricas ou por terem uma "Vida Mais Longa" (\`longestLifeSecs\`) notável.
 
-          **Instruções Importantes:**
-          - Seja criativo com os títulos e a linguagem para tornar o relatório mais imersivo.
-          - Baseie-se ESTRITAMENTE nos dados fornecidos no JSON. Não invente jogadores ou estatísticas.
-          - Calcule as horas jogadas a partir de \`totalTimeSeconds\` (dividindo por 3600).
+          **Regras de Estilo:**
+          - Linguagem militar e imersiva (use termos como "Setor", "Logística", "Linha de Frente", "Baixas Inimigas").
+          - Resposta estritamente em Português do Brasil.
+          - Baseie-se APENAS nos dados fornecidos.
 
-          **Dados para Análise:**
+          **Dados das Operações (JSON):**
           ${input.statsJson}
         `,
     });
 
     const report = response.text;
 
-    // Validate that the output is a non-empty string.
     if (typeof report === 'string' && report.trim().length > 0) {
       return report;
     }
     
-    console.error("AI analysis failed. Raw response from model:", JSON.stringify(response));
-    throw new Error("A IA não conseguiu gerar um relatório. A resposta estava vazia ou em formato inválido.");
+    throw new Error("A IA não conseguiu processar os dados táticos. Tente novamente.");
   }
 );
