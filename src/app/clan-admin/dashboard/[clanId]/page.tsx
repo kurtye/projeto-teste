@@ -21,7 +21,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Badge } from '@/components/ui/badge';
+import { Badge } from '@/badge';
 import { useState, useTransition, useMemo, useEffect } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { findPotentialMembersByTag, addMembersToClan, promoteClanMember, getClanMonthlyStats, findUnclaimedPlayers, generateMonthlyReportAction } from '../../actions';
@@ -33,6 +33,21 @@ import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
 
 type MonthlySortKey = keyof Pick<PlayerPeriodStats, 'totalTimeSeconds' | 'totalKills' | 'totalCombat' | 'totalOffense' | 'totalDefense' | 'totalSupport'>;
+
+interface MonthlyColumn {
+  key: MonthlySortKey;
+  label: string;
+  formatter: (val: number) => string;
+}
+
+const monthlyColumns: MonthlyColumn[] = [
+  { key: 'totalTimeSeconds', label: 'Horas', formatter: (val) => `${~~(val / 3600)}h` },
+  { key: 'totalKills', label: 'Kills', formatter: (val) => val.toLocaleString() },
+  { key: 'totalCombat', label: 'Combate', formatter: (val) => val.toLocaleString() },
+  { key: 'totalOffense', label: 'Ataque', formatter: (val) => val.toLocaleString() },
+  { key: 'totalDefense', label: 'Defesa', formatter: (val) => val.toLocaleString() },
+  { key: 'totalSupport', label: 'Suporte', formatter: (val) => val.toLocaleString() },
+];
 
 const MonthlySortableHeader = ({
   children,
@@ -102,28 +117,24 @@ export default function ClanDashboardPage({ params }: { params: { clanId: string
   const [aiReport, setAiReport] = useState<string | null>(null);
   const [isGeneratingReport, startGeneratingReport] = useTransition();
 
-  // This effect ensures that if a user lands on the wrong clan dashboard, they are redirected.
   useEffect(() => {
     if (clan && clan.id !== clanId) {
       router.replace(`/clan-admin/dashboard/${clan.id}`);
     }
   }, [clan, clanId, router]);
   
-  // Query for clan members
   const membersQuery = useMemoFirebase(() => {
     if (!firestore || !clanId) return null;
     return query(collection(firestore, 'clans', clanId, 'members'), orderBy('playerName'));
   }, [firestore, clanId]);
-  const { data: members, isLoading: isLoadingMembers, error: membersError } = useCollection<ClanMember>(membersQuery);
+  const { data: members, isLoading: isLoadingMembers } = useCollection<ClanMember>(membersQuery);
   
-  // Query for promotion logs
   const promotionsQuery = useMemoFirebase(() => {
       if (!firestore || !clanId) return null;
       return query(collection(firestore, 'clans', clanId, 'promotionLog'));
   }, [firestore, clanId]);
   const { data: promotions, isLoading: isLoadingPromotions } = useCollection<PromotionLog>(promotionsQuery);
 
-  // Client-side sorting for promotions
   const sortedPromotions = useMemo(() => {
     if (!promotions) return [];
     return [...promotions].sort((a, b) => {
@@ -135,7 +146,6 @@ export default function ClanDashboardPage({ params }: { params: { clanId: string
     });
   }, [promotions]);
 
-  // If clan data is not yet available or doesn't match the URL, show a loading state.
   if (!clan || clan.id !== clanId) {
     return (
       <div className="container mx-auto px-4 py-8">
@@ -367,7 +377,7 @@ export default function ClanDashboardPage({ params }: { params: { clanId: string
       const rankA = ranksInOrder.indexOf(a.rank);
       const rankB = ranksInOrder.indexOf(b.rank);
       if (rankA !== rankB) {
-        return rankB - rankA; // Sort descending by rank index
+        return rankB - rankA; 
       }
       return a.playerName.localeCompare(b.playerName);
     });
@@ -400,6 +410,12 @@ export default function ClanDashboardPage({ params }: { params: { clanId: string
     });
     return sortableStats;
   }, [monthlyStats, monthlySortConfig]);
+
+  const orderedColumns = useMemo(() => {
+    const active = monthlyColumns.find(c => c.key === monthlySortConfig.key)!;
+    const others = monthlyColumns.filter(c => c.key !== monthlySortConfig.key);
+    return [active, ...others];
+  }, [monthlySortConfig.key]);
 
 
   return (
@@ -686,12 +702,16 @@ export default function ClanDashboardPage({ params }: { params: { clanId: string
                         <TableHeader>
                             <TableRow>
                                 <TableHead>Jogador</TableHead>
-                                <MonthlySortableHeader sortKey="totalTimeSeconds" sortConfig={monthlySortConfig} requestSort={handleRequestMonthlySort}>Horas</MonthlySortableHeader>
-                                <MonthlySortableHeader sortKey="totalKills" sortConfig={monthlySortConfig} requestSort={handleRequestMonthlySort}>Kills</MonthlySortableHeader>
-                                <MonthlySortableHeader sortKey="totalCombat" sortConfig={monthlySortConfig} requestSort={handleRequestMonthlySort}>Combate</MonthlySortableHeader>
-                                <MonthlySortableHeader sortKey="totalOffense" sortConfig={monthlySortConfig} requestSort={handleRequestMonthlySort}>Ataque</MonthlySortableHeader>
-                                <MonthlySortableHeader sortKey="totalDefense" sortConfig={monthlySortConfig} requestSort={handleRequestMonthlySort}>Defesa</MonthlySortableHeader>
-                                <MonthlySortableHeader sortKey="totalSupport" sortConfig={monthlySortConfig} requestSort={handleRequestMonthlySort}>Suporte</MonthlySortableHeader>
+                                {orderedColumns.map((col) => (
+                                  <MonthlySortableHeader 
+                                    key={col.key} 
+                                    sortKey={col.key} 
+                                    sortConfig={monthlySortConfig} 
+                                    requestSort={handleRequestMonthlySort}
+                                  >
+                                    {col.label}
+                                  </MonthlySortableHeader>
+                                ))}
                             </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -699,12 +719,9 @@ export default function ClanDashboardPage({ params }: { params: { clanId: string
                                 Array.from({ length: 5 }).map((_, i) => (
                                     <TableRow key={i}>
                                         <TableCell><Skeleton className="h-5 w-32" /></TableCell>
-                                        <TableCell className="text-right"><Skeleton className="h-5 w-12 ml-auto" /></TableCell>
-                                        <TableCell className="text-right"><Skeleton className="h-5 w-12 ml-auto" /></TableCell>
-                                        <TableCell className="text-right"><Skeleton className="h-5 w-12 ml-auto" /></TableCell>
-                                        <TableCell className="text-right"><Skeleton className="h-5 w-12 ml-auto" /></TableCell>
-                                        <TableCell className="text-right"><Skeleton className="h-5 w-12 ml-auto" /></TableCell>
-                                        <TableCell className="text-right"><Skeleton className="h-5 w-12 ml-auto" /></TableCell>
+                                        {orderedColumns.map((col) => (
+                                          <TableCell key={col.key} className="text-right"><Skeleton className="h-5 w-12 ml-auto" /></TableCell>
+                                        ))}
                                     </TableRow>
                                 ))
                             ) : sortedMonthlyStats.length > 0 ? (
@@ -715,12 +732,17 @@ export default function ClanDashboardPage({ params }: { params: { clanId: string
                                                 {stat.playerName}
                                             </Link>
                                         </TableCell>
-                                        <TableCell className="text-right">{~~((stat.totalTimeSeconds || 0) / 3600)}h</TableCell>
-                                        <TableCell className="text-right font-semibold text-accent">{(stat.totalKills || 0).toLocaleString()}</TableCell>
-                                        <TableCell className="text-right">{(stat.totalCombat || 0).toLocaleString()}</TableCell>
-                                        <TableCell className="text-right">{(stat.totalOffense || 0).toLocaleString()}</TableCell>
-                                        <TableCell className="text-right">{(stat.totalDefense || 0).toLocaleString()}</TableCell>
-                                        <TableCell className="text-right">{(stat.totalSupport || 0).toLocaleString()}</TableCell>
+                                        {orderedColumns.map((col) => (
+                                          <TableCell 
+                                            key={col.key} 
+                                            className={cn(
+                                              "text-right",
+                                              col.key === monthlySortConfig.key && "font-semibold text-accent"
+                                            )}
+                                          >
+                                            {col.formatter((stat[col.key] as number) || 0)}
+                                          </TableCell>
+                                        ))}
                                     </TableRow>
                                 ))
                             ) : (
