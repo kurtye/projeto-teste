@@ -4,7 +4,7 @@ import { useClanAuth } from '../../layout';
 import { useRouter } from 'next/navigation';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { LogOut, Users, Edit, UserPlus, RefreshCw, CheckSquare, Square, List, Trophy, Shield, Star, Crown, ArrowUp, Diamond, Award, Medal, Search, CalendarDays, Trash2, Sparkles } from 'lucide-react';
+import { LogOut, Users, Edit, UserPlus, RefreshCw, CheckSquare, Square, List, Trophy, Shield, Star, Crown, ArrowUp, Diamond, Award, Medal, Search, CalendarDays, Trash2, Sparkles, ClipboardList } from 'lucide-react';
 import { useCollection, useMemoFirebase, useFirestore } from '@/firebase';
 import { collection, query, orderBy } from 'firebase/firestore';
 import type { PlayerAggregates, ClanMember, PromotionLog, PlayerPeriodStats } from '@/lib/types';
@@ -12,6 +12,7 @@ import { EditMemberDialog } from './_components/EditMemberDialog';
 import { RemoveMemberDialog } from './_components/RemoveMemberDialog';
 import { HierarchyView } from './_components/HierarchyView';
 import { RecentPromotions } from './_components/RecentPromotions';
+import { LineupBuilder } from './_components/LineupBuilder';
 import {
   Table,
   TableBody,
@@ -447,12 +448,13 @@ export default function ClanDashboardPage({ params }: { params: { clanId: string
 
       <Tabs defaultValue="list">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4">
-            <TabsList className="grid w-full grid-cols-5">
-                <TabsTrigger value="list"><List className="mr-2 h-4 w-4"/>Lista</TabsTrigger>
-                <TabsTrigger value="hierarchy"><Users className="mr-2 h-4 w-4"/>Hierarquia</TabsTrigger>
-                <TabsTrigger value="promotions"><Medal className="mr-2 h-4 w-4"/>Promoções</TabsTrigger>
-                <TabsTrigger value="recruitment"><UserPlus className="mr-2 h-4 w-4"/>Recrutar</TabsTrigger>
-                <TabsTrigger value="monthly-stats"><CalendarDays className="mr-2 h-4 w-4"/>Stats Mensais</TabsTrigger>
+            <TabsList className="grid w-full grid-cols-3 md:grid-cols-6 h-auto">
+                <TabsTrigger value="list" className="py-2"><List className="mr-2 h-4 w-4"/>Lista</TabsTrigger>
+                <TabsTrigger value="hierarchy" className="py-2"><Users className="mr-2 h-4 w-4"/>Hierarquia</TabsTrigger>
+                <TabsTrigger value="lineup" className="py-2"><ClipboardList className="mr-2 h-4 w-4"/>Escalação</TabsTrigger>
+                <TabsTrigger value="promotions" className="py-2"><Medal className="mr-2 h-4 w-4"/>Promoções</TabsTrigger>
+                <TabsTrigger value="recruitment" className="py-2"><UserPlus className="mr-2 h-4 w-4"/>Recrutar</TabsTrigger>
+                <TabsTrigger value="monthly-stats" className="py-2"><CalendarDays className="mr-2 h-4 w-4"/>Stats Mensais</TabsTrigger>
             </TabsList>
             <div className='flex items-center gap-4'>
                 <div className="text-right">
@@ -593,6 +595,9 @@ export default function ClanDashboardPage({ params }: { params: { clanId: string
             ) : (
                 <HierarchyView members={members || []} />
             )}
+        </TabsContent>
+        <TabsContent value="lineup">
+            <LineupBuilder members={members || []} isLoading={isLoadingMembers} />
         </TabsContent>
         <TabsContent value="promotions">
              {isLoadingPromotions ? (
