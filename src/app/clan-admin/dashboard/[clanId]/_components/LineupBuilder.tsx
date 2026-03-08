@@ -23,7 +23,8 @@ import {
   Square,
   Grab,
   Hammer,
-  Wrench
+  Wrench,
+  Crown
 } from 'lucide-react';
 import type { ClanMember } from '@/lib/types';
 import { cn } from '@/lib/utils';
@@ -33,7 +34,7 @@ type SquadRole = 'Ataque' | 'Defesa' | 'Centro' | 'Flanco Esquerdo' | 'Flanco Di
 interface Squad {
   id: string;
   name: string;
-  type: 'infantry' | 'armor' | 'artillery' | 'recon';
+  type: 'commander' | 'infantry' | 'armor' | 'artillery' | 'recon';
   members: string[]; // member IDs
   role?: SquadRole;
   buildNodes?: boolean;
@@ -45,6 +46,7 @@ interface LineupBuilderProps {
 }
 
 const SQUAD_TYPES = {
+  commander: { label: 'Comando', icon: Crown, max: 1, color: 'bg-primary/20 text-primary border-primary/30' },
   infantry: { label: 'Infantaria', icon: Sword, max: 6, color: 'bg-green-500/10 text-green-500 border-green-500/20' },
   armor: { label: 'Blindado', icon: Shield, max: 3, color: 'bg-amber-500/10 text-amber-500 border-amber-500/20' },
   artillery: { label: 'Artilharia', icon: Crosshair, max: 2, color: 'bg-red-500/10 text-red-500 border-red-500/20' },
@@ -78,10 +80,21 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
     return activeMembers.filter(m => selectedMemberIds.has(m.id) && !memberAssignmentMap.has(m.id));
   }, [activeMembers, selectedMemberIds, memberAssignmentMap]);
 
+  // Sort squads so commander is always first
+  const sortedSquads = useMemo(() => {
+    const order = { commander: 0, infantry: 1, armor: 2, recon: 3, artillery: 4 };
+    return [...squads].sort((a, b) => order[a.type] - order[b.type]);
+  }, [squads]);
+
   const addSquad = (type: keyof typeof SQUAD_TYPES) => {
+    // Only one commander allowed
+    if (type === 'commander' && squads.some(s => s.type === 'commander')) {
+      return;
+    }
+
     const newSquad: Squad = {
       id: Math.random().toString(36).substr(2, 9),
-      name: `${SQUAD_TYPES[type].label} ${squads.filter(s => s.type === type).length + 1}`,
+      name: type === 'commander' ? 'Comandante da Equipe' : `${SQUAD_TYPES[type].label} ${squads.filter(s => s.type === type).length + 1}`,
       type,
       members: [],
       role: type === 'infantry' ? 'Ataque' : undefined,
@@ -264,6 +277,15 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
                   />
                 </div>
                 <div className="flex flex-wrap gap-2">
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={() => addSquad('commander')}
+                    disabled={squads.some(s => s.type === 'commander')}
+                    className={cn(squads.some(s => s.type === 'commander') && "opacity-50 border-primary/50 text-primary")}
+                  >
+                    <Plus className="mr-1 h-4 w-4" /> Comando
+                  </Button>
                   <Button variant="outline" size="sm" onClick={() => addSquad('infantry')}>
                     <Plus className="mr-1 h-4 w-4" /> Infantaria
                   </Button>
@@ -318,17 +340,18 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
 
           {/* Squad Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {squads.length === 0 ? (
+            {sortedSquads.length === 0 ? (
               <div className="col-span-full h-40 flex flex-col items-center justify-center border-2 border-dashed rounded-lg bg-muted/20">
                 <Settings2 className="h-8 w-8 text-muted-foreground mb-2" />
                 <p className="text-muted-foreground">Adicione pelotões acima para começar a escalação.</p>
               </div>
             ) : (
-              squads.map(squad => {
+              sortedSquads.map(squad => {
                 const config = SQUAD_TYPES[squad.type];
                 const Icon = config.icon;
                 const isOver = activeDropZone === squad.id;
                 const isFull = squad.members.length >= config.max;
+                const isCommander = squad.type === 'commander';
 
                 return (
                   <Card 
@@ -339,24 +362,27 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
                     className={cn(
                       "overflow-hidden transition-all duration-200 border-accent/10 flex flex-col",
                       isOver && "ring-2 ring-accent scale-[1.02] shadow-lg",
-                      isFull && "opacity-80"
+                      isFull && "opacity-80",
+                      isCommander && "border-primary/50 shadow-md shadow-primary/5"
                     )}
                   >
                     <CardHeader className={cn("p-3 flex flex-row items-center justify-between border-b", config.color)}>
                       <div className="flex items-center gap-2 overflow-hidden">
                         <Icon className="h-4 w-4 flex-shrink-0" />
-                        <CardTitle className="text-sm truncate">{squad.name}</CardTitle>
+                        <CardTitle className="text-sm truncate font-headline tracking-wider uppercase">{squad.name}</CardTitle>
                       </div>
                       <div className="flex items-center gap-2">
-                        <span className={cn("text-xs font-mono px-1 rounded", isFull ? "bg-destructive text-destructive-foreground" : "bg-background/20")}>
-                          {squad.members.length}/{config.max}
-                        </span>
+                        {!isCommander && (
+                          <span className={cn("text-xs font-mono px-1 rounded", isFull ? "bg-destructive text-destructive-foreground" : "bg-background/20")}>
+                            {squad.members.length}/{config.max}
+                          </span>
+                        )}
                         <button onClick={() => removeSquad(squad.id)} className="hover:text-foreground opacity-70 hover:opacity-100">
                           <X className="h-4 w-4" />
                         </button>
                       </div>
                     </CardHeader>
-                    <CardContent className="p-3 space-y-3 min-h-[150px] bg-card/30 flex-grow">
+                    <CardContent className="p-3 space-y-3 min-h-[120px] bg-card/30 flex-grow">
                       
                       {/* Infantry Specific Controls */}
                       {squad.type === 'infantry' && (
@@ -394,8 +420,11 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
 
                       <div className="space-y-1">
                         {squad.members.map(mId => (
-                          <div key={mId} className="flex items-center justify-between p-1.5 rounded bg-muted/50 text-xs">
-                            <span className="truncate pr-2 font-medium">{getMemberName(mId)}</span>
+                          <div key={mId} className={cn(
+                            "flex items-center justify-between p-1.5 rounded text-xs transition-colors",
+                            isCommander ? "bg-primary/10 border border-primary/20 text-primary-foreground font-bold" : "bg-muted/50"
+                          )}>
+                            <span className="truncate pr-2">{getMemberName(mId)}</span>
                             <button onClick={() => removeMemberFromSquad(mId, squad.id)} className="text-muted-foreground hover:text-destructive transition-colors">
                               <Trash2 className="h-3.5 w-3.5" />
                             </button>
@@ -403,7 +432,7 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
                         ))}
                         {squad.members.length === 0 && !isOver && (
                           <div className="h-20 flex flex-col items-center justify-center text-[10px] text-muted-foreground/50 italic border border-dashed border-muted-foreground/20 rounded">
-                            Solte um jogador aqui
+                            {isCommander ? "Solte o Comandante aqui" : "Solte um jogador aqui"}
                           </div>
                         )}
                         {isOver && (
@@ -419,6 +448,11 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
                       <div className="px-3 py-1 bg-muted/30 border-t border-border/30 flex justify-between items-center">
                         <span className="text-[10px] font-bold text-muted-foreground uppercase">{squad.role}</span>
                         {squad.buildNodes && <Wrench className="h-3 w-3 text-blue-400" />}
+                      </div>
+                    )}
+                    {isCommander && (
+                      <div className="px-3 py-1 bg-primary/10 border-t border-primary/20 flex justify-center items-center">
+                        <span className="text-[10px] font-black text-primary uppercase tracking-widest">Liderança Geral</span>
                       </div>
                     )}
                   </Card>
