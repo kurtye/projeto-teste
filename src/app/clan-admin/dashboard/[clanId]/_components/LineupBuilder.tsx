@@ -51,6 +51,11 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
   const [draggedMemberId, setDraggedMemberId] = useState<string | null>(null);
   const [activeDropZone, setActiveDropZone] = useState<string | null>(null);
   
+  // Only bring active members for the lineup selection
+  const activeMembers = useMemo(() => {
+    return members.filter(m => m.status === 'active');
+  }, [members]);
+
   // Track which squad a member is assigned to
   const memberAssignmentMap = useMemo(() => {
     const map = new Map<string, string>();
@@ -61,8 +66,8 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
   }, [squads]);
 
   const unassignedMembers = useMemo(() => {
-    return members.filter(m => selectedMemberIds.has(m.id) && !memberAssignmentMap.has(m.id));
-  }, [members, selectedMemberIds, memberAssignmentMap]);
+    return activeMembers.filter(m => selectedMemberIds.has(m.id) && !memberAssignmentMap.has(m.id));
+  }, [activeMembers, selectedMemberIds, memberAssignmentMap]);
 
   const addSquad = (type: keyof typeof SQUAD_TYPES) => {
     const newSquad: Squad = {
@@ -169,14 +174,16 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
             <CardHeader className="pb-3">
               <CardTitle className="text-lg flex items-center gap-2">
                 <Users className="h-5 w-5 text-accent" />
-                Membros do Clã
+                Membros Ativos
               </CardTitle>
               <CardDescription>Arraste para escalar ou marque o checkbox.</CardDescription>
             </CardHeader>
             <CardContent className="p-0">
               <ScrollArea className="h-[600px] px-4">
                 <div className="space-y-1 py-2">
-                  {members.map(member => {
+                  {activeMembers.length === 0 && !isLoading ? (
+                    <p className="text-xs text-muted-foreground text-center py-8 italic">Nenhum membro ativo encontrado.</p>
+                  ) : activeMembers.map(member => {
                     const isSelected = selectedMemberIds.has(member.id);
                     const isAssigned = memberAssignmentMap.has(member.id);
                     const isBeingDragged = draggedMemberId === member.id;
