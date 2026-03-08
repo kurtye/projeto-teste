@@ -19,7 +19,9 @@ import {
   Trash2,
   Settings2,
   ChevronRight,
-  UserCheck
+  UserCheck,
+  CheckSquare,
+  Square
 } from 'lucide-react';
 import type { ClanMember } from '@/lib/types';
 import { cn } from '@/lib/utils';
