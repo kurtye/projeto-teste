@@ -212,7 +212,7 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
         {member.preferredClasses.map(cls => {
           const shortName = cls
             .replace('Comandante', 'CMD')
-            .replace('Oficial', 'SL')
+            .replace('Oficial', 'OFC')
             .replace('Atirador Automático', 'AR')
             .replace('Anti-Tanque', 'AT')
             .replace('Atirador de Elite', 'SNI')
@@ -240,7 +240,7 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
     if (!lineupRef.current) return;
     
     setIsExporting(true);
-    await new Promise(r => setTimeout(r, 600));
+    await new Promise(r => setTimeout(r, 800));
 
     try {
       const exportWidth = 1200;
