@@ -204,18 +204,23 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
     if (!lineupRef.current) return;
     
     setIsExporting(true);
-    // Delay maior para garantir que os elementos táticos apareçam e o CSS de exportação seja aplicado
-    await new Promise(r => setTimeout(r, 500));
+    // Delay para garantir que os elementos táticos e labels apareçam no DOM
+    await new Promise(r => setTimeout(r, 600));
 
     try {
+      // Forçamos uma largura fixa na exportação para evitar cortes laterais em telas pequenas
+      const exportWidth = 1200;
+      
       const dataUrl = await toPng(lineupRef.current, {
         cacheBust: true,
         backgroundColor: '#0a0a0a',
+        width: exportWidth,
         style: {
           padding: '40px',
           margin: '0',
-          width: 'auto',
-          minWidth: '1200px', // Força largura mínima para evitar empilhamento excessivo
+          width: `${exportWidth}px`,
+          maxWidth: 'none',
+          minWidth: `${exportWidth}px`,
         }
       });
       
@@ -408,11 +413,11 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
           {/* Squad Grid - Wrapper for Export */}
           <div ref={lineupRef} className="bg-background">
             {isExporting && (
-              <div className="mb-8 border-b-2 border-accent/30 pb-6 px-4">
-                <h2 className="text-4xl font-bold font-headline text-accent uppercase tracking-tighter">
+              <div className="mb-8 border-b-4 border-accent/50 pb-6 px-4">
+                <h2 className="text-5xl font-bold font-headline text-accent uppercase tracking-tighter">
                   ORDEM DE BATALHA: {matchName}
                 </h2>
-                <p className="text-sm text-muted-foreground mt-2">Gerado via Hell Let Loose BR em {new Date().toLocaleDateString()}</p>
+                <p className="text-lg text-muted-foreground mt-2 font-medium">Gerado via Hell Let Loose BR em {new Date().toLocaleDateString()}</p>
               </div>
             )}
             
