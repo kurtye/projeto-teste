@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useMemo, useRef } from 'react';
@@ -71,12 +70,10 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
   const lineupRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
   
-  // Only bring active members for the lineup selection
   const activeMembers = useMemo(() => {
     return members.filter(m => m.status === 'active');
   }, [members]);
 
-  // Track which squad a member is assigned to
   const memberAssignmentMap = useMemo(() => {
     const map = new Map<string, string>();
     squads.forEach(s => {
@@ -89,14 +86,12 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
     return activeMembers.filter(m => selectedMemberIds.has(m.id) && !memberAssignmentMap.has(m.id));
   }, [activeMembers, selectedMemberIds, memberAssignmentMap]);
 
-  // Sort squads so commander is always first
   const sortedSquads = useMemo(() => {
     const order = { commander: 0, infantry: 1, armor: 2, recon: 3, artillery: 4 };
     return [...squads].sort((a, b) => order[a.type] - order[b.type]);
   }, [squads]);
 
   const addSquad = (type: keyof typeof SQUAD_TYPES) => {
-    // Only one commander allowed
     if (type === 'commander' && squads.some(s => s.type === 'commander')) {
       return;
     }
@@ -134,7 +129,6 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
       const next = new Set(prev);
       if (next.has(memberId)) {
         next.delete(memberId);
-        // Also remove from any squad if currently assigned
         setSquads(currentSquads => 
           currentSquads.map(s => ({
             ...s,
@@ -149,19 +143,16 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
   };
 
   const assignMemberToSquad = (memberId: string, squadId: string) => {
-    // If not selected, select first
     if (!selectedMemberIds.has(memberId)) {
       setSelectedNewMemberIds(prev => new Set(prev).add(memberId));
     }
 
     setSquads(currentSquads => {
-      // Remove from any previous squad first
       const cleanedSquads = currentSquads.map(s => ({
         ...s,
         members: s.members.filter(id => id !== memberId)
       }));
 
-      // Add to new squad
       return cleanedSquads.map(s => {
         if (s.id === squadId) {
           if (s.members.length >= SQUAD_TYPES[s.type].max) return s;
@@ -183,7 +174,6 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
     );
   };
 
-  // Drag and Drop handlers
   const handleDragStart = (e: React.DragEvent, memberId: string) => {
     e.dataTransfer.setData('memberId', memberId);
     setDraggedMemberId(memberId);
@@ -214,15 +204,18 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
     if (!lineupRef.current) return;
     
     setIsExporting(true);
-    // Give it a small delay to ensure any hover states or weirdness are cleared
-    await new Promise(r => setTimeout(r, 100));
+    // Delay maior para garantir que os elementos táticos apareçam e o CSS de exportação seja aplicado
+    await new Promise(r => setTimeout(r, 500));
 
     try {
       const dataUrl = await toPng(lineupRef.current, {
         cacheBust: true,
-        backgroundColor: '#0a0a0a', // Dark background for the PNG
+        backgroundColor: '#0a0a0a',
         style: {
-          padding: '24px',
+          padding: '40px',
+          margin: '0',
+          width: 'auto',
+          minWidth: '1200px', // Força largura mínima para evitar empilhamento excessivo
         }
       });
       
@@ -415,15 +408,15 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
           {/* Squad Grid - Wrapper for Export */}
           <div ref={lineupRef} className="bg-background">
             {isExporting && (
-              <div className="mb-6 border-b border-border/50 pb-4">
-                <h2 className="text-2xl font-bold font-headline text-accent uppercase tracking-tighter">
+              <div className="mb-8 border-b-2 border-accent/30 pb-6 px-4">
+                <h2 className="text-4xl font-bold font-headline text-accent uppercase tracking-tighter">
                   ORDEM DE BATALHA: {matchName}
                 </h2>
-                <p className="text-xs text-muted-foreground">Gerado via Hell Let Loose BR em {new Date().toLocaleDateString()}</p>
+                <p className="text-sm text-muted-foreground mt-2">Gerado via Hell Let Loose BR em {new Date().toLocaleDateString()}</p>
               </div>
             )}
             
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 p-2">
               {sortedSquads.length === 0 ? (
                 <div className="col-span-full h-40 flex flex-col items-center justify-center border-2 border-dashed rounded-lg bg-muted/20">
                   <Settings2 className="h-8 w-8 text-muted-foreground mb-2" />
@@ -444,20 +437,20 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
                       onDragLeave={handleDragLeave}
                       onDrop={(e) => handleDrop(e, squad.id)}
                       className={cn(
-                        "overflow-hidden transition-all duration-200 border-accent/10 flex flex-col",
+                        "overflow-hidden transition-all duration-200 border-accent/10 flex flex-col shadow-sm",
                         isOver && "ring-2 ring-accent scale-[1.02] shadow-lg",
-                        isFull && "opacity-80",
-                        isCommander && "border-primary/50 shadow-md shadow-primary/5"
+                        isFull && "opacity-90",
+                        isCommander && "border-primary/50 shadow-md shadow-primary/5 border-2"
                       )}
                     >
-                      <CardHeader className={cn("p-3 flex flex-row items-center justify-between border-b", config.color)}>
-                        <div className="flex items-center gap-2 overflow-hidden">
-                          <Icon className="h-4 w-4 flex-shrink-0" />
-                          <CardTitle className="text-sm truncate font-headline tracking-wider uppercase">{squad.name}</CardTitle>
+                      <CardHeader className={cn("p-4 flex flex-row items-center justify-between border-b", config.color)}>
+                        <div className="flex items-center gap-3 overflow-hidden">
+                          <Icon className={cn("flex-shrink-0", isCommander ? "h-6 w-6" : "h-5 w-5")} />
+                          <CardTitle className={cn("truncate font-headline tracking-wider uppercase", isCommander ? "text-lg" : "text-sm")}>{squad.name}</CardTitle>
                         </div>
                         <div className="flex items-center gap-2">
                           {!isCommander && (
-                            <span className={cn("text-xs font-mono px-1 rounded", isFull ? "bg-destructive text-destructive-foreground" : "bg-background/20")}>
+                            <span className={cn("text-xs font-mono px-2 py-0.5 rounded font-bold", isFull ? "bg-destructive text-white" : "bg-black/20")}>
                               {squad.members.length}/{config.max}
                             </span>
                           )}
@@ -468,22 +461,22 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
                           )}
                         </div>
                       </CardHeader>
-                      <CardContent className="p-3 space-y-3 min-h-[120px] bg-card/30 flex-grow">
+                      <CardContent className="p-4 space-y-3 min-h-[140px] bg-card/30 flex-grow">
                         
                         {/* Infantry Specific Controls - Hide on Export */}
                         {squad.type === 'infantry' && !isExporting && (
-                          <div className="flex items-center gap-2 pb-2 border-b border-border/30">
+                          <div className="flex items-center gap-2 pb-3 border-b border-border/30">
                             <div className="flex-1">
                               <Select 
                                 value={squad.role} 
                                 onValueChange={(val) => updateSquadRole(squad.id, val as SquadRole)}
                               >
-                                <SelectTrigger className="h-7 text-[10px] bg-background/50">
+                                <SelectTrigger className="h-8 text-[11px] bg-background/50">
                                   <SelectValue placeholder="Missão" />
                                 </SelectTrigger>
                                 <SelectContent>
                                   {ROLES.map(role => (
-                                    <SelectItem key={role} value={role} className="text-[10px]">{role}</SelectItem>
+                                    <SelectItem key={role} value={role} className="text-[11px]">{role}</SelectItem>
                                   ))}
                                 </SelectContent>
                               </Select>
@@ -492,7 +485,7 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
                               variant={squad.buildNodes ? "default" : "outline"} 
                               size="sm" 
                               className={cn(
-                                "h-7 px-2 text-[10px] gap-1",
+                                "h-8 px-2 text-[11px] gap-1",
                                 squad.buildNodes && "bg-blue-600 hover:bg-blue-700"
                               )}
                               onClick={() => toggleSquadNodes(squad.id)}
@@ -504,49 +497,49 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
                           </div>
                         )}
 
-                        <div className="space-y-1">
+                        <div className="space-y-1.5">
                           {squad.members.map(mId => (
                             <div key={mId} className={cn(
-                              "flex items-center justify-between p-1.5 rounded text-xs transition-colors",
-                              isCommander ? "bg-primary/10 border border-primary/20 text-primary-foreground font-bold" : "bg-muted/50"
+                              "flex items-center justify-between p-2 rounded text-sm transition-colors",
+                              isCommander ? "bg-primary/10 border border-primary/20 text-primary-foreground font-bold text-base" : "bg-muted/50"
                             )}>
                               <span className="truncate pr-2">{getMemberName(mId)}</span>
                               {!isExporting && (
                                 <button onClick={() => removeMemberFromSquad(mId, squad.id)} className="text-muted-foreground hover:text-destructive transition-colors">
-                                  <Trash2 className="h-3.5 w-3.5" />
+                                  <Trash2 className="h-4 w-4" />
                                 </button>
                               )}
                             </div>
                           ))}
                           {squad.members.length === 0 && !isOver && (
-                            <div className="h-20 flex flex-col items-center justify-center text-[10px] text-muted-foreground/50 italic border border-dashed border-muted-foreground/20 rounded">
-                              {isCommander ? "Solte o Comandante aqui" : "Solte um jogador aqui"}
+                            <div className="h-20 flex flex-col items-center justify-center text-[11px] text-muted-foreground/50 italic border border-dashed border-muted-foreground/20 rounded">
+                              {isCommander ? "Arraste o Comandante aqui" : "Arraste um jogador aqui"}
                             </div>
                           )}
                           {isOver && (
-                            <div className="h-8 animate-pulse bg-accent/20 border border-accent border-dashed rounded flex items-center justify-center text-[10px] text-accent font-bold">
-                              ESCALAR JOGADOR
+                            <div className="h-10 animate-pulse bg-accent/20 border border-accent border-dashed rounded flex items-center justify-center text-[11px] text-accent font-bold">
+                              SOLTE PARA ESCALAR
                             </div>
                           )}
                         </div>
                       </CardContent>
                       
-                      {/* Squad Footer with metadata */}
+                      {/* Squad Footer with metadata - Always visible on export */}
                       {(squad.role || squad.buildNodes || isCommander) && (
                         <div className={cn(
-                          "px-3 py-1 border-t border-border/30 flex justify-between items-center",
-                          isCommander ? "bg-primary/10 border-primary/20" : "bg-muted/30"
+                          "px-4 py-2 border-t border-border/30 flex justify-between items-center",
+                          isCommander ? "bg-primary/15 border-primary/20" : "bg-muted/40"
                         )}>
                           <span className={cn(
-                            "text-[10px] font-bold uppercase",
-                            isCommander ? "text-primary tracking-widest flex-1 text-center" : "text-muted-foreground"
+                            "text-xs font-bold uppercase tracking-wider",
+                            isCommander ? "text-primary flex-1 text-center" : "text-foreground"
                           )}>
-                            {isCommander ? "Liderança Geral" : squad.role}
+                            {isCommander ? "★ LIDERANÇA SUPREMA ★" : squad.role}
                           </span>
                           {!isCommander && squad.buildNodes && (
-                            <div className="flex items-center gap-1">
-                              {isExporting && <span className="text-[9px] font-bold text-blue-400">NODOS</span>}
-                              <Wrench className="h-3 w-3 text-blue-400" />
+                            <div className="flex items-center gap-2">
+                              <span className="text-[10px] font-bold text-blue-400">NODOS</span>
+                              <Wrench className="h-4 w-4 text-blue-400" />
                             </div>
                           )}
                         </div>
