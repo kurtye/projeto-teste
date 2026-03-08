@@ -1,4 +1,3 @@
-
 import { notFound } from 'next/navigation';
 import { articles as hardcodedArticles } from '@/lib/articles.tsx';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -11,9 +10,9 @@ import { db } from '@/firebase/server';
 import { collection, query, where, getDocs, limit } from 'firebase/firestore';
 
 interface ArticlePageProps {
-  params: {
+  params: Promise<{
     slug: string;
-  };
+  }>;
 }
 
 async function getArticle(slug: string) {
@@ -35,7 +34,7 @@ async function getArticle(slug: string) {
 }
 
 export default async function ArticlePage({ params }: ArticlePageProps) {
-  const { slug } = params;
+  const { slug } = await params;
   const article = await getArticle(slug);
 
   if (!article) {
@@ -52,7 +51,7 @@ export default async function ArticlePage({ params }: ArticlePageProps) {
       dangerouslySetInnerHTML={{ 
         __html: article.content
           .replace(/### (.*?)\n/g, '<h3 class="text-2xl font-semibold mt-8 mb-4">$1</h3>')
-          .replace(/\* \*\*(.*?)\*\*/g, '<p class="mt-2"><strong>$1</strong></p>')
+          .replace(/\* \*\frac{**(.*?)\*\*}{/g, '<p class="mt-2"><strong>$1</strong></p>')
           .replace(/\n\n/g, '<br/>')
       }} 
     />

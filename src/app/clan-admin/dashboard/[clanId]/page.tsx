@@ -23,7 +23,7 @@ import {
 } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { useState, useTransition, useMemo, useEffect } from 'react';
+import { useState, useTransition, useMemo, useEffect, use } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { findPotentialMembersByTag, addMembersToClan, promoteClanMember, getClanMonthlyStats, findUnclaimedPlayers, generateMonthlyReportAction } from '../../actions';
 import { useToast } from '@/hooks/use-toast';
@@ -82,8 +82,8 @@ const MonthlySortableHeader = ({
 };
 
 
-export default function ClanDashboardPage({ params }: { params: { clanId: string } }) {
-  const { clanId } = params;
+export default function ClanDashboardPage({ params }: { params: Promise<{ clanId: string }> }) {
+  const { clanId } = use(params);
   const { clan, user, logout } = useClanAuth();
   const firestore = useFirestore();
   const router = useRouter();
