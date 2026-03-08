@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { 
   Users, 
   Sword, 
@@ -20,16 +21,22 @@ import {
   UserCheck,
   CheckSquare,
   Square,
-  Grab
+  Grab,
+  Hammer,
+  Wrench
 } from 'lucide-react';
 import type { ClanMember } from '@/lib/types';
 import { cn } from '@/lib/utils';
+
+type SquadRole = 'Ataque' | 'Defesa' | 'Centro' | 'Flanco Esquerdo' | 'Flanco Direito';
 
 interface Squad {
   id: string;
   name: string;
   type: 'infantry' | 'armor' | 'artillery' | 'recon';
   members: string[]; // member IDs
+  role?: SquadRole;
+  buildNodes?: boolean;
 }
 
 interface LineupBuilderProps {
@@ -44,8 +51,10 @@ const SQUAD_TYPES = {
   recon: { label: 'Reconhecimento', icon: Binoculars, max: 2, color: 'bg-blue-500/10 text-blue-500 border-blue-500/20' },
 };
 
+const ROLES: SquadRole[] = ['Ataque', 'Defesa', 'Centro', 'Flanco Esquerdo', 'Flanco Direito'];
+
 export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
-  const [matchName, setMatchName] = useState('Partida de Treino');
+  const [matchName, setMatchName] = useState('Operação Sem Nome');
   const [squads, setSquads] = useState<Squad[]>([]);
   const [selectedMemberIds, setSelectedNewMemberIds] = useState<Set<string>>(new Set());
   const [draggedMemberId, setDraggedMemberId] = useState<string | null>(null);
@@ -75,12 +84,27 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
       name: `${SQUAD_TYPES[type].label} ${squads.filter(s => s.type === type).length + 1}`,
       type,
       members: [],
+      role: type === 'infantry' ? 'Ataque' : undefined,
+      buildNodes: false
     };
     setSquads([...squads, newSquad]);
   };
 
   const removeSquad = (squadId: string) => {
     setSquads(squads.filter(s => s.id !== squadId));
+  };
+
+  const updateSquadRole = (squadId: string, role: SquadRole) => {
+    setSquads(squads.map(s => s.id === squadId ? { ...s, role } : s));
+  };
+
+  const toggleSquadNodes = (squadId: string) => {
+    setSquads(squads.map(s => {
+      if (s.id === squadId) {
+        return { ...s, buildNodes: !s.buildNodes };
+      }
+      return s;
+    }));
   };
 
   const toggleMemberSelection = (memberId: string) => {
@@ -254,7 +278,7 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
                   </Button>
                 </div>
               </div>
-              <div className="mt-4 flex gap-4 text-sm text-muted-foreground">
+              <div className="mt-4 flex flex-wrap gap-6 text-sm text-muted-foreground">
                 <div className="flex items-center gap-1">
                   <Users className="h-4 w-4" /> 
                   <span>{selectedMemberIds.size} Selecionados</span>
@@ -262,6 +286,10 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
                 <div className="flex items-center gap-1">
                   <UserCheck className="h-4 w-4" /> 
                   <span>{memberAssignmentMap.size} Escalados</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <Wrench className="h-4 w-4 text-blue-400" /> 
+                  <span className="text-blue-400">{squads.filter(s => s.buildNodes).length}/3 Equipes de Nodos</span>
                 </div>
               </div>
             </CardContent>
@@ -309,7 +337,7 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
                     onDragLeave={handleDragLeave}
                     onDrop={(e) => handleDrop(e, squad.id)}
                     className={cn(
-                      "overflow-hidden transition-all duration-200 border-accent/10",
+                      "overflow-hidden transition-all duration-200 border-accent/10 flex flex-col",
                       isOver && "ring-2 ring-accent scale-[1.02] shadow-lg",
                       isFull && "opacity-80"
                     )}
@@ -328,26 +356,71 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
                         </button>
                       </div>
                     </CardHeader>
-                    <CardContent className="p-2 space-y-1 min-h-[120px] bg-card/30">
-                      {squad.members.map(mId => (
-                        <div key={mId} className="flex items-center justify-between p-1.5 rounded bg-muted/50 text-xs">
-                          <span className="truncate pr-2 font-medium">{getMemberName(mId)}</span>
-                          <button onClick={() => removeMemberFromSquad(mId, squad.id)} className="text-muted-foreground hover:text-destructive transition-colors">
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
-                      ))}
-                      {squad.members.length === 0 && !isOver && (
-                        <div className="h-20 flex flex-col items-center justify-center text-[10px] text-muted-foreground/50 italic border border-dashed border-muted-foreground/20 rounded">
-                          Solte um jogador aqui
+                    <CardContent className="p-3 space-y-3 min-h-[150px] bg-card/30 flex-grow">
+                      
+                      {/* Infantry Specific Controls */}
+                      {squad.type === 'infantry' && (
+                        <div className="flex items-center gap-2 pb-2 border-b border-border/30">
+                          <div className="flex-1">
+                            <Select 
+                              value={squad.role} 
+                              onValueChange={(val) => updateSquadRole(squad.id, val as SquadRole)}
+                            >
+                              <SelectTrigger className="h-7 text-[10px] bg-background/50">
+                                <SelectValue placeholder="Missão" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {ROLES.map(role => (
+                                  <SelectItem key={role} value={role} className="text-[10px]">{role}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <Button 
+                            variant={squad.buildNodes ? "default" : "outline"} 
+                            size="sm" 
+                            className={cn(
+                              "h-7 px-2 text-[10px] gap-1",
+                              squad.buildNodes && "bg-blue-600 hover:bg-blue-700"
+                            )}
+                            onClick={() => toggleSquadNodes(squad.id)}
+                            title="Equipe de Nodos"
+                          >
+                            <Hammer className="h-3 w-3" />
+                            {squad.buildNodes && <span>NODOS</span>}
+                          </Button>
                         </div>
                       )}
-                      {isOver && (
-                        <div className="h-8 animate-pulse bg-accent/20 border border-accent border-dashed rounded flex items-center justify-center text-[10px] text-accent font-bold">
-                          ESCALAR JOGADOR
-                        </div>
-                      )}
+
+                      <div className="space-y-1">
+                        {squad.members.map(mId => (
+                          <div key={mId} className="flex items-center justify-between p-1.5 rounded bg-muted/50 text-xs">
+                            <span className="truncate pr-2 font-medium">{getMemberName(mId)}</span>
+                            <button onClick={() => removeMemberFromSquad(mId, squad.id)} className="text-muted-foreground hover:text-destructive transition-colors">
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        ))}
+                        {squad.members.length === 0 && !isOver && (
+                          <div className="h-20 flex flex-col items-center justify-center text-[10px] text-muted-foreground/50 italic border border-dashed border-muted-foreground/20 rounded">
+                            Solte um jogador aqui
+                          </div>
+                        )}
+                        {isOver && (
+                          <div className="h-8 animate-pulse bg-accent/20 border border-accent border-dashed rounded flex items-center justify-center text-[10px] text-accent font-bold">
+                            ESCALAR JOGADOR
+                          </div>
+                        )}
+                      </div>
                     </CardContent>
+                    
+                    {/* Squad Footer with metadata */}
+                    {squad.type === 'infantry' && squad.role && (
+                      <div className="px-3 py-1 bg-muted/30 border-t border-border/30 flex justify-between items-center">
+                        <span className="text-[10px] font-bold text-muted-foreground uppercase">{squad.role}</span>
+                        {squad.buildNodes && <Wrench className="h-3 w-3 text-blue-400" />}
+                      </div>
+                    )}
                   </Card>
                 );
               })
