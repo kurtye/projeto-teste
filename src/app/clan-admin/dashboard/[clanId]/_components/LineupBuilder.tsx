@@ -210,8 +210,22 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
     return (
       <div className={cn("flex flex-wrap gap-1 mt-0.5", compact ? "scale-90 origin-left" : "")}>
         {member.preferredClasses.map(cls => {
-          // Simplifica o nome da classe para ícone/texto curto
-          const shortName = cls.replace(' Commander', ' CMD').replace('Automatic Rifleman', 'AR').replace('Anti-Tank', 'AT').replace('Officer', 'SL').substring(0, 3).toUpperCase();
+          const shortName = cls
+            .replace('Comandante', 'CMD')
+            .replace('Oficial', 'SL')
+            .replace('Atirador Automático', 'AR')
+            .replace('Anti-Tanque', 'AT')
+            .replace('Atirador de Elite', 'SNI')
+            .replace('Cmt de Tanque', 'TCM')
+            .replace('Tripulante', 'TRI')
+            .replace('Engenheiro', 'ENG')
+            .replace('Metralhador', 'MG')
+            .replace('Fuzileiro', 'FUZ')
+            .replace('Médico', 'MED')
+            .replace('Suporte', 'SUP')
+            .replace('Assalto', 'ASL')
+            .replace('Observador', 'OBS')
+            .substring(0, 3).toUpperCase();
           return (
             <span key={cls} className="text-[8px] font-bold px-1 py-px bg-accent/20 text-accent rounded border border-accent/20 leading-none">
               {shortName}

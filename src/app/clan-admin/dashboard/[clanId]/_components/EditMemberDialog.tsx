@@ -50,20 +50,20 @@ const ranks = [
 ];
 
 const HLL_CLASSES = [
-  'Commander',
-  'Officer',
-  'Rifleman',
-  'Assault',
-  'Automatic Rifleman',
-  'Medic',
-  'Support',
-  'Machine Gunner',
-  'Anti-Tank',
-  'Engineer',
-  'Tank Commander',
-  'Crewman',
-  'Spotter',
-  'Sniper'
+  'Comandante',
+  'Oficial',
+  'Fuzileiro',
+  'Assalto',
+  'Atirador Automático',
+  'Médico',
+  'Suporte',
+  'Metralhador',
+  'Anti-Tanque',
+  'Engenheiro',
+  'Cmt de Tanque',
+  'Tripulante',
+  'Observador',
+  'Atirador de Elite'
 ];
 
 const statuses: ClanMember['status'][] = ['active', 'inactive', 'trial'];
