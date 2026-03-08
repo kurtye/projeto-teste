@@ -1,5 +1,4 @@
 
-
 export interface PlayerAggregates {
   id: string; // This will be the document ID (player_id)
   playerId: string;
@@ -77,6 +76,7 @@ export interface ClanMember {
   rank: string;
   status: 'active' | 'inactive' | 'trial';
   clanTag: string;
+  preferredClasses?: string[];
 }
 
 export interface PromotionLog {

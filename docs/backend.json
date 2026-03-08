@@ -226,7 +226,12 @@
       "properties": {
         "playerId": { "type": "string", "description": "The ID of the player from the playerAggregATES collection." },
         "rank": { "type": "string", "description": "The member's rank or title within the clan." },
-        "status": { "type": "string", "enum": ["active", "inactive", "trial"] }
+        "status": { "type": "string", "enum": ["active", "inactive", "trial"] },
+        "preferredClasses": { 
+          "type": "array", 
+          "items": { "type": "string" },
+          "description": "Up to 3 preferred game classes."
+        }
       },
       "required": ["playerId", "rank", "status"]
     },

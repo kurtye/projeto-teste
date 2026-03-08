@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useMemo, useRef } from 'react';
@@ -29,7 +30,8 @@ import {
   Crown,
   Download,
   Copy,
-  Share2
+  Share2,
+  Star
 } from 'lucide-react';
 import type { ClanMember } from '@/lib/types';
 import { cn } from '@/lib/utils';
@@ -198,17 +200,35 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
     setActiveDropZone(null);
   };
 
-  const getMemberName = (id: string) => members.find(m => m.id === id)?.playerName || 'Desconhecido';
+  const getMemberData = (id: string) => members.find(m => m.id === id);
+  const getMemberName = (id: string) => getMemberData(id)?.playerName || 'Desconhecido';
+
+  const ClassBadges = ({ memberId, compact = false }: { memberId: string, compact?: boolean }) => {
+    const member = getMemberData(memberId);
+    if (!member?.preferredClasses || member.preferredClasses.length === 0) return null;
+
+    return (
+      <div className={cn("flex flex-wrap gap-1 mt-0.5", compact ? "scale-90 origin-left" : "")}>
+        {member.preferredClasses.map(cls => {
+          // Simplifica o nome da classe para ícone/texto curto
+          const shortName = cls.replace(' Commander', ' CMD').replace('Automatic Rifleman', 'AR').replace('Anti-Tank', 'AT').replace('Officer', 'SL').substring(0, 3).toUpperCase();
+          return (
+            <span key={cls} className="text-[8px] font-bold px-1 py-px bg-accent/20 text-accent rounded border border-accent/20 leading-none">
+              {shortName}
+            </span>
+          );
+        })}
+      </div>
+    );
+  };
 
   const handleExportImage = async () => {
     if (!lineupRef.current) return;
     
     setIsExporting(true);
-    // Delay para garantir que os elementos táticos e labels apareçam no DOM
     await new Promise(r => setTimeout(r, 600));
 
     try {
-      // Forçamos uma largura fixa na exportação para evitar cortes laterais em telas pequenas
       const exportWidth = 1200;
       
       const dataUrl = await toPng(lineupRef.current, {
@@ -251,7 +271,10 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
         text += `- (Vazio)\n`;
       } else {
         s.members.forEach(mId => {
-          text += `- ${getMemberName(mId)}\n`;
+          const m = getMemberData(mId);
+          text += `- ${m?.playerName}`;
+          if (m?.preferredClasses?.length) text += ` [${m.preferredClasses.join(', ')}]`;
+          text += `\n`;
         });
       }
       text += `\n`;
@@ -274,7 +297,7 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
                 <Users className="h-5 w-5 text-accent" />
                 Membros Ativos
               </CardTitle>
-              <CardDescription>Arraste para escalar ou marque o checkbox.</CardDescription>
+              <CardDescription>Arraste para escalar. Estrelas indicam especialidades.</CardDescription>
             </CardHeader>
             <CardContent className="p-0">
               <ScrollArea className="h-[600px] px-4">
@@ -304,9 +327,12 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
                           >
                             {isSelected ? <CheckSquare className="h-4 w-4 text-accent flex-shrink-0" /> : <Square className="h-4 w-4 text-muted-foreground flex-shrink-0" />}
                           </button>
-                          <span className={cn("truncate font-medium", isAssigned && "text-muted-foreground line-through")}>
-                            {member.playerName}
-                          </span>
+                          <div className="flex flex-col overflow-hidden">
+                            <span className={cn("truncate font-medium", isAssigned && "text-muted-foreground line-through")}>
+                              {member.playerName}
+                            </span>
+                            <ClassBadges memberId={member.id} compact />
+                          </div>
                         </div>
                         <div className="flex items-center gap-2">
                           {isAssigned && <Badge variant="outline" className="text-[10px] py-0 px-1 opacity-70">Escalado</Badge>}
@@ -403,7 +429,10 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
                     className="pl-2 pr-2 py-1 cursor-grab active:cursor-grabbing hover:bg-secondary/80 flex items-center gap-2"
                   >
                     <Grab className="h-3 w-3 text-muted-foreground" />
-                    {m.playerName}
+                    <div className="flex items-center gap-2">
+                      {m.playerName}
+                      <ClassBadges memberId={m.id} compact />
+                    </div>
                   </Badge>
                 ))}
               </div>
@@ -508,9 +537,12 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
                               "flex items-center justify-between p-2 rounded text-sm transition-colors",
                               isCommander ? "bg-primary/10 border border-primary/20 text-primary-foreground font-bold text-base" : "bg-muted/50"
                             )}>
-                              <span className="truncate pr-2">{getMemberName(mId)}</span>
+                              <div className="flex flex-col overflow-hidden flex-1">
+                                <span className="truncate font-medium">{getMemberName(mId)}</span>
+                                <ClassBadges memberId={mId} />
+                              </div>
                               {!isExporting && (
-                                <button onClick={() => removeMemberFromSquad(mId, squad.id)} className="text-muted-foreground hover:text-destructive transition-colors">
+                                <button onClick={() => removeMemberFromSquad(mId, squad.id)} className="text-muted-foreground hover:text-destructive transition-colors ml-2">
                                   <Trash2 className="h-4 w-4" />
                                 </button>
                               )}
