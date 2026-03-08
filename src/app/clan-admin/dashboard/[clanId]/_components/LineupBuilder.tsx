@@ -1,6 +1,7 @@
+
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,6 +9,8 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useToast } from '@/hooks/use-toast';
+import { toPng } from 'html-to-image';
 import { 
   Users, 
   Sword, 
@@ -24,7 +27,10 @@ import {
   Grab,
   Hammer,
   Wrench,
-  Crown
+  Crown,
+  Download,
+  Copy,
+  Share2
 } from 'lucide-react';
 import type { ClanMember } from '@/lib/types';
 import { cn } from '@/lib/utils';
@@ -61,6 +67,9 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
   const [selectedMemberIds, setSelectedNewMemberIds] = useState<Set<string>>(new Set());
   const [draggedMemberId, setDraggedMemberId] = useState<string | null>(null);
   const [activeDropZone, setActiveDropZone] = useState<string | null>(null);
+  const [isExporting, setIsExporting] = useState(false);
+  const lineupRef = useRef<HTMLDivElement>(null);
+  const { toast } = useToast();
   
   // Only bring active members for the lineup selection
   const activeMembers = useMemo(() => {
@@ -201,6 +210,60 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
 
   const getMemberName = (id: string) => members.find(m => m.id === id)?.playerName || 'Desconhecido';
 
+  const handleExportImage = async () => {
+    if (!lineupRef.current) return;
+    
+    setIsExporting(true);
+    // Give it a small delay to ensure any hover states or weirdness are cleared
+    await new Promise(r => setTimeout(r, 100));
+
+    try {
+      const dataUrl = await toPng(lineupRef.current, {
+        cacheBust: true,
+        backgroundColor: '#0a0a0a', // Dark background for the PNG
+        style: {
+          padding: '24px',
+        }
+      });
+      
+      const link = document.createElement('a');
+      link.download = `${matchName.replace(/\s+/g, '_')}_Lineup.png`;
+      link.href = dataUrl;
+      link.click();
+      
+      toast({ title: 'Imagem Gerada!', description: 'A escalação foi baixada com sucesso.' });
+    } catch (err) {
+      console.error('Export error:', err);
+      toast({ variant: 'destructive', title: 'Erro ao Exportar', description: 'Não foi possível gerar a imagem da escalação.' });
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handleCopyText = () => {
+    let text = `📋 *ESCALAÇÃO: ${matchName.toUpperCase()}*\n\n`;
+    
+    sortedSquads.forEach(s => {
+      text += `*${s.name.toUpperCase()}*`;
+      if (s.role) text += ` (${s.role})`;
+      if (s.buildNodes) text += ` ⚒️`;
+      text += `\n`;
+      
+      if (s.members.length === 0) {
+        text += `- (Vazio)\n`;
+      } else {
+        s.members.forEach(mId => {
+          text += `- ${getMemberName(mId)}\n`;
+        });
+      }
+      text += `\n`;
+    });
+
+    navigator.clipboard.writeText(text).then(() => {
+      toast({ title: 'Copiado!', description: 'Escalação em texto copiada para a área de transferência.' });
+    });
+  };
+
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
@@ -300,18 +363,29 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
                   </Button>
                 </div>
               </div>
-              <div className="mt-4 flex flex-wrap gap-6 text-sm text-muted-foreground">
-                <div className="flex items-center gap-1">
-                  <Users className="h-4 w-4" /> 
-                  <span>{selectedMemberIds.size} Selecionados</span>
+              <div className="mt-4 flex flex-col sm:flex-row justify-between items-center gap-4">
+                <div className="flex flex-wrap gap-6 text-sm text-muted-foreground">
+                  <div className="flex items-center gap-1">
+                    <Users className="h-4 w-4" /> 
+                    <span>{selectedMemberIds.size} Selecionados</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <UserCheck className="h-4 w-4" /> 
+                    <span>{memberAssignmentMap.size} Escalados</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Wrench className="h-4 w-4 text-blue-400" /> 
+                    <span className="text-blue-400">{squads.filter(s => s.buildNodes).length}/3 Equipes de Nodos</span>
+                  </div>
                 </div>
-                <div className="flex items-center gap-1">
-                  <UserCheck className="h-4 w-4" /> 
-                  <span>{memberAssignmentMap.size} Escalados</span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <Wrench className="h-4 w-4 text-blue-400" /> 
-                  <span className="text-blue-400">{squads.filter(s => s.buildNodes).length}/3 Equipes de Nodos</span>
+                <div className="flex gap-2">
+                  <Button variant="secondary" size="sm" onClick={handleCopyText}>
+                    <Copy className="mr-2 h-4 w-4" /> Copiar Texto
+                  </Button>
+                  <Button variant="default" size="sm" onClick={handleExportImage} disabled={isExporting}>
+                    {isExporting ? <Share2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
+                    Exportar Imagem
+                  </Button>
                 </div>
               </div>
             </CardContent>
@@ -338,127 +412,150 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
             </div>
           )}
 
-          {/* Squad Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {sortedSquads.length === 0 ? (
-              <div className="col-span-full h-40 flex flex-col items-center justify-center border-2 border-dashed rounded-lg bg-muted/20">
-                <Settings2 className="h-8 w-8 text-muted-foreground mb-2" />
-                <p className="text-muted-foreground">Adicione pelotões acima para começar a escalação.</p>
+          {/* Squad Grid - Wrapper for Export */}
+          <div ref={lineupRef} className="bg-background">
+            {isExporting && (
+              <div className="mb-6 border-b border-border/50 pb-4">
+                <h2 className="text-2xl font-bold font-headline text-accent uppercase tracking-tighter">
+                  ORDEM DE BATALHA: {matchName}
+                </h2>
+                <p className="text-xs text-muted-foreground">Gerado via Hell Let Loose BR em {new Date().toLocaleDateString()}</p>
               </div>
-            ) : (
-              sortedSquads.map(squad => {
-                const config = SQUAD_TYPES[squad.type];
-                const Icon = config.icon;
-                const isOver = activeDropZone === squad.id;
-                const isFull = squad.members.length >= config.max;
-                const isCommander = squad.type === 'commander';
+            )}
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+              {sortedSquads.length === 0 ? (
+                <div className="col-span-full h-40 flex flex-col items-center justify-center border-2 border-dashed rounded-lg bg-muted/20">
+                  <Settings2 className="h-8 w-8 text-muted-foreground mb-2" />
+                  <p className="text-muted-foreground">Adicione pelotões acima para começar a escalação.</p>
+                </div>
+              ) : (
+                sortedSquads.map(squad => {
+                  const config = SQUAD_TYPES[squad.type];
+                  const Icon = config.icon;
+                  const isOver = activeDropZone === squad.id;
+                  const isFull = squad.members.length >= config.max;
+                  const isCommander = squad.type === 'commander';
 
-                return (
-                  <Card 
-                    key={squad.id} 
-                    onDragOver={(e) => !isFull && handleDragOver(e, squad.id)}
-                    onDragLeave={handleDragLeave}
-                    onDrop={(e) => handleDrop(e, squad.id)}
-                    className={cn(
-                      "overflow-hidden transition-all duration-200 border-accent/10 flex flex-col",
-                      isOver && "ring-2 ring-accent scale-[1.02] shadow-lg",
-                      isFull && "opacity-80",
-                      isCommander && "border-primary/50 shadow-md shadow-primary/5"
-                    )}
-                  >
-                    <CardHeader className={cn("p-3 flex flex-row items-center justify-between border-b", config.color)}>
-                      <div className="flex items-center gap-2 overflow-hidden">
-                        <Icon className="h-4 w-4 flex-shrink-0" />
-                        <CardTitle className="text-sm truncate font-headline tracking-wider uppercase">{squad.name}</CardTitle>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {!isCommander && (
-                          <span className={cn("text-xs font-mono px-1 rounded", isFull ? "bg-destructive text-destructive-foreground" : "bg-background/20")}>
-                            {squad.members.length}/{config.max}
-                          </span>
-                        )}
-                        <button onClick={() => removeSquad(squad.id)} className="hover:text-foreground opacity-70 hover:opacity-100">
-                          <X className="h-4 w-4" />
-                        </button>
-                      </div>
-                    </CardHeader>
-                    <CardContent className="p-3 space-y-3 min-h-[120px] bg-card/30 flex-grow">
-                      
-                      {/* Infantry Specific Controls */}
-                      {squad.type === 'infantry' && (
-                        <div className="flex items-center gap-2 pb-2 border-b border-border/30">
-                          <div className="flex-1">
-                            <Select 
-                              value={squad.role} 
-                              onValueChange={(val) => updateSquadRole(squad.id, val as SquadRole)}
+                  return (
+                    <Card 
+                      key={squad.id} 
+                      onDragOver={(e) => !isFull && handleDragOver(e, squad.id)}
+                      onDragLeave={handleDragLeave}
+                      onDrop={(e) => handleDrop(e, squad.id)}
+                      className={cn(
+                        "overflow-hidden transition-all duration-200 border-accent/10 flex flex-col",
+                        isOver && "ring-2 ring-accent scale-[1.02] shadow-lg",
+                        isFull && "opacity-80",
+                        isCommander && "border-primary/50 shadow-md shadow-primary/5"
+                      )}
+                    >
+                      <CardHeader className={cn("p-3 flex flex-row items-center justify-between border-b", config.color)}>
+                        <div className="flex items-center gap-2 overflow-hidden">
+                          <Icon className="h-4 w-4 flex-shrink-0" />
+                          <CardTitle className="text-sm truncate font-headline tracking-wider uppercase">{squad.name}</CardTitle>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {!isCommander && (
+                            <span className={cn("text-xs font-mono px-1 rounded", isFull ? "bg-destructive text-destructive-foreground" : "bg-background/20")}>
+                              {squad.members.length}/{config.max}
+                            </span>
+                          )}
+                          {!isExporting && (
+                            <button onClick={() => removeSquad(squad.id)} className="hover:text-foreground opacity-70 hover:opacity-100">
+                              <X className="h-4 w-4" />
+                            </button>
+                          )}
+                        </div>
+                      </CardHeader>
+                      <CardContent className="p-3 space-y-3 min-h-[120px] bg-card/30 flex-grow">
+                        
+                        {/* Infantry Specific Controls - Hide on Export */}
+                        {squad.type === 'infantry' && !isExporting && (
+                          <div className="flex items-center gap-2 pb-2 border-b border-border/30">
+                            <div className="flex-1">
+                              <Select 
+                                value={squad.role} 
+                                onValueChange={(val) => updateSquadRole(squad.id, val as SquadRole)}
+                              >
+                                <SelectTrigger className="h-7 text-[10px] bg-background/50">
+                                  <SelectValue placeholder="Missão" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {ROLES.map(role => (
+                                    <SelectItem key={role} value={role} className="text-[10px]">{role}</SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <Button 
+                              variant={squad.buildNodes ? "default" : "outline"} 
+                              size="sm" 
+                              className={cn(
+                                "h-7 px-2 text-[10px] gap-1",
+                                squad.buildNodes && "bg-blue-600 hover:bg-blue-700"
+                              )}
+                              onClick={() => toggleSquadNodes(squad.id)}
+                              title="Equipe de Nodos"
                             >
-                              <SelectTrigger className="h-7 text-[10px] bg-background/50">
-                                <SelectValue placeholder="Missão" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {ROLES.map(role => (
-                                  <SelectItem key={role} value={role} className="text-[10px]">{role}</SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
+                              <Hammer className="h-3 w-3" />
+                              {squad.buildNodes && <span>NODOS</span>}
+                            </Button>
                           </div>
-                          <Button 
-                            variant={squad.buildNodes ? "default" : "outline"} 
-                            size="sm" 
-                            className={cn(
-                              "h-7 px-2 text-[10px] gap-1",
-                              squad.buildNodes && "bg-blue-600 hover:bg-blue-700"
-                            )}
-                            onClick={() => toggleSquadNodes(squad.id)}
-                            title="Equipe de Nodos"
-                          >
-                            <Hammer className="h-3 w-3" />
-                            {squad.buildNodes && <span>NODOS</span>}
-                          </Button>
+                        )}
+
+                        <div className="space-y-1">
+                          {squad.members.map(mId => (
+                            <div key={mId} className={cn(
+                              "flex items-center justify-between p-1.5 rounded text-xs transition-colors",
+                              isCommander ? "bg-primary/10 border border-primary/20 text-primary-foreground font-bold" : "bg-muted/50"
+                            )}>
+                              <span className="truncate pr-2">{getMemberName(mId)}</span>
+                              {!isExporting && (
+                                <button onClick={() => removeMemberFromSquad(mId, squad.id)} className="text-muted-foreground hover:text-destructive transition-colors">
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              )}
+                            </div>
+                          ))}
+                          {squad.members.length === 0 && !isOver && (
+                            <div className="h-20 flex flex-col items-center justify-center text-[10px] text-muted-foreground/50 italic border border-dashed border-muted-foreground/20 rounded">
+                              {isCommander ? "Solte o Comandante aqui" : "Solte um jogador aqui"}
+                            </div>
+                          )}
+                          {isOver && (
+                            <div className="h-8 animate-pulse bg-accent/20 border border-accent border-dashed rounded flex items-center justify-center text-[10px] text-accent font-bold">
+                              ESCALAR JOGADOR
+                            </div>
+                          )}
+                        </div>
+                      </CardContent>
+                      
+                      {/* Squad Footer with metadata */}
+                      {(squad.role || squad.buildNodes || isCommander) && (
+                        <div className={cn(
+                          "px-3 py-1 border-t border-border/30 flex justify-between items-center",
+                          isCommander ? "bg-primary/10 border-primary/20" : "bg-muted/30"
+                        )}>
+                          <span className={cn(
+                            "text-[10px] font-bold uppercase",
+                            isCommander ? "text-primary tracking-widest flex-1 text-center" : "text-muted-foreground"
+                          )}>
+                            {isCommander ? "Liderança Geral" : squad.role}
+                          </span>
+                          {!isCommander && squad.buildNodes && (
+                            <div className="flex items-center gap-1">
+                              {isExporting && <span className="text-[9px] font-bold text-blue-400">NODOS</span>}
+                              <Wrench className="h-3 w-3 text-blue-400" />
+                            </div>
+                          )}
                         </div>
                       )}
-
-                      <div className="space-y-1">
-                        {squad.members.map(mId => (
-                          <div key={mId} className={cn(
-                            "flex items-center justify-between p-1.5 rounded text-xs transition-colors",
-                            isCommander ? "bg-primary/10 border border-primary/20 text-primary-foreground font-bold" : "bg-muted/50"
-                          )}>
-                            <span className="truncate pr-2">{getMemberName(mId)}</span>
-                            <button onClick={() => removeMemberFromSquad(mId, squad.id)} className="text-muted-foreground hover:text-destructive transition-colors">
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </button>
-                          </div>
-                        ))}
-                        {squad.members.length === 0 && !isOver && (
-                          <div className="h-20 flex flex-col items-center justify-center text-[10px] text-muted-foreground/50 italic border border-dashed border-muted-foreground/20 rounded">
-                            {isCommander ? "Solte o Comandante aqui" : "Solte um jogador aqui"}
-                          </div>
-                        )}
-                        {isOver && (
-                          <div className="h-8 animate-pulse bg-accent/20 border border-accent border-dashed rounded flex items-center justify-center text-[10px] text-accent font-bold">
-                            ESCALAR JOGADOR
-                          </div>
-                        )}
-                      </div>
-                    </CardContent>
-                    
-                    {/* Squad Footer with metadata */}
-                    {squad.type === 'infantry' && squad.role && (
-                      <div className="px-3 py-1 bg-muted/30 border-t border-border/30 flex justify-between items-center">
-                        <span className="text-[10px] font-bold text-muted-foreground uppercase">{squad.role}</span>
-                        {squad.buildNodes && <Wrench className="h-3 w-3 text-blue-400" />}
-                      </div>
-                    )}
-                    {isCommander && (
-                      <div className="px-3 py-1 bg-primary/10 border-t border-primary/20 flex justify-center items-center">
-                        <span className="text-[10px] font-black text-primary uppercase tracking-widest">Liderança Geral</span>
-                      </div>
-                    )}
-                  </Card>
-                );
-              })
-            )}
+                    </Card>
+                  );
+                })
+              )}
+            </div>
           </div>
         </div>
       </div>
