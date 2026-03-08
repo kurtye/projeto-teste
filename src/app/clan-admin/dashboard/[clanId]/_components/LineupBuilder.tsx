@@ -15,13 +15,12 @@ import {
   Binoculars, 
   Plus, 
   X, 
-  UserPlus,
   Trash2,
   Settings2,
-  ChevronRight,
   UserCheck,
   CheckSquare,
-  Square
+  Square,
+  Grab
 } from 'lucide-react';
 import type { ClanMember } from '@/lib/types';
 import { cn } from '@/lib/utils';
@@ -49,6 +48,8 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
   const [matchName, setMatchName] = useState('Partida de Treino');
   const [squads, setSquads] = useState<Squad[]>([]);
   const [selectedMemberIds, setSelectedNewMemberIds] = useState<Set<string>>(new Set());
+  const [draggedMemberId, setDraggedMemberId] = useState<string | null>(null);
+  const [activeDropZone, setActiveDropZone] = useState<string | null>(null);
   
   // Track which squad a member is assigned to
   const memberAssignmentMap = useMemo(() => {
@@ -97,15 +98,27 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
   };
 
   const assignMemberToSquad = (memberId: string, squadId: string) => {
-    setSquads(currentSquads => 
-      currentSquads.map(s => {
+    // If not selected, select first
+    if (!selectedMemberIds.has(memberId)) {
+      setSelectedNewMemberIds(prev => new Set(prev).add(memberId));
+    }
+
+    setSquads(currentSquads => {
+      // Remove from any previous squad first
+      const cleanedSquads = currentSquads.map(s => ({
+        ...s,
+        members: s.members.filter(id => id !== memberId)
+      }));
+
+      // Add to new squad
+      return cleanedSquads.map(s => {
         if (s.id === squadId) {
           if (s.members.length >= SQUAD_TYPES[s.type].max) return s;
           return { ...s, members: [...s.members, memberId] };
         }
         return s;
-      })
-    );
+      });
+    });
   };
 
   const removeMemberFromSquad = (memberId: string, squadId: string) => {
@@ -117,6 +130,31 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
         return s;
       })
     );
+  };
+
+  // Drag and Drop handlers
+  const handleDragStart = (e: React.DragEvent, memberId: string) => {
+    e.dataTransfer.setData('memberId', memberId);
+    setDraggedMemberId(memberId);
+  };
+
+  const handleDragOver = (e: React.DragEvent, squadId: string) => {
+    e.preventDefault();
+    setActiveDropZone(squadId);
+  };
+
+  const handleDragLeave = () => {
+    setActiveDropZone(null);
+  };
+
+  const handleDrop = (e: React.DragEvent, squadId: string) => {
+    e.preventDefault();
+    const memberId = e.dataTransfer.getData('memberId');
+    if (memberId) {
+      assignMemberToSquad(memberId, squadId);
+    }
+    setDraggedMemberId(null);
+    setActiveDropZone(null);
   };
 
   const getMemberName = (id: string) => members.find(m => m.id === id)?.playerName || 'Desconhecido';
@@ -131,9 +169,9 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
             <CardHeader className="pb-3">
               <CardTitle className="text-lg flex items-center gap-2">
                 <Users className="h-5 w-5 text-accent" />
-                Disponíveis
+                Membros do Clã
               </CardTitle>
-              <CardDescription>Selecione os jogadores para a partida.</CardDescription>
+              <CardDescription>Arraste para escalar ou marque o checkbox.</CardDescription>
             </CardHeader>
             <CardContent className="p-0">
               <ScrollArea className="h-[600px] px-4">
@@ -141,22 +179,34 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
                   {members.map(member => {
                     const isSelected = selectedMemberIds.has(member.id);
                     const isAssigned = memberAssignmentMap.has(member.id);
+                    const isBeingDragged = draggedMemberId === member.id;
+
                     return (
                       <div 
                         key={member.id}
-                        onClick={() => toggleMemberSelection(member.id)}
+                        draggable
+                        onDragStart={(e) => handleDragStart(e, member.id)}
                         className={cn(
-                          "flex items-center justify-between p-2 rounded-md cursor-pointer transition-colors text-sm",
-                          isSelected ? "bg-accent/10 border border-accent/20" : "hover:bg-muted border border-transparent"
+                          "flex items-center justify-between p-2 rounded-md cursor-grab transition-all text-sm group",
+                          isSelected ? "bg-accent/10 border border-accent/20" : "hover:bg-muted border border-transparent",
+                          isBeingDragged && "opacity-40 grayscale scale-95"
                         )}
                       >
-                        <div className="flex items-center gap-2 overflow-hidden">
-                          {isSelected ? <CheckSquare className="h-4 w-4 text-accent flex-shrink-0" /> : <Square className="h-4 w-4 text-muted-foreground flex-shrink-0" />}
-                          <span className={cn("truncate", isAssigned && "text-muted-foreground line-through")}>
+                        <div className="flex items-center gap-2 overflow-hidden flex-1">
+                          <button 
+                            onClick={(e) => { e.stopPropagation(); toggleMemberSelection(member.id); }}
+                            className="hover:scale-110 transition-transform"
+                          >
+                            {isSelected ? <CheckSquare className="h-4 w-4 text-accent flex-shrink-0" /> : <Square className="h-4 w-4 text-muted-foreground flex-shrink-0" />}
+                          </button>
+                          <span className={cn("truncate font-medium", isAssigned && "text-muted-foreground line-through")}>
                             {member.playerName}
                           </span>
                         </div>
-                        {isAssigned && <Badge variant="outline" className="text-[10px] py-0 px-1">Escalado</Badge>}
+                        <div className="flex items-center gap-2">
+                          {isAssigned && <Badge variant="outline" className="text-[10px] py-0 px-1 opacity-70">Escalado</Badge>}
+                          <Grab className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                        </div>
                       </div>
                     );
                   })}
@@ -213,26 +263,18 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
           {/* Unassigned Pool */}
           {unassignedMembers.length > 0 && (
             <div className="space-y-2">
-              <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider px-1">Jogadores sem Pelotão</h3>
-              <div className="flex flex-wrap gap-2">
+              <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider px-1">Jogadores em Espera (Arraste-os!)</h3>
+              <div className="flex flex-wrap gap-2 p-2 rounded-lg bg-muted/20 border border-dashed">
                 {unassignedMembers.map(m => (
-                  <Badge key={m.id} variant="secondary" className="pl-2 pr-1 py-1 flex items-center gap-2">
+                  <Badge 
+                    key={m.id} 
+                    variant="secondary" 
+                    draggable
+                    onDragStart={(e) => handleDragStart(e, m.id)}
+                    className="pl-2 pr-2 py-1 cursor-grab active:cursor-grabbing hover:bg-secondary/80 flex items-center gap-2"
+                  >
+                    <Grab className="h-3 w-3 text-muted-foreground" />
                     {m.playerName}
-                    <div className="flex gap-1 border-l pl-1 ml-1">
-                      {squads.map(s => {
-                        const Icon = SQUAD_TYPES[s.type].icon;
-                        return (
-                          <button 
-                            key={s.id} 
-                            onClick={() => assignMemberToSquad(m.id, s.id)}
-                            title={`Mover para ${s.name}`}
-                            className="hover:text-accent transition-colors"
-                          >
-                            <Icon className="h-3 w-3" />
-                          </button>
-                        );
-                      })}
-                    </div>
                   </Badge>
                 ))}
               </div>
@@ -244,38 +286,58 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
             {squads.length === 0 ? (
               <div className="col-span-full h-40 flex flex-col items-center justify-center border-2 border-dashed rounded-lg bg-muted/20">
                 <Settings2 className="h-8 w-8 text-muted-foreground mb-2" />
-                <p className="text-muted-foreground">Clique nos botões acima para criar seus pelotões.</p>
+                <p className="text-muted-foreground">Adicione pelotões acima para começar a escalação.</p>
               </div>
             ) : (
               squads.map(squad => {
                 const config = SQUAD_TYPES[squad.type];
                 const Icon = config.icon;
+                const isOver = activeDropZone === squad.id;
+                const isFull = squad.members.length >= config.max;
+
                 return (
-                  <Card key={squad.id} className="overflow-hidden border-accent/10 transition-all hover:border-accent/30">
+                  <Card 
+                    key={squad.id} 
+                    onDragOver={(e) => !isFull && handleDragOver(e, squad.id)}
+                    onDragLeave={handleDragLeave}
+                    onDrop={(e) => handleDrop(e, squad.id)}
+                    className={cn(
+                      "overflow-hidden transition-all duration-200 border-accent/10",
+                      isOver && "ring-2 ring-accent scale-[1.02] shadow-lg",
+                      isFull && "opacity-80"
+                    )}
+                  >
                     <CardHeader className={cn("p-3 flex flex-row items-center justify-between border-b", config.color)}>
                       <div className="flex items-center gap-2 overflow-hidden">
                         <Icon className="h-4 w-4 flex-shrink-0" />
                         <CardTitle className="text-sm truncate">{squad.name}</CardTitle>
                       </div>
                       <div className="flex items-center gap-2">
-                        <span className="text-xs font-mono">{squad.members.length}/{config.max}</span>
+                        <span className={cn("text-xs font-mono px-1 rounded", isFull ? "bg-destructive text-destructive-foreground" : "bg-background/20")}>
+                          {squad.members.length}/{config.max}
+                        </span>
                         <button onClick={() => removeSquad(squad.id)} className="hover:text-foreground opacity-70 hover:opacity-100">
                           <X className="h-4 w-4" />
                         </button>
                       </div>
                     </CardHeader>
-                    <CardContent className="p-2 space-y-1 min-h-[100px]">
+                    <CardContent className="p-2 space-y-1 min-h-[120px] bg-card/30">
                       {squad.members.map(mId => (
-                        <div key={mId} className="flex items-center justify-between p-1.5 rounded bg-muted/30 text-xs">
+                        <div key={mId} className="flex items-center justify-between p-1.5 rounded bg-muted/50 text-xs">
                           <span className="truncate pr-2 font-medium">{getMemberName(mId)}</span>
                           <button onClick={() => removeMemberFromSquad(mId, squad.id)} className="text-muted-foreground hover:text-destructive transition-colors">
-                            <Trash2 className="h-3 w-3" />
+                            <Trash2 className="h-3.5 w-3.5" />
                           </button>
                         </div>
                       ))}
-                      {squad.members.length === 0 && (
-                        <div className="h-full flex items-center justify-center text-[10px] text-muted-foreground italic">
-                          Vazio
+                      {squad.members.length === 0 && !isOver && (
+                        <div className="h-20 flex flex-col items-center justify-center text-[10px] text-muted-foreground/50 italic border border-dashed border-muted-foreground/20 rounded">
+                          Solte um jogador aqui
+                        </div>
+                      )}
+                      {isOver && (
+                        <div className="h-8 animate-pulse bg-accent/20 border border-accent border-dashed rounded flex items-center justify-center text-[10px] text-accent font-bold">
+                          ESCALAR JOGADOR
                         </div>
                       )}
                     </CardContent>
