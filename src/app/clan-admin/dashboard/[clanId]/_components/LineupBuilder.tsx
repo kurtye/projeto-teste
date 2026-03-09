@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState, useMemo, useRef } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -11,6 +11,8 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { toPng } from 'html-to-image';
+import { useFirestore } from '@/firebase';
+import { collection, query, where, getDocs } from 'firebase/firestore';
 import { 
   Users, 
   Sword, 
@@ -31,9 +33,13 @@ import {
   Download,
   Copy,
   Share2,
-  Star
+  Star,
+  Zap,
+  ShieldCheck,
+  HeartPulse,
+  Target
 } from 'lucide-react';
-import type { ClanMember } from '@/lib/types';
+import type { ClanMember, PlayerAggregates } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
 type SquadRole = 'Ataque' | 'Defesa' | 'Centro' | 'Flanco Esquerdo' | 'Flanco Direito';
@@ -69,12 +75,45 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
   const [draggedMemberId, setDraggedMemberId] = useState<string | null>(null);
   const [activeDropZone, setActiveDropZone] = useState<string | null>(null);
   const [isExporting, setIsExporting] = useState(false);
+  const [statsMap, setStatsMap] = useState<Record<string, PlayerAggregates>>({});
+  
   const lineupRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
+  const firestore = useFirestore();
   
   const activeMembers = useMemo(() => {
     return members.filter(m => m.status === 'active');
   }, [members]);
+
+  // Fetch stats for active members to determine tactical profile
+  useEffect(() => {
+    if (activeMembers.length > 0 && firestore) {
+      const fetchStats = async () => {
+        const newStats: Record<string, PlayerAggregates> = {};
+        const memberIds = activeMembers.map(m => m.id);
+        
+        // Firestore 'in' queries are limited to 30 items
+        const chunks = [];
+        for (let i = 0; i < memberIds.length; i += 30) {
+          chunks.push(memberIds.slice(i, i + 30));
+        }
+
+        try {
+          for (const chunk of chunks) {
+            const q = query(collection(firestore, 'playerAggregates'), where('playerId', 'in', chunk));
+            const snap = await getDocs(q);
+            snap.forEach(doc => {
+              newStats[doc.id] = doc.data() as PlayerAggregates;
+            });
+          }
+          setStatsMap(newStats);
+        } catch (err) {
+          console.error("Error fetching member stats for lineup:", err);
+        }
+      };
+      fetchStats();
+    }
+  }, [activeMembers, firestore]);
 
   const memberAssignmentMap = useMemo(() => {
     const map = new Map<string, string>();
@@ -92,6 +131,22 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
     const order = { commander: 0, infantry: 1, armor: 2, recon: 3, artillery: 4 };
     return [...squads].sort((a, b) => order[a.type] - order[b.type]);
   }, [squads]);
+
+  const getTacticalProfile = (playerId: string) => {
+    const stats = statsMap[playerId];
+    if (!stats) return null;
+
+    const roles = [
+      { id: 'ataque', label: 'Ataque', value: stats.totalOffense || 0, icon: Target, color: 'text-red-500', bgColor: 'bg-red-500/20' },
+      { id: 'defesa', label: 'Defesa', value: stats.totalDefense || 0, icon: ShieldCheck, color: 'text-blue-500', bgColor: 'bg-blue-500/20' },
+      { id: 'suporte', label: 'Suporte', value: stats.totalSupport || 0, icon: HeartPulse, color: 'text-green-500', bgColor: 'bg-green-500/20' },
+      { id: 'combate', label: 'Combate', value: stats.totalCombat || 0, icon: Zap, color: 'text-amber-500', bgColor: 'bg-amber-500/20' },
+    ];
+
+    // Simple logic: return the role with highest absolute value
+    // Note: In a real scenario, normalization might be better as Combat is usually higher
+    return roles.sort((a, b) => b.value - a.value)[0];
+  };
 
   const addSquad = (type: keyof typeof SQUAD_TYPES) => {
     if (type === 'commander' && squads.some(s => s.type === 'commander')) {
@@ -203,6 +258,19 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
   const getMemberData = (id: string) => members.find(m => m.id === id);
   const getMemberName = (id: string) => getMemberData(id)?.playerName || 'Desconhecido';
 
+  const TacticalProfileIcon = ({ memberId }: { memberId: string }) => {
+    const profile = getTacticalProfile(memberId);
+    if (!profile) return null;
+
+    const Icon = profile.icon;
+    return (
+      <div className={cn("inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-tight ml-1.5", profile.bgColor, profile.color)}>
+        <Icon className="h-2.5 w-2.5" />
+        {profile.label}
+      </div>
+    );
+  };
+
   const ClassBadges = ({ memberId, compact = false }: { memberId: string, compact?: boolean }) => {
     const member = getMemberData(memberId);
     if (!member?.preferredClasses || member.preferredClasses.length === 0) return null;
@@ -286,8 +354,10 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
       } else {
         s.members.forEach(mId => {
           const m = getMemberData(mId);
+          const profile = getTacticalProfile(mId);
           text += `- ${m?.playerName}`;
-          if (m?.preferredClasses?.length) text += ` [${m.preferredClasses.join(', ')}]`;
+          if (profile) text += ` [Especialista: ${profile.label}]`;
+          if (m?.preferredClasses?.length) text += ` (Classes: ${m.preferredClasses.join(', ')})`;
           text += `\n`;
         });
       }
@@ -311,7 +381,7 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
                 <Users className="h-5 w-5 text-accent" />
                 Membros Ativos
               </CardTitle>
-              <CardDescription>Arraste para escalar. Estrelas indicam especialidades.</CardDescription>
+              <CardDescription>Estrelas indicam onde o jogador possui o melhor desempenho.</CardDescription>
             </CardHeader>
             <CardContent className="p-0">
               <ScrollArea className="h-[600px] px-4">
@@ -342,9 +412,12 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
                             {isSelected ? <CheckSquare className="h-4 w-4 text-accent flex-shrink-0" /> : <Square className="h-4 w-4 text-muted-foreground flex-shrink-0" />}
                           </button>
                           <div className="flex flex-col overflow-hidden">
-                            <span className={cn("truncate font-medium", isAssigned && "text-muted-foreground line-through")}>
-                              {member.playerName}
-                            </span>
+                            <div className="flex items-center">
+                              <span className={cn("truncate font-medium", isAssigned && "text-muted-foreground line-through")}>
+                                {member.playerName}
+                              </span>
+                              <TacticalProfileIcon memberId={member.id} />
+                            </div>
                             <ClassBadges memberId={member.id} compact />
                           </div>
                         </div>
@@ -445,6 +518,7 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
                     <Grab className="h-3 w-3 text-muted-foreground" />
                     <div className="flex items-center gap-2">
                       {m.playerName}
+                      <TacticalProfileIcon memberId={m.id} />
                       <ClassBadges memberId={m.id} compact />
                     </div>
                   </Badge>
@@ -552,7 +626,10 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
                               isCommander ? "bg-primary/10 border border-primary/20 text-primary-foreground font-bold text-base" : "bg-muted/50"
                             )}>
                               <div className="flex flex-col overflow-hidden flex-1">
-                                <span className="truncate font-medium">{getMemberName(mId)}</span>
+                                <div className="flex items-center">
+                                  <span className="truncate font-medium">{getMemberName(mId)}</span>
+                                  <TacticalProfileIcon memberId={mId} />
+                                </div>
                                 <ClassBadges memberId={mId} />
                               </div>
                               {!isExporting && (
