@@ -115,29 +115,39 @@ const TacticalDNABar = ({ player }: { player: any }) => {
     const com = player.totalCombat || 0;
     const total = off + def + sup + com || 1;
 
-    const pOff = (off / total) * 100;
-    const pDef = (def / total) * 100;
-    const pSup = (sup / total) * 100;
-    const pCom = (com / total) * 100;
+    const items = [
+        { label: 'Ataque', value: (off / total) * 100, color: 'bg-red-500' },
+        { label: 'Defesa', value: (def / total) * 100, color: 'bg-blue-500' },
+        { label: 'Suporte', value: (sup / total) * 100, color: 'bg-green-500' },
+        { label: 'Combate', value: (com / total) * 100, color: 'bg-amber-500' },
+    ].sort((a, b) => b.value - a.value);
 
     return (
         <TooltipProvider>
             <Tooltip>
                 <TooltipTrigger asChild>
                     <div className="flex h-1.5 w-full max-w-[120px] overflow-hidden rounded-full bg-muted mt-1.5 cursor-help">
-                        <div className="bg-red-500 h-full transition-all" style={{ width: `${pOff}%` }} />
-                        <div className="bg-blue-500 h-full transition-all" style={{ width: `${pDef}%` }} />
-                        <div className="bg-green-500 h-full transition-all" style={{ width: `${pSup}%` }} />
-                        <div className="bg-amber-500 h-full transition-all" style={{ width: `${pCom}%` }} />
+                        {items.map((item, idx) => (
+                            <div 
+                                key={idx}
+                                className={cn(item.color, "h-full transition-all")} 
+                                style={{ width: `${item.value}%` }} 
+                            />
+                        ))}
                     </div>
                 </TooltipTrigger>
                 <TooltipContent className="p-3 space-y-1.5 bg-popover/95 backdrop-blur-md border-accent/20">
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Composição de Pontos</p>
-                    <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-                        <div className="flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-red-500" /> <span>Ataque: {Math.round(pOff)}%</span></div>
-                        <div className="flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-blue-500" /> <span>Defesa: {Math.round(pDef)}%</span></div>
-                        <div className="flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-green-500" /> <span>Suporte: {Math.round(pSup)}%</span></div>
-                        <div className="flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-amber-500" /> <span>Combate: {Math.round(pCom)}%</span></div>
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">DNA Tático (Proporção)</p>
+                    <div className="grid grid-cols-1 gap-y-1 text-xs">
+                        {items.map((item, idx) => (
+                            <div key={idx} className="flex items-center justify-between gap-4 min-w-[140px]">
+                                <div className="flex items-center gap-2">
+                                    <div className={cn("w-2 h-2 rounded-full", item.color)} /> 
+                                    <span>{item.label}</span>
+                                </div>
+                                <span className="font-bold">{Math.round(item.value)}%</span>
+                            </div>
+                        ))}
                     </div>
                 </TooltipContent>
             </Tooltip>
@@ -177,7 +187,7 @@ const RankingDisplay = ({
                     </TooltipTrigger>
                     <TooltipContent>
                         <p className="font-semibold">Recordista!</p>
-                        <ul className="list-disc list-inside">
+                        <ul className="list-disc list-inside text-xs">
                             {titles.map(title => <li key={title}>{title}</li>)}
                         </ul>
                     </TooltipContent>
