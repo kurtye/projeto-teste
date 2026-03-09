@@ -270,6 +270,10 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
     setActiveDropZone(squadId);
   };
 
+  const handleDragLeave = (e: React.DragEvent) => {
+    setActiveDropZone(null);
+  };
+
   const handleDrop = (e: React.DragEvent, squadId: string) => {
     e.preventDefault();
     const memberId = e.dataTransfer.getData('memberId');
@@ -308,9 +312,25 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
     const member = getMemberData(memberId);
     if (!member?.preferredClasses || member.preferredClasses.length === 0) return null;
     return (
-      <div className={cn("flex flex-wrap gap-1 mt-0.5", compact ? "scale-90 origin-left" : "")}>
+      <div className={cn("flex flex-wrap gap-1 mt-0.5", compact ? "scale-90 origin-left" : "mt-1.5")}>
         {member.preferredClasses.map(cls => {
-          const shortName = cls.replace('Comandante', 'CMD').replace('Oficial', 'OFC').replace('Atirador Automático', 'AR').replace('Anti-Tanque', 'AT').replace('Atirador de Elite', 'SNI').replace('Cmt de Tanque', 'TCM').replace('Tripulante', 'TRI').replace('Engenheiro', 'ENG').replace('Metralhador', 'MG').replace('Fuzileiro', 'FUZ').replace('Médico', 'MED').replace('Suporte', 'SUP').replace('Assalto', 'ASL').replace('Observador', 'OBS').substring(0, 3).toUpperCase();
+          const shortName = cls
+            .replace('Comandante', 'CMD')
+            .replace('Oficial', 'OFC')
+            .replace('Atirador Automático', 'AR')
+            .replace('Anti-Tanque', 'AT')
+            .replace('Atirador de Elite', 'SNI')
+            .replace('Cmt de Tanque', 'TCM')
+            .replace('Tripulante', 'TRI')
+            .replace('Engenheiro', 'ENG')
+            .replace('Metralhador', 'MG')
+            .replace('Fuzileiro', 'FUZ')
+            .replace('Médico', 'MED')
+            .replace('Suporte', 'SUP')
+            .replace('Assalto', 'ASL')
+            .replace('Observador', 'OBS')
+            .substring(0, 3)
+            .toUpperCase();
           return <span key={cls} className="text-[8px] font-bold px-1 py-px bg-accent/20 text-accent rounded border border-accent/20 leading-none">{shortName}</span>;
         })}
       </div>
@@ -384,11 +404,9 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
                                 <TacticalProfileIcon memberId={member.id} />
                               </div>
                             </div>
-                            <div className="flex items-center justify-between mt-1">
+                            <div className="flex flex-col mt-1.5 gap-1">
                                <ClassBadges memberId={member.id} compact />
-                               <div className="w-16 flex-shrink-0">
-                                  <TacticalDNABar memberId={member.id} />
-                               </div>
+                               <TacticalDNABar memberId={member.id} className="w-full" />
                             </div>
                           </div>
                         </div>
