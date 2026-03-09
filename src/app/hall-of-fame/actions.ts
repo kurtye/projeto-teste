@@ -2,10 +2,9 @@
 'use server';
 
 import { db } from '@/firebase/server';
-import { collection, query, orderBy, limit, getDocs } from 'firebase/firestore';
-import type { PlayerAggregates } from '@/lib/types';
+import { collection, query, orderBy, limit, getDocs, where, doc, getDoc } from 'firebase/firestore';
+import type { PlayerAggregates, GlobalStats } from '@/lib/types';
 
-// Define the keys for the stats we want to fetch record holders for.
 const STAT_KEYS: (keyof PlayerAggregates)[] = [
   'totalKills',
   'totalCombat',
@@ -18,82 +17,81 @@ const STAT_KEYS: (keyof PlayerAggregates)[] = [
 
 const CLAN_TAGS = ['SMK', 'HRB', 'RZN', 'OCL', '3LPZ', 'WRT', 'SAP', 'BOLD', 'IDG', 'SOH'];
 
-/**
- * Checks if a player name contains any of the known clan tags.
- * The check is case-insensitive.
- * @param playerName - The name of the player.
- * @returns True if a clan tag is found, false otherwise.
- */
 function hasClanTag(playerName: string): boolean {
   const lowerPlayerName = playerName.toLowerCase();
   return CLAN_TAGS.some(tag => lowerPlayerName.includes(tag.toLowerCase()));
 }
 
-
-/**
- * Fetches the top player for a set of predefined statistical categories.
- * @returns A promise that resolves to an object where each key is a stat category
- *          and the value is the PlayerAggregates document of the top player.
- */
-export async function getHallOfFameStats(): Promise<Record<string, PlayerAggregates | undefined>> {
-  console.log('[LOG] Iniciando busca dos recordistas para o Hall da Fama...');
+export async function getHallOfFameStats(): Promise<{
+  records: Record<string, PlayerAggregates | undefined>;
+  efficiency: Record<string, (PlayerAggregates & { efficiencyValue: number }) | undefined>;
+}> {
+  console.log('[LOG] Iniciando busca avançada para o Hall da Fama...');
   
-  const hallOfFameData: Record<string, PlayerAggregates | undefined> = {};
+  const records: Record<string, PlayerAggregates | undefined> = {};
+  const efficiency: Record<string, (PlayerAggregates & { efficiencyValue: number }) | undefined> = {};
 
   try {
-    // 1. Fetch individual stat leaders in parallel
+    // 1. Buscar recordes brutos (Top 1)
     const statPromises = STAT_KEYS.map(async (statKey) => {
-      console.log(`[LOG] Buscando recordista para: ${statKey}`);
-      
-      const q = query(
-        collection(db, 'playerAggregates'),
-        orderBy(statKey, 'desc'),
-        limit(1)
-      );
-
+      const q = query(collection(db, 'playerAggregates'), orderBy(statKey, 'desc'), limit(1));
       const querySnapshot = await getDocs(q);
-
       if (!querySnapshot.empty) {
-        const topPlayerDoc = querySnapshot.docs[0];
-        const topPlayerData = { ...topPlayerDoc.data(), id: topPlayerDoc.id } as PlayerAggregates;
-        hallOfFameData[statKey] = topPlayerData;
-        console.log(`[LOG] Recordista para ${statKey} encontrado: ${topPlayerData.latestPlayerName} com ${topPlayerData[statKey]}`);
-      } else {
-        hallOfFameData[statKey] = undefined;
-        console.log(`[LOG] Nenhum recordista encontrado para: ${statKey}`);
+        const doc = querySnapshot.docs[0];
+        records[statKey] = { ...doc.data(), id: doc.id } as PlayerAggregates;
       }
     });
 
-    // 2. Fetch top players to find the "Lone Wolf"
-    const loneWolfPromise = async () => {
-      console.log('[LOG] Buscando melhor jogador sem clã...');
+    // 2. Buscar recordistas de eficiência (PPH)
+    // Buscamos um pool de jogadores ativos (min 10h) para encontrar os mais eficientes
+    const efficiencyCategories = ['totalOffense', 'totalDefense', 'totalSupport', 'totalCombat'];
+    const efficiencyPromises = efficiencyCategories.map(async (cat) => {
+      // Buscamos os 200 melhores por total para ter uma base sólida de jogadores experientes
       const q = query(
-        collection(db, 'playerAggregates'),
-        orderBy('totalKills', 'desc'),
-        limit(100) // Fetch a decent number to find one without a clan
+        collection(db, 'playerAggregates'), 
+        where('totalTimeSeconds', '>=', 36000), // Mínimo 10 horas
+        orderBy('totalTimeSeconds', 'desc'),
+        limit(200)
       );
-      const querySnapshot = await getDocs(q);
       
+      const querySnapshot = await getDocs(q);
+      let bestPlayer: (PlayerAggregates & { efficiencyValue: number }) | undefined;
+      let maxPPH = 0;
+
+      querySnapshot.forEach(doc => {
+        const data = doc.data() as PlayerAggregates;
+        const hours = (data.totalTimeSeconds || 0) / 3600;
+        const val = (data[cat as keyof PlayerAggregates] as number) || 0;
+        const pph = val / hours;
+
+        if (pph > maxPPH) {
+          maxPPH = pph;
+          bestPlayer = { ...data, id: doc.id, efficiencyValue: Math.round(pph) };
+        }
+      });
+      
+      efficiency[cat] = bestPlayer;
+    });
+
+    // 3. Lobo Solitário
+    const loneWolfPromise = async () => {
+      const q = query(collection(db, 'playerAggregates'), orderBy('totalKills', 'desc'), limit(100));
+      const querySnapshot = await getDocs(q);
       for (const doc of querySnapshot.docs) {
         const player = { ...doc.data(), id: doc.id } as PlayerAggregates;
         if (player.latestPlayerName && !hasClanTag(player.latestPlayerName)) {
-          hallOfFameData['loneWolf'] = player;
-          console.log(`[LOG] Melhor jogador sem clã encontrado: ${player.latestPlayerName}`);
-          return; // Stop after finding the first one
+          records['loneWolf'] = player;
+          return;
         }
       }
-      console.log('[LOG] Nenhum jogador sem clã encontrado no top 100.');
     };
 
-    // 3. Wait for all promises to complete
-    await Promise.all([...statPromises, loneWolfPromise()]);
+    await Promise.all([...statPromises, ...efficiencyPromises, loneWolfPromise()]);
 
-    console.log('[LOG] Busca do Hall da Fama concluída.');
-    return hallOfFameData;
+    return { records, efficiency };
 
   } catch (error) {
     console.error('[ERRO GERAL] Falha ao buscar dados do Hall da Fama:', error);
-    // In case of a general error, return what we have.
-    return hallOfFameData;
+    return { records: {}, efficiency: {} };
   }
 }

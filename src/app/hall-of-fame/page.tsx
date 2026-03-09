@@ -5,7 +5,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { getHallOfFameStats } from './actions';
 import type { PlayerAggregates } from '@/lib/types';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import {
@@ -19,21 +19,20 @@ import {
   Timer,
   User,
   ShieldAlert,
+  Zap,
+  TrendingUp,
+  Flame,
+  Star
 } from 'lucide-react';
 import { useCollection, useFirestore, useMemoFirebase } from '@/firebase';
 import { collection, query, where } from 'firebase/firestore';
 import { Separator } from '@/components/ui/separator';
 import { AdBanner } from '@/components/AdBanner';
+import { cn } from '@/lib/utils';
 
 interface HallOfFameData {
-  totalKills?: PlayerAggregates;
-  totalCombat?: PlayerAggregates;
-  totalOffense?: PlayerAggregates;
-  totalDefense?: PlayerAggregates;
-  totalSupport?: PlayerAggregates;
-  totalTimeSeconds?: PlayerAggregates;
-  longestLifeSecs?: PlayerAggregates;
-  loneWolf?: PlayerAggregates;
+  records: Record<string, PlayerAggregates | undefined>;
+  efficiency: Record<string, (PlayerAggregates & { efficiencyValue: number }) | undefined>;
 }
 
 const statCategories = [
@@ -47,23 +46,31 @@ const statCategories = [
   { key: 'longestLifeSecs', title: 'Vida Mais Longa', icon: Timer, formatter: (val: number) => `${Math.floor(val / 60)}m` },
 ];
 
-const StatRecordCard = ({ title, icon: Icon, player, value }: { title: string, icon: React.ElementType, player?: PlayerAggregates, value?: string | number }) => (
-    <Card className="bg-card/50 backdrop-blur-sm transition-all hover:border-accent hover:shadow-lg">
-        <CardHeader>
+const efficiencyCategories = [
+  { key: 'totalOffense', title: 'Eficiência Ofensiva', icon: Flame, color: 'text-red-500' },
+  { key: 'totalDefense', title: 'Eficiência Defensiva', icon: Shield, color: 'text-blue-500' },
+  { key: 'totalSupport', title: 'Eficiência de Suporte', icon: Zap, color: 'text-green-500' },
+  { key: 'totalCombat', title: 'Eficiência de Combate', icon: Star, color: 'text-amber-500' },
+];
+
+const StatRecordCard = ({ title, icon: Icon, player, value, subtitle, highlightColor }: { title: string, icon: React.ElementType, player?: PlayerAggregates, value?: string | number, subtitle?: string, highlightColor?: string }) => (
+    <Card className="bg-card/50 backdrop-blur-sm transition-all hover:border-accent hover:shadow-lg overflow-hidden border-accent/10">
+        <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-3 text-lg font-headline">
-                <Icon className="h-6 w-6 text-accent" />
-                <span>{title}</span>
+                <Icon className={cn("h-6 w-6", highlightColor || "text-accent")} />
+                <span className="truncate">{title}</span>
             </CardTitle>
         </CardHeader>
         <CardContent className="flex items-center gap-4">
             {player ? (
                 <>
-                    <Avatar className="h-12 w-12">
+                    <Avatar className="h-14 w-14 border-2 border-accent/20">
                         <AvatarFallback>{player.latestPlayerName.slice(0, 2)}</AvatarFallback>
                     </Avatar>
                     <div className="flex-1 overflow-hidden">
-                        <Link href={`/player/${player.id}`} className="font-bold text-base truncate hover:underline">{player.latestPlayerName}</Link>
-                        <p className="text-2xl font-semibold text-accent">{value}</p>
+                        <Link href={`/player/${player.id}`} className="font-bold text-lg truncate hover:underline block leading-tight">{player.latestPlayerName}</Link>
+                        <p className={cn("text-2xl font-black tracking-tighter", highlightColor || "text-accent")}>{value}</p>
+                        {subtitle && <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest">{subtitle}</p>}
                     </div>
                 </>
             ) : (
@@ -91,18 +98,6 @@ const StatRecordSkeleton = () => (
     </Card>
 );
 
-const TributePlayerCardSkeleton = () => (
-    <Card className="w-full">
-        <CardHeader className="flex-row items-center gap-4 space-y-0 p-4">
-            <Skeleton className="h-12 w-12 rounded-full" />
-            <div className="flex-1 space-y-2">
-                <Skeleton className="h-5 w-3/4" />
-                <Skeleton className="h-4 w-1/4" />
-            </div>
-        </CardHeader>
-    </Card>
-);
-
 export default function HallOfFamePage() {
   const [data, setData] = useState<HallOfFameData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -114,8 +109,7 @@ export default function HallOfFamePage() {
     return query(collection(firestore, 'playerAggregates'), where('status', '==', 'retired'));
   }, [firestore]);
 
-  const { data: tributePlayers, isLoading: isLoadingTribute, error: tributeError } = useCollection<PlayerAggregates>(tributePlayersQuery);
-
+  const { data: tributePlayers, isLoading: isLoadingTribute } = useCollection<PlayerAggregates>(tributePlayersQuery);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -125,7 +119,6 @@ export default function HallOfFamePage() {
         setData(stats);
       } catch (error) {
         console.error("Failed to fetch hall of fame stats:", error);
-        setData(null);
       } finally {
         setIsLoading(false);
       }
@@ -135,41 +128,81 @@ export default function HallOfFamePage() {
 
   return (
     <div className="container mx-auto px-4 py-8 mb-16 md:mb-0">
-       <div className="mb-8">
-            <h1 className="text-3xl md:text-4xl font-bold font-headline flex items-center gap-3">
-                <Trophy className="h-8 w-8 text-yellow-400" />
-                Hall da Fama
+       <div className="mb-12">
+            <h1 className="text-4xl md:text-5xl font-black font-headline flex items-center gap-4 tracking-tighter">
+                <Trophy className="h-10 w-10 text-yellow-400" />
+                HALL DA FAMA
             </h1>
-            <p className="text-muted-foreground mt-2">
-                Os jogadores que definiram recordes nos servidores da comunidade.
+            <p className="text-muted-foreground mt-3 text-lg max-w-2xl">
+                Reconhecendo as lendas da nossa comunidade. Dos recordistas históricos aos prodígios de máxima eficiência.
             </p>
         </div>
+
+        {/* Efficiency Section */}
+        <section className="mb-16">
+            <div className="flex items-center gap-3 mb-6">
+                <Zap className="h-6 w-6 text-yellow-400" />
+                <h2 className="text-2xl font-bold font-headline uppercase tracking-tight">Titãs da Eficiência (PPH)</h2>
+                <Badge variant="outline" className="ml-2 border-yellow-400/30 text-yellow-400">Novo</Badge>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                {isLoading ? (
+                    Array.from({length: 4}).map((_, i) => <StatRecordSkeleton key={i} />)
+                ) : (
+                    efficiencyCategories.map(cat => {
+                        const player = data?.efficiency[cat.key];
+                        return (
+                            <StatRecordCard 
+                                key={cat.key}
+                                title={cat.title}
+                                icon={cat.icon}
+                                player={player}
+                                value={player ? `${player.efficiencyValue.toLocaleString()}` : 'N/A'}
+                                subtitle="Pontos por Hora (PPH)"
+                                highlightColor={cat.color}
+                            />
+                        );
+                    })
+                )}
+            </div>
+            <p className="text-xs text-muted-foreground mt-4 italic">
+                * Calculado dividindo a pontuação total pelas horas de jogo. Requer no mínimo 10 horas de combate.
+            </p>
+        </section>
+
+        <Separator className="my-12 opacity-20" />
       
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {isLoading ? (
-            statCategories.map(category => <StatRecordSkeleton key={category.key} />)
-        ) : (
-            statCategories.map(category => {
-                const player = data?.[category.key as keyof HallOfFameData];
-                
-                // For loneWolf, the value to display is totalKills
-                const valueKey = category.key === 'loneWolf' ? 'totalKills' : (category.key as keyof PlayerAggregates);
-                const value = player?.[valueKey as keyof PlayerAggregates] as number | undefined;
+        {/* Raw Records Section */}
+        <section className="mb-16">
+            <div className="flex items-center gap-3 mb-6">
+                <Trophy className="h-6 w-6 text-accent" />
+                <h2 className="text-2xl font-bold font-headline uppercase tracking-tight">Recordes Históricos</h2>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                {isLoading ? (
+                    statCategories.map(category => <StatRecordSkeleton key={category.key} />)
+                ) : (
+                    statCategories.map(category => {
+                        const player = data?.records[category.key];
+                        const valueKey = category.key === 'loneWolf' ? 'totalKills' : (category.key as keyof PlayerAggregates);
+                        const value = player?.[valueKey as keyof PlayerAggregates] as number | undefined;
 
-                return (
-                    <StatRecordCard 
-                        key={category.key}
-                        title={category.title}
-                        icon={category.icon}
-                        player={player}
-                        value={value !== undefined ? category.formatter(value) : 'N/A'}
-                    />
-                );
-            })
-        )}
-      </div>
+                        return (
+                            <StatRecordCard 
+                                key={category.key}
+                                title={category.title}
+                                icon={category.icon}
+                                player={player}
+                                value={value !== undefined ? category.formatter(value) : 'N/A'}
+                                subtitle="Acumulado Histórico"
+                            />
+                        );
+                    })
+                )}
+            </div>
+        </section>
 
-       <div className="my-8">
+       <div className="my-12">
           <AdBanner>
               <ins className="adsbygoogle"
                   style={{ display: 'block' }}
@@ -194,19 +227,13 @@ export default function HallOfFamePage() {
       
       {isLoadingTribute ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {Array.from({ length: 3 }).map((_, i) => <TributePlayerCardSkeleton key={i} />)}
+              {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-24 w-full" />)}
           </div>
-      ) : tributeError ? (
-           <Card className="flex flex-col items-center justify-center p-8 text-center">
-              <ShieldAlert className="h-12 w-12 text-destructive" />
-              <h2 className="mt-4 text-xl font-semibold">Falha ao carregar homenagens</h2>
-              <p className="mt-2 text-muted-foreground">Ocorreu um erro. Por favor, tente novamente mais tarde.</p>
-          </Card>
       ) : tributePlayers && tributePlayers.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {tributePlayers.map((player) => (
                    <Link key={player.id} href={`/player/${encodeURIComponent(player.id)}`} className="group">
-                      <Card className="h-full transition-all duration-200 border-transparent hover:border-accent hover:shadow-lg">
+                      <Card className="h-full transition-all duration-200 border-transparent hover:border-accent hover:shadow-lg bg-card/30">
                           <CardHeader className="flex-row items-center gap-4 space-y-0 p-4">
                               <Avatar className="h-16 w-16 border-2 border-primary">
                                   <AvatarFallback className="text-2xl">{player.latestPlayerName.charAt(0)}</AvatarFallback>
@@ -221,10 +248,10 @@ export default function HallOfFamePage() {
               ))}
           </div>
       ) : (
-          <Card className="flex flex-col items-center justify-center p-8 text-center">
-              <Award className="h-12 w-12 text-muted-foreground" />
-              <h2 className="mt-4 text-xl font-semibold">Nenhum jogador em homenagem</h2>
-              <p className="mt-2 text-muted-foreground">Ainda não há jogadores marcados com o status de homenagem.</p>
+          <Card className="flex flex-col items-center justify-center p-8 text-center bg-muted/10 border-dashed">
+              <Award className="h-12 w-12 text-muted-foreground mb-4" />
+              <h2 className="text-xl font-semibold">Nenhum registro</h2>
+              <p className="text-muted-foreground">Homenagens aparecerão aqui quando registradas.</p>
           </Card>
       )}
 
