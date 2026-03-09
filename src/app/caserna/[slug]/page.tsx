@@ -51,7 +51,7 @@ export default async function ArticlePage({ params }: ArticlePageProps) {
       dangerouslySetInnerHTML={{ 
         __html: article.content
           .replace(/### (.*?)\n/g, '<h3 class="text-2xl font-semibold mt-8 mb-4">$1</h3>')
-          .replace(/\* \*\frac{**(.*?)\*\*}{/g, '<p class="mt-2"><strong>$1</strong></p>')
+          .replace(/\* \*\*(.*?)\*\*/g, '<p class="mt-2"><strong>$1</strong></p>')
           .replace(/\n\n/g, '<br/>')
       }} 
     />
