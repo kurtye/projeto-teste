@@ -22,13 +22,15 @@ import {
   Zap,
   TrendingUp,
   Flame,
-  Star
+  Star,
+  Crosshair
 } from 'lucide-react';
 import { useCollection, useFirestore, useMemoFirebase } from '@/firebase';
 import { collection, query, where } from 'firebase/firestore';
 import { Separator } from '@/components/ui/separator';
 import { AdBanner } from '@/components/AdBanner';
 import { cn } from '@/lib/utils';
+import { Badge } from '@/components/ui/badge';
 
 interface HallOfFameData {
   records: Record<string, PlayerAggregates | undefined>;
@@ -47,10 +49,11 @@ const statCategories = [
 ];
 
 const efficiencyCategories = [
-  { key: 'totalOffense', title: 'Eficiência Ofensiva', icon: Flame, color: 'text-red-500' },
-  { key: 'totalDefense', title: 'Eficiência Defensiva', icon: Shield, color: 'text-blue-500' },
-  { key: 'totalSupport', title: 'Eficiência de Suporte', icon: Zap, color: 'text-green-500' },
-  { key: 'totalCombat', title: 'Eficiência de Combate', icon: Star, color: 'text-amber-500' },
+  { key: 'totalKills', title: 'Letalidade Técnica', icon: Crosshair, color: 'text-orange-500', suffix: 'Kills/H' },
+  { key: 'totalOffense', title: 'Eficiência Ofensiva', icon: Flame, color: 'text-red-500', suffix: 'PPH' },
+  { key: 'totalDefense', title: 'Eficiência Defensiva', icon: Shield, color: 'text-blue-500', suffix: 'PPH' },
+  { key: 'totalSupport', title: 'Eficiência de Suporte', icon: Zap, color: 'text-green-500', suffix: 'PPH' },
+  { key: 'totalCombat', title: 'Eficiência de Combate', icon: Star, color: 'text-amber-500', suffix: 'PPH' },
 ];
 
 const StatRecordCard = ({ title, icon: Icon, player, value, subtitle, highlightColor }: { title: string, icon: React.ElementType, player?: PlayerAggregates, value?: string | number, subtitle?: string, highlightColor?: string }) => (
@@ -142,12 +145,12 @@ export default function HallOfFamePage() {
         <section className="mb-16">
             <div className="flex items-center gap-3 mb-6">
                 <Zap className="h-6 w-6 text-yellow-400" />
-                <h2 className="text-2xl font-bold font-headline uppercase tracking-tight">Titãs da Eficiência (PPH)</h2>
-                <Badge variant="outline" className="ml-2 border-yellow-400/30 text-yellow-400">Novo</Badge>
+                <h2 className="text-2xl font-bold font-headline uppercase tracking-tight">Titãs da Eficiência (PPH / KPH)</h2>
+                <Badge variant="outline" className="ml-2 border-yellow-400/30 text-yellow-400">Normalizado</Badge>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
                 {isLoading ? (
-                    Array.from({length: 4}).map((_, i) => <StatRecordSkeleton key={i} />)
+                    Array.from({length: 5}).map((_, i) => <StatRecordSkeleton key={i} />)
                 ) : (
                     efficiencyCategories.map(cat => {
                         const player = data?.efficiency[cat.key];
@@ -158,7 +161,7 @@ export default function HallOfFamePage() {
                                 icon={cat.icon}
                                 player={player}
                                 value={player ? `${player.efficiencyValue.toLocaleString()}` : 'N/A'}
-                                subtitle="Pontos por Hora (PPH)"
+                                subtitle={cat.suffix}
                                 highlightColor={cat.color}
                             />
                         );
@@ -166,7 +169,7 @@ export default function HallOfFamePage() {
                 )}
             </div>
             <p className="text-xs text-muted-foreground mt-4 italic">
-                * Calculado dividindo a pontuação total pelas horas de jogo. Requer no mínimo 10 horas de combate.
+                * Calculado dividindo o total pelas horas de combate. Requer no mínimo 10 horas de ação para validação de consistência.
             </p>
         </section>
 

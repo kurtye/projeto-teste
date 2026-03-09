@@ -42,38 +42,38 @@ export async function getHallOfFameStats(): Promise<{
       }
     });
 
-    // 2. Buscar recordistas de eficiência (PPH)
-    // Buscamos um pool de jogadores ativos (min 10h) para encontrar os mais eficientes
-    const efficiencyCategories = ['totalOffense', 'totalDefense', 'totalSupport', 'totalCombat'];
+    // 2. Buscar recordistas de eficiência (PPH e KPH)
+    const efficiencyCategories = ['totalOffense', 'totalDefense', 'totalSupport', 'totalCombat', 'totalKills'];
     const efficiencyPromises = efficiencyCategories.map(async (cat) => {
-      // Buscamos os 200 melhores por total para ter uma base sólida de jogadores experientes
       const q = query(
         collection(db, 'playerAggregates'), 
-        where('totalTimeSeconds', '>=', 36000), // Mínimo 10 horas
+        where('totalTimeSeconds', '>=', 36000), // Mínimo 10 horas para evitar outliers
         orderBy('totalTimeSeconds', 'desc'),
-        limit(200)
+        limit(300)
       );
       
       const querySnapshot = await getDocs(q);
       let bestPlayer: (PlayerAggregates & { efficiencyValue: number }) | undefined;
-      let maxPPH = 0;
+      let maxEfficiency = 0;
 
       querySnapshot.forEach(doc => {
         const data = doc.data() as PlayerAggregates;
         const hours = (data.totalTimeSeconds || 0) / 3600;
         const val = (data[cat as keyof PlayerAggregates] as number) || 0;
-        const pph = val / hours;
+        const efficiencyVal = val / hours;
 
-        if (pph > maxPPH) {
-          maxPPH = pph;
-          bestPlayer = { ...data, id: doc.id, efficiencyValue: Math.round(pph) };
+        if (efficiencyVal > maxEfficiency) {
+          maxEfficiency = efficiencyVal;
+          // Kills usamos 1 casa decimal para precisão, pontos usamos redondo
+          const finalVal = cat === 'totalKills' ? Math.round(efficiencyVal * 10) / 10 : Math.round(efficiencyVal);
+          bestPlayer = { ...data, id: doc.id, efficiencyValue: finalVal };
         }
       });
       
       efficiency[cat] = bestPlayer;
     });
 
-    // 3. Lobo Solitário
+    // 3. Lobo Solitário (Top kills sem tag de clã conhecido)
     const loneWolfPromise = async () => {
       const q = query(collection(db, 'playerAggregates'), orderBy('totalKills', 'desc'), limit(100));
       const querySnapshot = await getDocs(q);
