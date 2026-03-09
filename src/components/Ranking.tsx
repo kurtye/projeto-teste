@@ -108,6 +108,43 @@ const SortableHeader = ({
   );
 };
 
+const TacticalDNABar = ({ player }: { player: any }) => {
+    const off = player.totalOffense || 0;
+    const def = player.totalDefense || 0;
+    const sup = player.totalSupport || 0;
+    const com = player.totalCombat || 0;
+    const total = off + def + sup + com || 1;
+
+    const pOff = (off / total) * 100;
+    const pDef = (def / total) * 100;
+    const pSup = (sup / total) * 100;
+    const pCom = (com / total) * 100;
+
+    return (
+        <TooltipProvider>
+            <Tooltip>
+                <TooltipTrigger asChild>
+                    <div className="flex h-1.5 w-full max-w-[120px] overflow-hidden rounded-full bg-muted mt-1.5 cursor-help">
+                        <div className="bg-red-500 h-full transition-all" style={{ width: `${pOff}%` }} />
+                        <div className="bg-blue-500 h-full transition-all" style={{ width: `${pDef}%` }} />
+                        <div className="bg-green-500 h-full transition-all" style={{ width: `${pSup}%` }} />
+                        <div className="bg-amber-500 h-full transition-all" style={{ width: `${pCom}%` }} />
+                    </div>
+                </TooltipTrigger>
+                <TooltipContent className="p-3 space-y-1.5 bg-popover/95 backdrop-blur-md border-accent/20">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Composição de Pontos</p>
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                        <div className="flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-red-500" /> <span>Ataque: {Math.round(pOff)}%</span></div>
+                        <div className="flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-blue-500" /> <span>Defesa: {Math.round(pDef)}%</span></div>
+                        <div className="flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-green-500" /> <span>Suporte: {Math.round(pSup)}%</span></div>
+                        <div className="flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-amber-500" /> <span>Combate: {Math.round(pCom)}%</span></div>
+                    </div>
+                </TooltipContent>
+            </Tooltip>
+        </TooltipProvider>
+    );
+};
+
 const RankingDisplay = ({ 
     players, 
     viewMode, 
@@ -218,29 +255,32 @@ const RankingDisplay = ({
                                                 <AvatarFallback>{player.latestPlayerName.charAt(0)}</AvatarFallback>
                                             )}
                                         </Avatar>
-                                        <div className="flex items-center">
-                                            <span className="font-medium group-hover:text-accent transition-colors truncate">{player.latestPlayerName}</span>
-                                            <KingBadge playerId={player.id} />
+                                        <div className="flex flex-col overflow-hidden">
+                                            <div className="flex items-center">
+                                                <span className="font-medium group-hover:text-accent transition-colors truncate">{player.latestPlayerName}</span>
+                                                <KingBadge playerId={player.id} />
+                                                {clanInfo && clanInfo.rank !== 'Recruta' && (
+                                                    <TooltipProvider>
+                                                        <Tooltip>
+                                                            <TooltipTrigger>
+                                                                <Image 
+                                                                    src={`/patentes/${clanInfo.rank === 'Comandante' || clanInfo.rank === 'Subcomandante' ? 'Marechal' : clanInfo.rank}.jpeg`} 
+                                                                    alt={clanInfo.rank} 
+                                                                    width={20} 
+                                                                    height={20} 
+                                                                    className="ml-2 h-5 w-5 object-contain"
+                                                                />
+                                                            </TooltipTrigger>
+                                                            <TooltipContent>
+                                                                <p>{clanInfo.rank.replace(/-/g, ' ').replace('Capitao', 'Capitão')}</p>
+                                                            </TooltipContent>
+                                                        </Tooltip>
+                                                    </TooltipProvider>
+                                                )}
+                                                {player.status === 'retired' && <Badge variant="secondary" className='ml-2 text-[10px] h-4 py-0'>Aposentado</Badge>}
+                                            </div>
+                                            <TacticalDNABar player={player} />
                                         </div>
-                                        {clanInfo && clanInfo.rank !== 'Recruta' && (
-                                            <TooltipProvider>
-                                                <Tooltip>
-                                                    <TooltipTrigger>
-                                                        <Image 
-                                                            src={`/patentes/${clanInfo.rank === 'Comandante' || clanInfo.rank === 'Subcomandante' ? 'Marechal' : clanInfo.rank}.jpeg`} 
-                                                            alt={clanInfo.rank} 
-                                                            width={20} 
-                                                            height={20} 
-                                                            className="ml-2 h-5 w-5 object-contain"
-                                                        />
-                                                    </TooltipTrigger>
-                                                    <TooltipContent>
-                                                        <p>{clanInfo.rank.replace(/-/g, ' ').replace('Capitao', 'Capitão')}</p>
-                                                    </TooltipContent>
-                                                </Tooltip>
-                                            </TooltipProvider>
-                                        )}
-                                        {player.status === 'retired' && <Badge variant="secondary" className='ml-2'>Aposentado</Badge>}
                                     </Link>
                                     </TableCell>
                                     <TableCell className="hidden text-center font-semibold md:table-cell">{formatVal(player.totalScore || 0)}</TableCell>
@@ -286,6 +326,7 @@ const RankingDisplay = ({
                                         <KingBadge playerId={player.id} />
                                     </div>
                                     <CardRankIndicator rank={rank} />
+                                    <TacticalDNABar player={player} />
                                 </div>
                             </CardHeader>
                              <CardContent className="p-4 pt-0">
@@ -322,7 +363,7 @@ const RankingDisplay = ({
                                     </Tooltip>
                                 </TooltipProvider>
                             )}
-                            {player.status === 'retired' && <Badge variant="secondary" className="absolute top-2 left-2">Aposentado</Badge>}
+                            {player.status === 'retired' && <Badge variant="secondary" className="absolute top-2 left-2 text-[10px]">Aposentado</Badge>}
                         </Card>
                     </Link>
                 );
