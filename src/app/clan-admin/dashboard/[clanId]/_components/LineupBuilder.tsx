@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useMemo, useRef, useEffect } from 'react';
@@ -12,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useToast } from '@/hooks/use-toast';
 import { toPng } from 'html-to-image';
 import { useFirestore } from '@/firebase';
-import { collection, query, where, getDocs } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
 import { 
   Users, 
   Sword, 
@@ -33,13 +32,12 @@ import {
   Download,
   Copy,
   Share2,
-  Star,
   Zap,
   ShieldCheck,
   HeartPulse,
   Target
 } from 'lucide-react';
-import type { ClanMember, PlayerAggregates } from '@/lib/types';
+import type { ClanMember, PlayerAggregates, GlobalStats } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
 type SquadRole = 'Ataque' | 'Defesa' | 'Centro' | 'Flanco Esquerdo' | 'Flanco Direito';
@@ -76,6 +74,7 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
   const [activeDropZone, setActiveDropZone] = useState<string | null>(null);
   const [isExporting, setIsExporting] = useState(false);
   const [statsMap, setStatsMap] = useState<Record<string, PlayerAggregates>>({});
+  const [globalStats, setGlobalStats] = useState<GlobalStats | null>(null);
   
   const lineupRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
@@ -85,14 +84,20 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
     return members.filter(m => m.status === 'active');
   }, [members]);
 
-  // Fetch stats for active members to determine tactical profile
   useEffect(() => {
     if (activeMembers.length > 0 && firestore) {
-      const fetchStats = async () => {
+      const fetchData = async () => {
         const newStats: Record<string, PlayerAggregates> = {};
         const memberIds = activeMembers.map(m => m.id);
         
-        // Firestore 'in' queries are limited to 30 items
+        // 1. Fetch Global Stats for normalization
+        const globalRef = doc(firestore, 'globalStats', 'summary');
+        const globalSnap = await getDoc(globalRef);
+        if (globalSnap.exists()) {
+          setGlobalStats(globalSnap.data() as GlobalStats);
+        }
+
+        // 2. Fetch member stats
         const chunks = [];
         for (let i = 0; i < memberIds.length; i += 30) {
           chunks.push(memberIds.slice(i, i + 30));
@@ -111,7 +116,7 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
           console.error("Error fetching member stats for lineup:", err);
         }
       };
-      fetchStats();
+      fetchData();
     }
   }, [activeMembers, firestore]);
 
@@ -136,15 +141,46 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
     const stats = statsMap[playerId];
     if (!stats) return null;
 
+    // Normalização baseada nos recordes mundiais fornecidos
+    // Se o documento no firestore não existir, usamos os valores fixos de fallback do usuário
+    const normalize = (val: number, max: number) => (max > 0 ? val / max : 0);
+
     const roles = [
-      { id: 'ataque', label: 'Ataque', value: stats.totalOffense || 0, icon: Target, color: 'text-red-500', bgColor: 'bg-red-500/20' },
-      { id: 'defesa', label: 'Defesa', value: stats.totalDefense || 0, icon: ShieldCheck, color: 'text-blue-500', bgColor: 'bg-blue-500/20' },
-      { id: 'suporte', label: 'Suporte', value: stats.totalSupport || 0, icon: HeartPulse, color: 'text-green-500', bgColor: 'bg-green-500/20' },
-      { id: 'combate', label: 'Combate', value: stats.totalCombat || 0, icon: Zap, color: 'text-amber-500', bgColor: 'bg-amber-500/20' },
+      { 
+        id: 'ataque', 
+        label: 'Ataque', 
+        value: normalize(stats.totalOffense || 0, globalStats?.maxTotalOffense || 195890), 
+        icon: Target, 
+        color: 'text-red-500', 
+        bgColor: 'bg-red-500/20' 
+      },
+      { 
+        id: 'defesa', 
+        label: 'Defesa', 
+        value: normalize(stats.totalDefense || 0, globalStats?.maxTotalDefense || 536300), 
+        icon: ShieldCheck, 
+        color: 'text-blue-500', 
+        bgColor: 'bg-blue-500/20' 
+      },
+      { 
+        id: 'suporte', 
+        label: 'Suporte', 
+        value: normalize(stats.totalSupport || 0, globalStats?.maxTotalSupport || 702001), 
+        icon: HeartPulse, 
+        color: 'text-green-500', 
+        bgColor: 'bg-green-500/20' 
+      },
+      { 
+        id: 'combate', 
+        label: 'Combate', 
+        value: normalize(stats.totalCombat || 0, globalStats?.maxTotalCombat || 439291), 
+        icon: Zap, 
+        color: 'text-amber-500', 
+        bgColor: 'bg-amber-500/20' 
+      },
     ];
 
-    // Simple logic: return the role with highest absolute value
-    // Note: In a real scenario, normalization might be better as Combat is usually higher
+    // O perfil é definido pela maior proximidade proporcional ao recorde
     return roles.sort((a, b) => b.value - a.value)[0];
   };
 
@@ -381,7 +417,7 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
                 <Users className="h-5 w-5 text-accent" />
                 Membros Ativos
               </CardTitle>
-              <CardDescription>Estrelas indicam onde o jogador possui o melhor desempenho.</CardDescription>
+              <CardDescription>Perfil tático baseado na proximidade com o recorde global.</CardDescription>
             </CardHeader>
             <CardContent className="p-0">
               <ScrollArea className="h-[600px] px-4">
