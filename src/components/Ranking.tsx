@@ -16,7 +16,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
-import { Search, Trophy, Skull, Crosshair, BarChart2, ShieldAlert, Target, Award, LayoutGrid, List } from 'lucide-react';
+import { Search, Trophy, Skull, Crosshair, BarChart2, ShieldAlert, Target, Award, LayoutGrid, List, Zap } from 'lucide-react';
 import type { PlayerAggregates, ClanMemberInfo } from '@/lib/types';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
@@ -29,7 +29,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 type ViewMode = 'card' | 'table';
 type SortKey = 'totalScore' | 'totalKills' | 'totalDeaths' | 'kdRatio';
 type SortDirection = 'ascending' | 'descending';
-type Period = 'geral' | 'mensal' | 'semanal';
+type Period = 'geral' | 'mensal' | 'semanal' | 'pph';
 
 interface SortConfig {
   key: SortKey;
@@ -77,56 +77,6 @@ const CardRankIndicator = ({ rank }: { rank: number }) => {
     return <p className="text-sm text-muted-foreground">Rank #{rank}</p>;
 };
 
-function PlayerRowSkeleton() {
-  return (
-    <TableRow>
-      <TableCell className="p-2 md:p-4">
-        <div className="flex items-center gap-3">
-          <Skeleton className="h-6 w-6" />
-          <Skeleton className="h-10 w-10 rounded-full" />
-          <div className='flex-1'>
-            <Skeleton className="h-4 w-24" />
-          </div>
-        </div>
-      </TableCell>
-      <TableCell className="hidden text-center md:table-cell"><Skeleton className="h-4 w-12 mx-auto" /></TableCell>
-      <TableCell className="text-center"><Skeleton className="h-4 w-12 mx-auto" /></TableCell>
-      <TableCell className="hidden text-center md:table-cell"><Skeleton className="h-4 w-12 mx-auto" /></TableCell>
-      <TableCell className="text-center">
-        <Skeleton className="h-6 w-16 mx-auto rounded-full" />
-      </TableCell>
-    </TableRow>
-  )
-}
-
-const PlayerCardSkeleton = () => (
-    <Card className="w-full">
-        <CardHeader className="flex-row items-center gap-4 space-y-0 p-4">
-            <Skeleton className="h-12 w-12 rounded-full" />
-            <div className="flex-1 space-y-2">
-                <Skeleton className="h-4 w-3/4" />
-                <Skeleton className="h-3 w-1/4" />
-            </div>
-        </CardHeader>
-        <CardContent className="p-4 pt-0">
-            <div className="grid grid-cols-3 gap-2 text-center">
-                <div>
-                    <Skeleton className="h-5 w-12 mx-auto mb-1" />
-                    <Skeleton className="h-3 w-8 mx-auto" />
-                </div>
-                <div>
-                    <Skeleton className="h-5 w-12 mx-auto mb-1" />
-                    <Skeleton className="h-3 w-8 mx-auto" />
-                </div>
-                <div>
-                   <Skeleton className="h-5 w-12 mx-auto mb-1" />
-                   <Skeleton className="h-3 w-8 mx-auto" />
-                </div>
-            </div>
-        </CardContent>
-    </Card>
-);
-
 const SortableHeader = ({
   children,
   sortKey,
@@ -164,14 +114,16 @@ const RankingDisplay = ({
     hallOfFame,
     sortConfig,
     requestSort,
-    clanMembers
+    clanMembers,
+    isPPH = false
 }: { 
-    players: PlayerAggregates[], 
+    players: (PlayerAggregates & { totalScore: number, kdRatio: number })[], 
     viewMode: ViewMode,
     hallOfFame: HallOfFameMap,
     sortConfig: SortConfig,
     requestSort: (key: SortKey) => void,
-    clanMembers: Record<string, ClanMemberInfo>
+    clanMembers: Record<string, ClanMemberInfo>,
+    isPPH?: boolean
 }) => {
 
     const KingBadge = ({ playerId }: { playerId: string }) => {
@@ -210,6 +162,13 @@ const RankingDisplay = ({
       </AdBanner>
     );
 
+    const formatVal = (val: number) => {
+        if (isPPH) {
+            return val.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + '/h';
+        }
+        return val.toLocaleString();
+    };
+
     if (players.length === 0) {
         return (
             <Card className="flex flex-col items-center justify-center p-8 text-center mt-4">
@@ -228,13 +187,13 @@ const RankingDisplay = ({
                       <TableRow>
                         <TableHead className="p-2 md:p-4">Jogador</TableHead>
                         <SortableHeader sortKey="totalScore" sortConfig={sortConfig} requestSort={requestSort} className="hidden md:table-cell">
-                            <Award className="h-5 w-5 inline-block" /> <span className="hidden md:inline">Score</span>
+                            <Award className="h-5 w-5 inline-block" /> <span className="hidden md:inline">{isPPH ? 'Score/h' : 'Score'}</span>
                         </SortableHeader>
                         <SortableHeader sortKey="totalKills" sortConfig={sortConfig} requestSort={requestSort}>
-                          <Crosshair className="h-5 w-5 inline-block" /> <span className="hidden md:inline">Kills</span>
+                          <Crosshair className="h-5 w-5 inline-block" /> <span className="hidden md:inline">{isPPH ? 'Kills/h' : 'Kills'}</span>
                         </SortableHeader>
                         <SortableHeader sortKey="totalDeaths" sortConfig={sortConfig} requestSort={requestSort} className="hidden md:table-cell">
-                          <Skull className="h-5 w-5 inline-block" /> <span className="hidden md:inline">Mortes</span>
+                          <Skull className="h-5 w-5 inline-block" /> <span className="hidden md:inline">{isPPH ? 'Mortes/h' : 'Mortes'}</span>
                         </SortableHeader>
                         <SortableHeader sortKey="kdRatio" sortConfig={sortConfig} requestSort={requestSort}>
                           <Target className="h-5 w-5 inline-block" /> <span className="hidden md:inline">K/D Ratio</span>
@@ -284,9 +243,9 @@ const RankingDisplay = ({
                                         {player.status === 'retired' && <Badge variant="secondary" className='ml-2'>Aposentado</Badge>}
                                     </Link>
                                     </TableCell>
-                                    <TableCell className="hidden text-center font-semibold md:table-cell">{(player.totalScore || 0).toLocaleString()}</TableCell>
-                                    <TableCell className="text-center">{(player.totalKills || 0).toLocaleString()}</TableCell>
-                                    <TableCell className="hidden text-center md:table-cell">{(player.totalDeaths || 0).toLocaleString()}</TableCell>
+                                    <TableCell className="hidden text-center font-semibold md:table-cell">{formatVal(player.totalScore || 0)}</TableCell>
+                                    <TableCell className="text-center">{formatVal(player.totalKills || 0)}</TableCell>
+                                    <TableCell className="hidden text-center md:table-cell">{formatVal(player.totalDeaths || 0)}</TableCell>
                                     <TableCell className="text-center">
                                     <Badge variant={player.kdRatio && player.kdRatio > 2.0 ? 'destructive' : player.kdRatio && player.kdRatio > 1.0 ? 'default' : 'secondary'} className="bg-accent/20 text-accent-foreground border-accent/30">
                                         {player.kdRatio?.toFixed(2)}
@@ -336,12 +295,12 @@ const RankingDisplay = ({
                                         <p className="text-xs text-muted-foreground">K/D Ratio</p>
                                     </div>
                                     <div>
-                                        <p className="font-bold text-lg">{(player.totalKills || 0).toLocaleString()}</p>
-                                        <p className="text-xs text-muted-foreground">Kills</p>
+                                        <p className="font-bold text-lg">{formatVal(player.totalKills || 0)}</p>
+                                        <p className="text-xs text-muted-foreground">{isPPH ? 'Kills/h' : 'Kills'}</p>
                                     </div>
                                     <div>
-                                        <p className="font-bold text-lg">{(player.totalScore || 0).toLocaleString()}</p>
-                                        <p className="text-xs text-muted-foreground">Score</p>
+                                        <p className="font-bold text-lg">{formatVal(player.totalScore || 0)}</p>
+                                        <p className="text-xs text-muted-foreground">{isPPH ? 'Score/h' : 'Score'}</p>
                                     </div>
                                 </div>
                             </CardContent>
@@ -395,8 +354,13 @@ export function Ranking({
   const [activeTab, setActiveTab] = useState<Period>('semanal');
   
   const processedPlayers = useMemo(() => {
-    const playersToProcess = initialRankings[activeTab] || [];
+    let playersToProcess = initialRankings[activeTab === 'pph' ? 'geral' : activeTab] || [];
     
+    // Filtro de elite para ranking de eficiência (mínimo 10 horas)
+    if (activeTab === 'pph') {
+        playersToProcess = playersToProcess.filter(p => (p.totalTimeSeconds || 0) >= 36000);
+    }
+
     let filteredData = playersToProcess;
     
     if (searchQuery) {
@@ -406,10 +370,19 @@ export function Ranking({
     }
     
     return filteredData.map(player => {
-        const totalKills = player.totalKills || 0;
-        const totalDeaths = player.totalDeaths || 1; 
-        const totalScore = (player.totalCombat || 0) + (player.totalDefense || 0) + (player.totalSupport || 0) + (player.totalOffense || 0);
-        const kdRatio = totalKills / totalDeaths;
+        const hours = (player.totalTimeSeconds || 0) / 3600 || 1;
+        
+        let totalKills = player.totalKills || 0;
+        let totalDeaths = player.totalDeaths || 1; 
+        let totalScore = (player.totalCombat || 0) + (player.totalDefense || 0) + (player.totalSupport || 0) + (player.totalOffense || 0);
+        
+        if (activeTab === 'pph') {
+            totalKills = totalKills / hours;
+            totalDeaths = totalDeaths / hours;
+            totalScore = totalScore / hours;
+        }
+
+        const kdRatio = (player.totalKills || 0) / (player.totalDeaths || 1);
         
         return { ...player, id: player.id, totalKills, totalDeaths, totalScore, kdRatio };
     });
@@ -512,10 +485,13 @@ export function Ranking({
 
         <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as Period)} className="w-full">
             <div className="flex items-center justify-between">
-                <TabsList className="grid w-full grid-cols-3">
+                <TabsList className="grid w-full grid-cols-4">
                     <TabsTrigger value="semanal" className="data-[state=active]:bg-green-600 data-[state=active]:text-white">Semanal</TabsTrigger>
                     <TabsTrigger value="mensal" className="data-[state=active]:bg-green-600 data-[state=active]:text-white">Mensal</TabsTrigger>
                     <TabsTrigger value="geral" className="data-[state=active]:bg-green-600 data-[state=active]:text-white">Geral</TabsTrigger>
+                    <TabsTrigger value="pph" className="data-[state=active]:bg-amber-600 data-[state=active]:text-white gap-2">
+                        <Zap className="h-3 w-3" /> Eficiência
+                    </TabsTrigger>
                 </TabsList>
             </div>
 
@@ -567,6 +543,13 @@ export function Ranking({
                 </div>
             </div>
 
+            {activeTab === 'pph' && (
+                <div className="mt-2 text-xs text-muted-foreground bg-amber-500/10 p-2 rounded border border-amber-500/20 flex items-center gap-2">
+                    <Zap className="h-3 w-3 text-amber-500" />
+                    <span>O ranking de eficiência requer um mínimo de 10 horas de combate jogadas. Valores expressos em Pontos por Hora (PPH).</span>
+                </div>
+            )}
+
             <TabsContent value="geral">
                 <RankingDisplay players={sortedAndFilteredPlayers} viewMode={viewMode} hallOfFame={initialHallOfFame} sortConfig={sortConfig} requestSort={requestSort} clanMembers={initialClanMembers}/>
             </TabsContent>
@@ -575,6 +558,9 @@ export function Ranking({
             </TabsContent>
             <TabsContent value="semanal">
                 <RankingDisplay players={sortedAndFilteredPlayers} viewMode={viewMode} hallOfFame={initialHallOfFame} sortConfig={sortConfig} requestSort={requestSort} clanMembers={initialClanMembers}/>
+            </TabsContent>
+            <TabsContent value="pph">
+                <RankingDisplay isPPH players={sortedAndFilteredPlayers} viewMode={viewMode} hallOfFame={initialHallOfFame} sortConfig={sortConfig} requestSort={requestSort} clanMembers={initialClanMembers}/>
             </TabsContent>
         </Tabs>
     </>
