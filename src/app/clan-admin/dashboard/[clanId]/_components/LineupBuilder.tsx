@@ -35,10 +35,12 @@ import {
   Zap,
   ShieldCheck,
   HeartPulse,
-  Target
+  Target,
+  TrendingUp
 } from 'lucide-react';
 import type { ClanMember, PlayerAggregates, GlobalStats } from '@/lib/types';
 import { cn } from '@/lib/utils';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 type SquadRole = 'Ataque' | 'Defesa' | 'Centro' | 'Flanco Esquerdo' | 'Flanco Direito';
 
@@ -90,14 +92,12 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
         const newStats: Record<string, PlayerAggregates> = {};
         const memberIds = activeMembers.map(m => m.id);
         
-        // 1. Fetch Global Stats for normalization
         const globalRef = doc(firestore, 'globalStats', 'summary');
         const globalSnap = await getDoc(globalRef);
         if (globalSnap.exists()) {
           setGlobalStats(globalSnap.data() as GlobalStats);
         }
 
-        // 2. Fetch member stats
         const chunks = [];
         for (let i = 0; i < memberIds.length; i += 30) {
           chunks.push(memberIds.slice(i, i + 30));
@@ -139,17 +139,26 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
 
   const getTacticalProfile = (playerId: string) => {
     const stats = statsMap[playerId];
-    if (!stats) return null;
+    // Requer pelo menos 1 hora de jogo para uma análise justa de eficiência
+    if (!stats || !stats.totalTimeSeconds || stats.totalTimeSeconds < 3600) return null;
 
-    // Normalização baseada nos recordes mundiais fornecidos
-    // Se o documento no firestore não existir, usamos os valores fixos de fallback do usuário
-    const normalize = (val: number, max: number) => (max > 0 ? val / max : 0);
+    const playerHours = stats.totalTimeSeconds / 3600;
+    
+    // Equalização de Tempo: Assumimos que o Recorde Mundial foi atingido em aprox. 500h de jogo elite.
+    // Isso cria um benchmark de "Pontos por Hora de Elite".
+    const refHours = 500;
+
+    const calculateEfficiency = (val: number, maxRecord: number) => {
+      const playerPPH = val / playerHours;
+      const recordPPH = maxRecord / refHours;
+      return recordPPH > 0 ? (playerPPH / recordPPH) : 0;
+    };
 
     const roles = [
       { 
         id: 'ataque', 
         label: 'Ataque', 
-        value: normalize(stats.totalOffense || 0, globalStats?.maxTotalOffense || 195890), 
+        value: calculateEfficiency(stats.totalOffense || 0, globalStats?.maxTotalOffense || 195890), 
         icon: Target, 
         color: 'text-red-500', 
         bgColor: 'bg-red-500/20' 
@@ -157,7 +166,7 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
       { 
         id: 'defesa', 
         label: 'Defesa', 
-        value: normalize(stats.totalDefense || 0, globalStats?.maxTotalDefense || 536300), 
+        value: calculateEfficiency(stats.totalDefense || 0, globalStats?.maxTotalDefense || 536300), 
         icon: ShieldCheck, 
         color: 'text-blue-500', 
         bgColor: 'bg-blue-500/20' 
@@ -165,7 +174,7 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
       { 
         id: 'suporte', 
         label: 'Suporte', 
-        value: normalize(stats.totalSupport || 0, globalStats?.maxTotalSupport || 702001), 
+        value: calculateEfficiency(stats.totalSupport || 0, globalStats?.maxTotalSupport || 702001), 
         icon: HeartPulse, 
         color: 'text-green-500', 
         bgColor: 'bg-green-500/20' 
@@ -173,15 +182,24 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
       { 
         id: 'combate', 
         label: 'Combate', 
-        value: normalize(stats.totalCombat || 0, globalStats?.maxTotalCombat || 439291), 
+        value: calculateEfficiency(stats.totalCombat || 0, globalStats?.maxTotalCombat || 439291), 
         icon: Zap, 
         color: 'text-amber-500', 
         bgColor: 'bg-amber-500/20' 
       },
     ];
 
-    // O perfil é definido pela maior proximidade proporcional ao recorde
-    return roles.sort((a, b) => b.value - a.value)[0];
+    // Ordena pela maior eficiência relativa
+    const sortedRoles = roles.sort((a, b) => b.value - a.value);
+    const primaryRole = sortedRoles[0];
+    
+    // Calcula o "Power Score" médio de eficiência (0 a 100)
+    const avgEfficiency = Math.min(Math.round(primaryRole.value * 100), 100);
+
+    return {
+      ...primaryRole,
+      powerScore: avgEfficiency
+    };
   };
 
   const addSquad = (type: keyof typeof SQUAD_TYPES) => {
@@ -300,10 +318,21 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
 
     const Icon = profile.icon;
     return (
-      <div className={cn("inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-tight ml-1.5", profile.bgColor, profile.color)}>
-        <Icon className="h-2.5 w-2.5" />
-        {profile.label}
-      </div>
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div className={cn("inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-tight ml-1.5 cursor-help", profile.bgColor, profile.color)}>
+              <Icon className="h-2.5 w-2.5" />
+              {profile.label}
+              <span className="ml-1 opacity-70">{profile.powerScore}%</span>
+            </div>
+          </TooltipTrigger>
+          <TooltipContent className="bg-popover border-accent/20">
+            <p className="font-bold text-accent">Perfil de Eficiência (PPH)</p>
+            <p className="text-xs">Este jogador opera a <span className="font-bold">{profile.powerScore}%</span> da velocidade do recordista mundial em <span className="font-bold">{profile.label}</span>.</p>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
     );
   };
 
@@ -377,7 +406,8 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
   };
 
   const handleCopyText = () => {
-    let text = `📋 *ESCALAÇÃO: ${matchName.toUpperCase()}*\n\n`;
+    let text = `📋 *ORDEM DE BATALHA: ${matchName.toUpperCase()}*\n`;
+    text += `📅 Gerado em: ${new Date().toLocaleDateString()}\n\n`;
     
     sortedSquads.forEach(s => {
       text += `*${s.name.toUpperCase()}*`;
@@ -392,8 +422,8 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
           const m = getMemberData(mId);
           const profile = getTacticalProfile(mId);
           text += `- ${m?.playerName}`;
-          if (profile) text += ` [Especialista: ${profile.label}]`;
-          if (m?.preferredClasses?.length) text += ` (Classes: ${m.preferredClasses.join(', ')})`;
+          if (profile) text += ` [${profile.label} ${profile.powerScore}%]`;
+          if (m?.preferredClasses?.length) text += ` (${m.preferredClasses.join(', ')})`;
           text += `\n`;
         });
       }
@@ -417,7 +447,7 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
                 <Users className="h-5 w-5 text-accent" />
                 Membros Ativos
               </CardTitle>
-              <CardDescription>Perfil tático baseado na proximidade com o recorde global.</CardDescription>
+              <CardDescription className="text-[11px] leading-tight">Perfil de Eficiência baseado em Pontos por Hora (PPH) vs Recorde Global.</CardDescription>
             </CardHeader>
             <CardContent className="p-0">
               <ScrollArea className="h-[600px] px-4">
@@ -428,6 +458,7 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
                     const isSelected = selectedMemberIds.has(member.id);
                     const isAssigned = memberAssignmentMap.has(member.id);
                     const isBeingDragged = draggedMemberId === member.id;
+                    const profile = getTacticalProfile(member.id);
 
                     return (
                       <div 
@@ -447,17 +478,27 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
                           >
                             {isSelected ? <CheckSquare className="h-4 w-4 text-accent flex-shrink-0" /> : <Square className="h-4 w-4 text-muted-foreground flex-shrink-0" />}
                           </button>
-                          <div className="flex flex-col overflow-hidden">
+                          <div className="flex flex-col overflow-hidden w-full">
                             <div className="flex items-center">
                               <span className={cn("truncate font-medium", isAssigned && "text-muted-foreground line-through")}>
                                 {member.playerName}
                               </span>
                               <TacticalProfileIcon memberId={member.id} />
                             </div>
-                            <ClassBadges memberId={member.id} compact />
+                            <div className="flex items-center justify-between mt-1">
+                               <ClassBadges memberId={member.id} compact />
+                               {profile && (
+                                 <div className="h-1 w-12 bg-muted rounded-full overflow-hidden flex-shrink-0">
+                                   <div 
+                                     className={cn("h-full", profile.color.replace('text', 'bg'))} 
+                                     style={{ width: `${profile.powerScore}%` }} 
+                                   />
+                                 </div>
+                               )}
+                            </div>
                           </div>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 ml-2">
                           {isAssigned && <Badge variant="outline" className="text-[10px] py-0 px-1 opacity-70">Escalado</Badge>}
                           <Grab className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
                         </div>
