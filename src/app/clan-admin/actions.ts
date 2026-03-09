@@ -152,6 +152,42 @@ export async function findPotentialMembersByTag(clanId: string, clanTag: string)
   }
 }
 
+/**
+ * Searches players in the database by name.
+ */
+export async function searchPlayersByName(clanId: string, nameQuery: string): Promise<{ success: boolean, players?: PlayerAggregates[], error?: string }> {
+  try {
+    if (!nameQuery || nameQuery.trim().length < 3) {
+        return { success: false, error: "Digite pelo menos 3 caracteres para a busca." };
+    }
+
+    const playersQuery = query(
+      collection(db, 'playerAggregates'),
+      orderBy('totalKills', 'desc'),
+      limit(2000)
+    );
+    
+    const querySnapshot = await getDocs(playersQuery);
+    const topPlayers = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PlayerAggregates));
+
+    const membersCollection = collection(db, 'clans', clanId, 'members');
+    const membersSnapshot = await getDocs(membersCollection);
+    const existingMemberIds = new Set(membersSnapshot.docs.map(doc => doc.id));
+
+    const queryLower = nameQuery.toLowerCase().trim();
+    const foundPlayers = topPlayers.filter(p => {
+      if (!p.latestPlayerName) return false;
+      if (existingMemberIds.has(p.id)) return false;
+      return p.latestPlayerName.toLowerCase().includes(queryLower);
+    });
+
+    return { success: true, players: foundPlayers };
+  } catch (error: any) {
+    console.error("Error searching players:", error);
+    return { success: false, error: "Falha ao buscar jogadores no banco de dados." };
+  }
+}
+
 
 /**
  * Adds a list of players to the clan's member subcollection.
@@ -333,9 +369,3 @@ export async function generateMonthlyReportAction(
   }
 }
     
-
-
-
-
-
-

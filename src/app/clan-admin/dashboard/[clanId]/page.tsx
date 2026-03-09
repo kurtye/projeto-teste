@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useClanAuth } from '../../layout';
@@ -25,12 +26,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { useState, useTransition, useMemo, useEffect, use } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
-import { findPotentialMembersByTag, addMembersToClan, promoteClanMember, getClanMonthlyStats, findUnclaimedPlayers, generateMonthlyReportAction } from '../../actions';
+import { findPotentialMembersByTag, addMembersToClan, promoteClanMember, getClanMonthlyStats, findUnclaimedPlayers, generateMonthlyReportAction, searchPlayersByName } from '../../actions';
 import { useToast } from '@/hooks/use-toast';
 import Image from 'next/image';
 import Link from 'next/link';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 
 type MonthlySortKey = keyof Pick<PlayerPeriodStats, 'totalTimeSeconds' | 'totalKills' | 'totalCombat' | 'totalOffense' | 'totalDefense' | 'totalSupport'>;
@@ -97,6 +99,12 @@ export default function ClanDashboardPage({ params }: { params: Promise<{ clanId
   const [selectedNewMembers, setSelectedNewMembers] = useState<Set<string>>(new Set());
   const [isAdding, startAddingTransition] = useTransition();
   const [isPromoting, startPromotingTransition] = useTransition();
+
+  // State for manual search in List tab
+  const [manualSearchQuery, setManualSearchQuery] = useState('');
+  const [isSearchingManual, startSearchingManual] = useTransition();
+  const [manualSearchResults, setManualSearchResults] = useState<PlayerAggregates[]>([]);
+  const [selectedManualPlayers, setSelectedManualPlayers] = useState<Set<string>>(new Set());
   
   const [monthlyStats, setMonthlyStats] = useState<(PlayerPeriodStats & { playerName: string })[]>([]);
   const [isFetchingMonthlyStats, startFetchingMonthlyStats] = useTransition();
@@ -213,6 +221,26 @@ export default function ClanDashboardPage({ params }: { params: Promise<{ clanId
     });
   };
 
+  const handleManualSearch = () => {
+    if (!manualSearchQuery.trim() || manualSearchQuery.trim().length < 3) {
+        toast({ variant: 'destructive', title: 'Busca muito curta', description: 'Digite pelo menos 3 caracteres.' });
+        return;
+    }
+    startSearchingManual(async () => {
+        setManualSearchResults([]);
+        setSelectedManualPlayers(new Set());
+        const result = await searchPlayersByName(clan.id, manualSearchQuery);
+        if (result.success && result.players) {
+            setManualSearchResults(result.players);
+            if (result.players.length === 0) {
+                toast({ title: 'Nenhum jogador encontrado', description: 'Tente um nome diferente ou verifique se o jogador já está no clã.' });
+            }
+        } else {
+            toast({ variant: 'destructive', title: 'Erro na busca', description: result.error });
+        }
+    });
+  };
+
   const handlePromote = (member: ClanMember) => {
     startPromotingTransition(async () => {
         const result = await promoteClanMember(clan.id, member.id, member.rank);
@@ -235,12 +263,32 @@ export default function ClanDashboardPage({ params }: { params: Promise<{ clanId
       return newSet;
     });
   };
+
+  const handleToggleSelectManualPlayer = (playerId: string) => {
+    setSelectedManualPlayers(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(playerId)) {
+        newSet.delete(playerId);
+      } else {
+        newSet.add(playerId);
+      }
+      return newSet;
+    });
+  };
   
   const handleToggleSelectAll = () => {
     if (selectedNewMembers.size === potentialMembers.length) {
         setSelectedNewMembers(new Set());
     } else {
         setSelectedNewMembers(new Set(potentialMembers.map(p => p.id)));
+    }
+  };
+
+  const handleToggleSelectAllManual = () => {
+    if (selectedManualPlayers.size === manualSearchResults.length) {
+        setSelectedManualPlayers(new Set());
+    } else {
+        setSelectedManualPlayers(new Set(manualSearchResults.map(p => p.id)));
     }
   };
 
@@ -258,6 +306,25 @@ export default function ClanDashboardPage({ params }: { params: Promise<{ clanId
             setSelectedNewMembers(new Set());
         } else {
             toast({ variant: 'destructive', title: 'Falha ao adicionar membros', description: result.error });
+        }
+    });
+  };
+
+  const handleAddSelectedManualMembers = () => {
+    startAddingTransition(async () => {
+        const playersToAdd = manualSearchResults.filter(p => selectedManualPlayers.has(p.id));
+        if (playersToAdd.length === 0) {
+            toast({ variant: 'destructive', title: 'Nenhum jogador selecionado.' });
+            return;
+        }
+        const result = await addMembersToClan(clan.id, playersToAdd);
+        if (result.success) {
+            toast({ title: 'Jogadores adicionados com sucesso!' });
+            setManualSearchResults([]);
+            setManualSearchQuery('');
+            setSelectedManualPlayers(new Set());
+        } else {
+            toast({ variant: 'destructive', title: 'Falha ao adicionar jogadores', description: result.error });
         }
     });
   };
@@ -468,122 +535,172 @@ export default function ClanDashboardPage({ params }: { params: Promise<{ clanId
             </div>
         </div>
 
-        <TabsContent value="list">
-            <Card>
-                <CardHeader>
-                    <div className="flex justify-between items-center">
-                        <div>
-                            <CardTitle className="text-xl flex items-center gap-2">
-                                <Users className="h-5 w-5"/>
-                                <span>Membros do Clã</span>
-                            </CardTitle>
-                            <CardDescription>Gerencie as patentes e status dos jogadores.</CardDescription>
+        <TabsContent value="list" className="space-y-6">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <Card className="lg:col-span-1 bg-muted/20 border-accent/10">
+                    <CardHeader>
+                        <CardTitle className="text-lg flex items-center gap-2">
+                            <Search className="h-5 w-5 text-accent" />
+                            Adição Manual
+                        </CardTitle>
+                        <CardDescription>Busque jogadores no banco de dados pelo nome.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                        <div className="flex gap-2">
+                            <Input 
+                                placeholder="Nome do jogador..." 
+                                value={manualSearchQuery}
+                                onChange={(e) => setManualSearchQuery(e.target.value)}
+                                onKeyDown={(e) => e.key === 'Enter' && handleManualSearch()}
+                            />
+                            <Button size="icon" onClick={handleManualSearch} disabled={isSearchingManual}>
+                                <Search className={cn("h-4 w-4", isSearchingManual && "animate-spin")} />
+                            </Button>
                         </div>
-                         <Button onClick={handleSync} disabled={isSyncing || isPromoting}>
-                            <RefreshCw className={`mr-2 h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} />
-                            {isSyncing ? 'Buscando...' : 'Sincronizar por Tag'}
-                         </Button>
-                    </div>
-                </CardHeader>
-                <CardContent>
-                 {potentialMembers.length > 0 && (
-                      <Card className="mb-6 bg-muted/30">
-                          <CardHeader>
-                              <CardTitle>Membros Sugeridos (por Tag)</CardTitle>
-                              <CardDescription>Estes jogadores usam a tag do seu clã mas ainda não estão na lista oficial. Selecione quem deseja adicionar.</CardDescription>
-                          </CardHeader>
-                          <CardContent>
-                              <div className="space-y-2 max-h-60 overflow-y-auto">
-                                  {potentialMembers.map(player => (
-                                      <div key={player.id} onClick={() => handleToggleSelectNewMember(player.id)} className="flex items-center gap-3 p-2 rounded-md hover:bg-muted cursor-pointer">
-                                          {selectedNewMembers.has(player.id) ? <CheckSquare className="h-5 w-5 text-accent" /> : <Square className="h-5 w-5 text-muted-foreground" />}
-                                          <span>{player.latestPlayerName}</span>
-                                      </div>
-                                  ))}
-                              </div>
-                          </CardContent>
-                          <CardFooter className="flex items-center gap-4">
-                              <Button onClick={handleAddSelectedMembers} disabled={isAdding || selectedNewMembers.size === 0}>
-                                  {isAdding ? 'Adicionando...' : `Adicionar ${selectedNewMembers.size} Selecionados`}
-                              </Button>
-                               <Button variant="outline" onClick={handleToggleSelectAll} disabled={isAdding}>
-                                  {selectedNewMembers.size === potentialMembers.length ? 'Desmarcar Todos' : 'Marcar Todos'}
-                              </Button>
-                          </CardFooter>
-                      </Card>
-                  )}
-                <div className="overflow-x-auto">
-                    <Table>
-                    <TableHeader>
-                        <TableRow>
-                        <TableHead>Jogador</TableHead>
-                        <TableHead>Patente</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead className="text-right">Ações</TableHead>
-                        </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                        {isLoadingMembers ? (
-                        Array.from({ length: 5 }).map((_, i) => (
-                            <TableRow key={i}>
-                            <TableCell><Skeleton className="h-5 w-32" /></TableCell>
-                            <TableCell><Skeleton className="h-5 w-24" /></TableCell>
-                            <TableCell><Skeleton className="h-6 w-20 rounded-full" /></TableCell>
-                            <TableCell className="text-right space-x-2">
-                                <Skeleton className="h-8 w-8 ml-auto inline-block" />
-                                <Skeleton className="h-8 w-8 ml-auto inline-block" />
-                            </TableCell>
-                            </TableRow>
-                        ))
-                        ) : sortedMembers && sortedMembers.length > 0 ? (
-                        sortedMembers.map((member) => (
-                            <TableRow key={member.id}>
-                                <TableCell className="font-medium">{member.playerName}</TableCell>
-                                <TableCell className="flex items-center gap-2">
-                                    {getRankImage(member.rank)}
-                                    {member.rank.replace(/-/g, ' ').replace('Capitao', 'Capitão')}
-                                </TableCell>
-                                <TableCell>
-                                <Badge variant={getStatusVariant(member.status)}>{member.status}</Badge>
-                                </TableCell>
-                                <TableCell className="text-right space-x-1">
-                                    <Button 
-                                        variant="ghost" 
-                                        size="icon" 
-                                        onClick={() => handlePromote(member)}
-                                        disabled={isPromoting || member.rank === 'Comandante'}
-                                        title="Promover"
-                                    >
-                                        <ArrowUp className="h-4 w-4" />
+
+                        {manualSearchResults.length > 0 && (
+                            <div className="space-y-3 pt-2">
+                                <div className="max-h-60 overflow-y-auto space-y-1 pr-2">
+                                    {manualSearchResults.map(player => (
+                                        <div key={player.id} onClick={() => handleToggleSelectManualPlayer(player.id)} className="flex items-center gap-3 p-2 rounded-md hover:bg-muted cursor-pointer text-sm border border-transparent hover:border-accent/20 transition-all">
+                                            {selectedManualPlayers.has(player.id) ? <CheckSquare className="h-4 w-4 text-accent" /> : <Square className="h-4 w-4 text-muted-foreground" />}
+                                            <span className="truncate">{player.latestPlayerName}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                                <div className="flex flex-col gap-2 pt-2 border-t border-border/50">
+                                    <Button size="sm" onClick={handleAddSelectedManualMembers} disabled={isAdding || selectedManualPlayers.size === 0}>
+                                        {isAdding ? 'Adicionando...' : `Adicionar ${selectedManualPlayers.size} selecionados`}
                                     </Button>
-                                    <Button variant="ghost" size="icon" onClick={() => setMemberToEdit(member)} title="Editar">
-                                        <Edit className="h-4 w-4" />
+                                    <Button variant="ghost" size="sm" onClick={handleToggleSelectAllManual} className="text-[10px] h-6 uppercase font-bold tracking-widest">
+                                        {selectedManualPlayers.size === manualSearchResults.length ? 'Desmarcar Todos' : 'Marcar Todos'}
                                     </Button>
-                                    <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        onClick={() => setMemberToRemove(member)}
-                                        title="Remover"
-                                        className="text-destructive/70 hover:text-destructive hover:bg-destructive/10"
-                                    >
-                                        <Trash2 className="h-4 w-4" />
-                                    </Button>
-                                </TableCell>
-                            </TableRow>
-                            )
-                        )
-                        ) : (
-                        <TableRow>
-                            <TableCell colSpan={4} className="h-24 text-center">
-                            Nenhum membro encontrado. Use a "Sincronização por Tag" para encontrar e adicionar jogadores.
-                            </TableCell>
-                        </TableRow>
+                                </div>
+                            </div>
                         )}
-                    </TableBody>
-                    </Table>
-                </div>
-                </CardContent>
-            </Card>
+                    </CardContent>
+                </Card>
+
+                <Card className="lg:col-span-2">
+                    <CardHeader>
+                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                            <div>
+                                <CardTitle className="text-xl flex items-center gap-2">
+                                    <Users className="h-5 w-5"/>
+                                    <span>Membros do Clã</span>
+                                </CardTitle>
+                                <CardDescription>Gerencie as patentes e status dos jogadores.</CardDescription>
+                            </div>
+                            <Button variant="outline" onClick={handleSync} disabled={isSyncing || isPromoting}>
+                                <RefreshCw className={`mr-2 h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} />
+                                {isSyncing ? 'Buscando...' : 'Sincronizar por Tag'}
+                            </Button>
+                        </div>
+                    </CardHeader>
+                    <CardContent>
+                    {potentialMembers.length > 0 && (
+                        <Card className="mb-6 bg-muted/30 border-dashed border-accent/30">
+                            <CardHeader className="py-4">
+                                <CardTitle className="text-sm">Membros Sugeridos (por Tag)</CardTitle>
+                                <CardDescription className="text-xs">Estes jogadores usam a tag [{clan.tag}] mas não estão na lista.</CardDescription>
+                            </CardHeader>
+                            <CardContent className="py-0">
+                                <div className="space-y-1 max-h-40 overflow-y-auto px-1">
+                                    {potentialMembers.map(player => (
+                                        <div key={player.id} onClick={() => handleToggleSelectNewMember(player.id)} className="flex items-center gap-3 p-2 rounded-md hover:bg-muted cursor-pointer text-sm">
+                                            {selectedNewMembers.has(player.id) ? <CheckSquare className="h-4 w-4 text-accent" /> : <Square className="h-4 w-4 text-muted-foreground" />}
+                                            <span>{player.latestPlayerName}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </CardContent>
+                            <CardFooter className="flex items-center gap-2 pt-4">
+                                <Button size="sm" onClick={handleAddSelectedMembers} disabled={isAdding || selectedNewMembers.size === 0}>
+                                    Adicionar {selectedNewMembers.size}
+                                </Button>
+                                <Button variant="ghost" size="sm" onClick={handleToggleSelectAll} disabled={isAdding} className="text-[10px]">
+                                    {selectedNewMembers.size === potentialMembers.length ? 'Desmarcar' : 'Todos'}
+                                </Button>
+                            </CardFooter>
+                        </Card>
+                    )}
+                    <div className="overflow-x-auto">
+                        <Table>
+                        <TableHeader>
+                            <TableRow>
+                            <TableHead>Jogador</TableHead>
+                            <TableHead>Patente</TableHead>
+                            <TableHead>Status</TableHead>
+                            <TableHead className="text-right">Ações</TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {isLoadingMembers ? (
+                            Array.from({ length: 5 }).map((_, i) => (
+                                <TableRow key={i}>
+                                <TableCell><Skeleton className="h-5 w-32" /></TableCell>
+                                <TableCell><Skeleton className="h-5 w-24" /></TableCell>
+                                <TableCell><Skeleton className="h-6 w-20 rounded-full" /></TableCell>
+                                <TableCell className="text-right space-x-2">
+                                    <Skeleton className="h-8 w-8 ml-auto inline-block" />
+                                    <Skeleton className="h-8 w-8 ml-auto inline-block" />
+                                </TableCell>
+                                </TableRow>
+                            ))
+                            ) : sortedMembers && sortedMembers.length > 0 ? (
+                            sortedMembers.map((member) => (
+                                <TableRow key={member.id}>
+                                    <TableCell className="font-medium">
+                                        <Link href={`/player/${encodeURIComponent(member.id)}`} className="hover:underline hover:text-accent">
+                                            {member.playerName}
+                                        </Link>
+                                    </TableCell>
+                                    <TableCell className="flex items-center gap-2">
+                                        {getRankImage(member.rank)}
+                                        {member.rank.replace(/-/g, ' ').replace('Capitao', 'Capitão')}
+                                    </TableCell>
+                                    <TableCell>
+                                    <Badge variant={getStatusVariant(member.status)} className="capitalize">{member.status}</Badge>
+                                    </TableCell>
+                                    <TableCell className="text-right space-x-1">
+                                        <Button 
+                                            variant="ghost" 
+                                            size="icon" 
+                                            onClick={() => handlePromote(member)}
+                                            disabled={isPromoting || member.rank === 'Comandante'}
+                                            title="Promover"
+                                        >
+                                            <ArrowUp className="h-4 w-4" />
+                                        </Button>
+                                        <Button variant="ghost" size="icon" onClick={() => setMemberToEdit(member)} title="Editar">
+                                            <Edit className="h-4 w-4" />
+                                        </Button>
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            onClick={() => setMemberToRemove(member)}
+                                            title="Remover"
+                                            className="text-destructive/70 hover:text-destructive hover:bg-destructive/10"
+                                        >
+                                            <Trash2 className="h-4 w-4" />
+                                        </Button>
+                                    </TableCell>
+                                </TableRow>
+                                )
+                            )
+                            ) : (
+                            <TableRow>
+                                <TableCell colSpan={4} className="h-24 text-center">
+                                Nenhum membro encontrado. Use a busca manual ou sincronização.
+                                </TableCell>
+                            </TableRow>
+                            )}
+                        </TableBody>
+                        </Table>
+                    </div>
+                    </CardContent>
+                </Card>
+            </div>
         </TabsContent>
         <TabsContent value="hierarchy">
             {isLoadingMembers ? (
