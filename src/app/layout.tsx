@@ -7,7 +7,7 @@ import { Header } from '@/components/layout/header';
 import { FirebaseClientProvider } from '@/firebase';
 import { Sidebar, SidebarProvider, SidebarInset } from '@/components/ui/sidebar';
 import { MobileFooter } from '@/components/layout/mobile-footer';
-import { Home, BarChart, Trophy, Briefcase, Award, Info, BookUser, Users, Crosshair } from 'lucide-react';
+import { Home, Trophy, Briefcase, Info, BookUser, Users, Crosshair } from 'lucide-react';
 import { SidebarContent, SidebarMenu, SidebarMenuItem, SidebarMenuButton } from '@/components/ui/sidebar';
 import Link from 'next/link';
 import Script from 'next/script';
@@ -49,43 +49,43 @@ export default function RootLayout({
       </head>
       <body className={cn('font-body antialiased min-h-screen bg-background text-foreground')}>
         <FirebaseClientProvider>
-          <SidebarProvider>
-            <Sidebar>
-                <SidebarContent className="p-4">
+          <SidebarProvider defaultOpen={false}>
+            <Sidebar collapsible="icon">
+                <SidebarContent className="py-4">
                     <SidebarMenu>
                         <SidebarMenuItem>
-                            <SidebarMenuButton asChild>
-                                <Link href="/"><Home />Ranking</Link>
+                            <SidebarMenuButton asChild tooltip="Ranking">
+                                <Link href="/"><Home /><span>Ranking</span></Link>
                             </SidebarMenuButton>
                         </SidebarMenuItem>
                          <SidebarMenuItem>
-                            <SidebarMenuButton asChild>
-                                <Link href="/clans"><Users />Clãs</Link>
+                            <SidebarMenuButton asChild tooltip="Clãs">
+                                <Link href="/clans"><Users /><span>Clãs</span></Link>
                             </SidebarMenuButton>
                         </SidebarMenuItem>
                         <SidebarMenuItem>
-                            <SidebarMenuButton asChild>
-                                <Link href="/armas"><Crosshair />Arsenal</Link>
+                            <SidebarMenuButton asChild tooltip="Arsenal">
+                                <Link href="/armas"><Crosshair /><span>Arsenal</span></Link>
                             </SidebarMenuButton>
                         </SidebarMenuItem>
                          <SidebarMenuItem>
-                            <SidebarMenuButton asChild>
-                                <Link href="/hall-of-fame"><Trophy />Hall da Fama</Link>
+                            <SidebarMenuButton asChild tooltip="Hall da Fama">
+                                <Link href="/hall-of-fame"><Trophy /><span>Hall da Fama</span></Link>
                             </SidebarMenuButton>
                         </SidebarMenuItem>
                          <SidebarMenuItem>
-                            <SidebarMenuButton asChild>
-                                <Link href="/caserna"><Briefcase />Caserna</Link>
+                            <SidebarMenuButton asChild tooltip="Caserna">
+                                <Link href="/caserna"><Briefcase /><span>Caserna</span></Link>
                             </SidebarMenuButton>
                         </SidebarMenuItem>
                          <SidebarMenuItem>
-                            <SidebarMenuButton asChild>
-                                <Link href="/sobre"><Info />Sobre</Link>
+                            <SidebarMenuButton asChild tooltip="Sobre">
+                                <Link href="/sobre"><Info /><span>Sobre</span></Link>
                             </SidebarMenuButton>
                         </SidebarMenuItem>
                         <SidebarMenuItem>
-                            <SidebarMenuButton asChild>
-                                <Link href="/politica-de-privacidade"><BookUser />Política de Privacidade</Link>
+                            <SidebarMenuButton asChild tooltip="Privacidade">
+                                <Link href="/politica-de-privacidade"><BookUser /><span>Privacidade</span></Link>
                             </SidebarMenuButton>
                         </SidebarMenuItem>
                     </SidebarMenu>
