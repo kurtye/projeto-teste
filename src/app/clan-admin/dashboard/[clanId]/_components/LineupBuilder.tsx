@@ -36,13 +36,31 @@ import {
   ShieldCheck,
   HeartPulse,
   Target,
-  TrendingUp
+  Maximize2,
+  Search,
+  ArrowUpDown
 } from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import type { ClanMember, PlayerAggregates, GlobalStats } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 type SquadRole = 'Ataque' | 'Defesa' | 'Centro' | 'Flanco Esquerdo' | 'Flanco Direito';
+type SortCriteria = 'name' | 'kill' | 'attack' | 'defense' | 'support' | 'combat';
 
 interface Squad {
   id: string;
@@ -77,6 +95,7 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
   const [isExporting, setIsExporting] = useState(false);
   const [statsMap, setStatsMap] = useState<Record<string, PlayerAggregates>>({});
   const [globalStats, setGlobalStats] = useState<GlobalStats | null>(null);
+  const [sortCriteria, setSortCriteria] = useState<SortCriteria>('name');
   
   const lineupRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
@@ -119,6 +138,34 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
       fetchData();
     }
   }, [activeMembers, firestore]);
+
+  const getEfficiencyValue = (playerId: string, criteria: SortCriteria) => {
+    const stats = statsMap[playerId];
+    if (!stats || !stats.totalTimeSeconds) return 0;
+    const hours = stats.totalTimeSeconds / 3600;
+    
+    switch (criteria) {
+      case 'kill': return (stats.totalKills || 0) / hours;
+      case 'attack': return (stats.totalOffense || 0) / hours;
+      case 'defense': return (stats.totalDefense || 0) / hours;
+      case 'support': return (stats.totalSupport || 0) / hours;
+      case 'combat': return (stats.totalCombat || 0) / hours;
+      default: return 0;
+    }
+  };
+
+  const sortedActiveMembers = useMemo(() => {
+    const list = [...activeMembers];
+    if (sortCriteria === 'name') {
+      return list.sort((a, b) => a.playerName.localeCompare(b.playerName));
+    }
+
+    return list.sort((a, b) => {
+      const valA = getEfficiencyValue(a.id, sortCriteria);
+      const valB = getEfficiencyValue(b.id, sortCriteria);
+      return valB - valA;
+    });
+  }, [activeMembers, sortCriteria, statsMap]);
 
   const memberAssignmentMap = useMemo(() => {
     const map = new Map<string, string>();
@@ -378,15 +425,80 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
         <div className="lg:col-span-1 space-y-4">
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-lg flex items-center gap-2"><Users className="h-5 w-5 text-accent" />Membros Ativos</CardTitle>
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Users className="h-5 w-5 text-accent" />
+                  Membros Ativos
+                </CardTitle>
+                <Dialog>
+                  <DialogTrigger asChild>
+                    <Button variant="ghost" size="icon" className="h-8 w-8">
+                      <Maximize2 className="h-4 w-4" />
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="max-w-4xl max-h-[90vh]">
+                    <DialogHeader>
+                      <DialogTitle>Inteligência Operacional do Clã</DialogTitle>
+                    </DialogHeader>
+                    <ScrollArea className="h-[70vh] pr-4">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Soldado</TableHead>
+                            <TableHead className="text-right">Kills/h</TableHead>
+                            <TableHead className="text-right">Ataque/h</TableHead>
+                            <TableHead className="text-right">Defesa/h</TableHead>
+                            <TableHead className="text-right">Suporte/h</TableHead>
+                            <TableHead className="text-right">DNA</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {activeMembers.map(m => {
+                            const stats = statsMap[m.id];
+                            const hours = (stats?.totalTimeSeconds || 0) / 3600 || 1;
+                            return (
+                              <TableRow key={m.id}>
+                                <TableCell className="font-bold">{m.playerName}</TableCell>
+                                <TableCell className="text-right tabular-nums">{((stats?.totalKills || 0) / hours).toFixed(1)}</TableCell>
+                                <TableCell className="text-right tabular-nums">{Math.round((stats?.totalOffense || 0) / hours)}</TableCell>
+                                <TableCell className="text-right tabular-nums">{Math.round((stats?.totalDefense || 0) / hours)}</TableCell>
+                                <TableCell className="text-right tabular-nums">{Math.round((stats?.totalSupport || 0) / hours)}</TableCell>
+                                <TableCell className="w-32"><TacticalDNABar memberId={m.id} /></TableCell>
+                              </TableRow>
+                            );
+                          })}
+                        </TableBody>
+                      </Table>
+                    </ScrollArea>
+                  </DialogContent>
+                </Dialog>
+              </div>
               <CardDescription className="text-[11px] leading-tight">DNA Tático: Proporção acumulada. Poder: Eficiência vs Recorde.</CardDescription>
+              <div className="pt-2">
+                <Select value={sortCriteria} onValueChange={(val) => setSortCriteria(val as SortCriteria)}>
+                  <SelectTrigger className="h-8 text-[10px] bg-muted/50 border-accent/10">
+                    <div className="flex items-center gap-2">
+                      <ArrowUpDown className="h-3 w-3 text-accent" />
+                      <SelectValue placeholder="Ordenar por..." />
+                    </div>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="name" className="text-[11px]">Nome (A-Z)</SelectItem>
+                    <SelectItem value="kill" className="text-[11px]">Letalidade (Kills/h)</SelectItem>
+                    <SelectItem value="attack" className="text-[11px]">Eficiência de Ataque</SelectItem>
+                    <SelectItem value="defense" className="text-[11px]">Eficiência de Defesa</SelectItem>
+                    <SelectItem value="support" className="text-[11px]">Eficiência de Suporte</SelectItem>
+                    <SelectItem value="combat" className="text-[11px]">Eficiência de Combate</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </CardHeader>
             <CardContent className="p-0">
               <ScrollArea className="h-[600px] px-4">
                 <div className="space-y-1 py-2">
-                  {activeMembers.length === 0 && !isLoading ? (
+                  {sortedActiveMembers.length === 0 && !isLoading ? (
                     <p className="text-xs text-muted-foreground text-center py-8 italic">Nenhum membro ativo encontrado.</p>
-                  ) : activeMembers.map(member => {
+                  ) : sortedActiveMembers.map(member => {
                     const isSelected = selectedMemberIds.has(member.id);
                     const isAssigned = memberAssignmentMap.has(member.id);
                     const isBeingDragged = draggedMemberId === member.id;
