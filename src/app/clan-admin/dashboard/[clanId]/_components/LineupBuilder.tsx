@@ -45,6 +45,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogTrigger,
 } from "@/components/ui/dialog";
 import {
@@ -436,33 +437,63 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
                       <Maximize2 className="h-4 w-4" />
                     </Button>
                   </DialogTrigger>
-                  <DialogContent className="max-w-4xl max-h-[90vh]">
+                  <DialogContent className="max-w-5xl max-h-[90vh]">
                     <DialogHeader>
-                      <DialogTitle>Inteligência Operacional do Clã</DialogTitle>
+                      <DialogTitle className="flex items-center gap-2">
+                        <Maximize2 className="h-5 w-5 text-accent" />
+                        Inteligência Operacional do Clã
+                      </DialogTitle>
+                      <DialogDescription>Clique nos cabeçalhos para ordenar por eficiência (PPH).</DialogDescription>
                     </DialogHeader>
-                    <ScrollArea className="h-[70vh] pr-4">
+                    <ScrollArea className="h-[70vh] pr-4 mt-4">
                       <Table>
                         <TableHeader>
                           <TableRow>
-                            <TableHead>Soldado</TableHead>
-                            <TableHead className="text-right">Kills/h</TableHead>
-                            <TableHead className="text-right">Ataque/h</TableHead>
-                            <TableHead className="text-right">Defesa/h</TableHead>
-                            <TableHead className="text-right">Suporte/h</TableHead>
+                            <TableHead>
+                              <Button variant="ghost" size="sm" className={cn("font-bold px-0", sortCriteria === 'name' && "text-accent")} onClick={() => setSortCriteria('name')}>
+                                Soldado {sortCriteria === 'name' && <ArrowUpDown className="ml-2 h-3 w-3" />}
+                              </Button>
+                            </TableHead>
+                            <TableHead className="text-right">
+                              <Button variant="ghost" size="sm" className={cn("font-bold ml-auto px-0", sortCriteria === 'kill' && "text-accent")} onClick={() => setSortCriteria('kill')}>
+                                Kills/h {sortCriteria === 'kill' && <ArrowUpDown className="ml-2 h-3 w-3" />}
+                              </Button>
+                            </TableHead>
+                            <TableHead className="text-right">
+                              <Button variant="ghost" size="sm" className={cn("font-bold ml-auto px-0", sortCriteria === 'attack' && "text-accent")} onClick={() => setSortCriteria('attack')}>
+                                Ataque/h {sortCriteria === 'attack' && <ArrowUpDown className="ml-2 h-3 w-3" />}
+                              </Button>
+                            </TableHead>
+                            <TableHead className="text-right">
+                              <Button variant="ghost" size="sm" className={cn("font-bold ml-auto px-0", sortCriteria === 'defense' && "text-accent")} onClick={() => setSortCriteria('defense')}>
+                                Defesa/h {sortCriteria === 'defense' && <ArrowUpDown className="ml-2 h-3 w-3" />}
+                              </Button>
+                            </TableHead>
+                            <TableHead className="text-right">
+                              <Button variant="ghost" size="sm" className={cn("font-bold ml-auto px-0", sortCriteria === 'support' && "text-accent")} onClick={() => setSortCriteria('support')}>
+                                Suporte/h {sortCriteria === 'support' && <ArrowUpDown className="ml-2 h-3 w-3" />}
+                              </Button>
+                            </TableHead>
+                            <TableHead className="text-right">
+                              <Button variant="ghost" size="sm" className={cn("font-bold ml-auto px-0", sortCriteria === 'combat' && "text-accent")} onClick={() => setSortCriteria('combat')}>
+                                Combate/h {sortCriteria === 'combat' && <ArrowUpDown className="ml-2 h-3 w-3" />}
+                              </Button>
+                            </TableHead>
                             <TableHead className="text-right">DNA</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {activeMembers.map(m => {
+                          {sortedActiveMembers.map(m => {
                             const stats = statsMap[m.id];
                             const hours = (stats?.totalTimeSeconds || 0) / 3600 || 1;
                             return (
-                              <TableRow key={m.id}>
+                              <TableRow key={m.id} className={cn(selectedMemberIds.has(m.id) && "bg-accent/5")}>
                                 <TableCell className="font-bold">{m.playerName}</TableCell>
-                                <TableCell className="text-right tabular-nums">{((stats?.totalKills || 0) / hours).toFixed(1)}</TableCell>
-                                <TableCell className="text-right tabular-nums">{Math.round((stats?.totalOffense || 0) / hours)}</TableCell>
-                                <TableCell className="text-right tabular-nums">{Math.round((stats?.totalDefense || 0) / hours)}</TableCell>
-                                <TableCell className="text-right tabular-nums">{Math.round((stats?.totalSupport || 0) / hours)}</TableCell>
+                                <TableCell className={cn("text-right tabular-nums", sortCriteria === 'kill' && "text-accent font-bold")}>{((stats?.totalKills || 0) / hours).toFixed(1)}</TableCell>
+                                <TableCell className={cn("text-right tabular-nums", sortCriteria === 'attack' && "text-accent font-bold")}>{Math.round((stats?.totalOffense || 0) / hours)}</TableCell>
+                                <TableCell className={cn("text-right tabular-nums", sortCriteria === 'defense' && "text-accent font-bold")}>{Math.round((stats?.totalDefense || 0) / hours)}</TableCell>
+                                <TableCell className={cn("text-right tabular-nums", sortCriteria === 'support' && "text-accent font-bold")}>{Math.round((stats?.totalSupport || 0) / hours)}</TableCell>
+                                <TableCell className={cn("text-right tabular-nums", sortCriteria === 'combat' && "text-accent font-bold")}>{Math.round((stats?.totalCombat || 0) / hours)}</TableCell>
                                 <TableCell className="w-32"><TacticalDNABar memberId={m.id} /></TableCell>
                               </TableRow>
                             );
