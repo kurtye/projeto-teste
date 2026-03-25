@@ -1,75 +1,80 @@
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { BookUser } from 'lucide-react';
-import Link from 'next/link';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
-export default function PoliticaDePrivacidadePage() {
+export default function PrivacyPolicy() {
+  const lastUpdate = new Date().toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' });
+
   return (
-    <div className="container mx-auto max-w-4xl px-4 py-8 mb-16 md:mb-0">
-      <div className="mb-8">
-        <h1 className="text-3xl md:text-4xl font-bold font-headline flex items-center gap-3">
-          <BookUser className="h-8 w-8 text-accent" />
-          Política de Privacidade
-        </h1>
-        <p className="text-muted-foreground mt-2">
-          Última atualização: 3 de Agosto de 2024
-        </p>
-      </div>
-
-      <Card className="bg-card/50 backdrop-blur-sm">
-        <CardContent className="py-6 prose prose-invert prose-lg max-w-none text-foreground/90 prose-headings:text-accent prose-headings:font-headline prose-strong:text-foreground space-y-4">
+    <div className="container mx-auto max-w-4xl px-4 py-16">
+      <Card className="bg-card/50 backdrop-blur-sm border-border/50">
+        <CardHeader className="text-center pb-8 border-b border-border/30">
+          <CardTitle className="text-4xl font-black font-headline uppercase">Política de Privacidade</CardTitle>
+          <p className="text-muted-foreground mt-2 italic text-sm">Última atualização: {lastUpdate}</p>
+        </CardHeader>
+        <CardContent className="pt-8 prose prose-invert prose-lg max-w-none text-foreground/80 
+          prose-headings:text-accent prose-headings:font-headline prose-strong:text-foreground
+          prose-p:mb-6 prose-ul:list-disc prose-ul:pl-6 prose-li:mb-2">
+          
           <p>
-            A sua privacidade é importante para nós. É política do Hell Let Loose BR respeitar a sua privacidade em relação a qualquer informação sua que possamos coletar no site <Link href="/">Hell Let Loose BR</Link>, e outros sites que possuímos e operamos.
+            O <strong>Hell Let Loose BR (HLL BR)</strong> valoriza a sua privacidade. Esta Política de Privacidade descreve como coletamos, usamos e protegemos suas informações ao utilizar nossa plataforma.
           </p>
 
-          <h2>1. Coleta de Dados</h2>
+          <h2 className="text-2xl font-bold mt-12 mb-6 border-b border-border/30 pb-2">1. Coleta de Informações</h2>
           <p>
-            Solicitamos informações pessoais apenas quando realmente precisamos delas para lhe fornecer um serviço. Fazemo-lo por meios justos и legais, com o seu conhecimento e consentimento. Também informamos por que estamos coletando e como será usado.
-          </p>
-          <p>
-            Apenas retemos as informações coletadas pelo tempo necessário para fornecer o serviço solicitado. Quando armazenamos dados, protegemos dentro de meios comercialmente aceitáveis ​​para evitar perdas e roubos, bem como acesso, divulgação, cópia, uso ou modificação não autorizados.
-          </p>
-
-          <h2>2. Cookies e Web Beacons</h2>
-          <p>
-            Utilizamos cookies para armazenar informações, como as suas preferências pessoais quando visita o nosso website. Isto poderá incluir um simples pop-up ou uma ligação em vários serviços que providenciamos.
-          </p>
-          <p>
-            Em adição, também utilizamos publicidade de terceiros no nosso website para suportar os custos de manutenção. Alguns desses publicitários poderão utilizar tecnologias como os cookies e/ou web beacons quando publicitam no nosso website, o que fará com que esses publicitários (como o Google através do Google AdSense) também recebam as suas informações pessoais, como o endereço IP, o seu provedor de internet, o seu browser, etc. Esta função é geralmente utilizada para geotargeting (mostrar publicidade de São Paulo apenas aos leitores oriundos de São Paulo, por exemplo) ou apresentar publicidade direcionada a um tipo de utilizador.
-          </p>
-          <p>
-            Você detém o poder de desligar os seus cookies nas opções do seu browser ou efetuando alterações nas ferramentas de programas antivírus. No entanto, isso poderá alterar a forma como interage com o nosso website ou outros websites.
-          </p>
-
-          <h2>3. Google Analytics e Google AdSense</h2>
-          <p>
-            Este site usa o Google Analytics para coletar informações anônimas, como o número de visitantes do site e as páginas mais populares. Manter este cookie ativado nos ajuda a melhorar nosso site.
-          </p>
-          <p>
-            O serviço Google AdSense que usamos para veicular publicidade usa um cookie DoubleClick para veicular anúncios mais relevantes em toda a Web e limitar o número de vezes que um determinado anúncio é exibido para você. Para mais informações sobre o Google AdSense, consulte as FAQs oficiais sobre privacidade do Google AdSense.
-          </p>
-
-          <h2>4. Links para Sites de Terceiros</h2>
-          <p>
-            O nosso site pode ter ligações para sites externos que не são operados por nós. Esteja ciente de que não temos controle sobre o conteúdo e práticas desses sites e não podemos aceitar responsabilidade por suas respectivas políticas de privacidade.
-          </p>
-
-          <h2>5. Compromisso do Usuário</h2>
-          <p>
-            O usuário se compromete a fazer uso adequado dos conteúdos e da informação que o Hell Let Loose BR oferece no site e com caráter enunciativo, mas não limitativo:
+            Coletamos informações necessárias para fornecer e melhorar nossos serviços, incluindo:
           </p>
           <ul>
-            <li>A) Não se envolver em atividades que sejam ilegais ou contrárias à boa fé e à ordem pública;</li>
-            <li>B) Não difundir propaganda ou conteúdo de natureza racista, xenofóbica, ou sobre azar, qualquer tipo de pornografia ilegal, de apologia ao terrorismo ou contra os direitos humanos;</li>
-            <li>C) Não causar danos aos sistemas físicos (hardwares) e lógicos (softwares) do Hell Let Loose BR, de seus fornecedores ou terceiros, para introduzir ou disseminar vírus informáticos ou quaisquer outros sistemas de hardware ou software que sejam capazes de causar os danos anteriormente mencionados.</li>
+            <li><strong>Dados Públicos de Perfis:</strong> Coletamos estatísticas públicas do jogo Hell Let Loose através de APIs de servidores e da Steam para fins de ranking e histórico.</li>
+            <li><strong>Informações de Autenticação:</strong> Se você se cadastrar como administrador de clã, coletamos seu e-mail e informações básicas de perfil via Firebase Auth.</li>
+            <li><strong>Preferências de Jogador:</strong> Dados fornecidos voluntariamente através do formulário de preferências do clã (ex: classes preferidas, estilo de jogo).</li>
           </ul>
 
+          <h2 className="text-2xl font-bold mt-12 mb-6 border-b border-border/30 pb-2">2. Uso das Informações</h2>
           <p>
-            Você é livre para recusar a nossa solicitação de informações pessoais, entendendo que talvez não possamos fornecer alguns dos serviços desejados.
+            As informações coletadas são utilizadas para:
+          </p>
+          <ul>
+            <li>Exibir rankings globais e de clãs para a comunidade.</li>
+            <li>Gerenciar alinhamentos (lineups) e preferências para administradores de clãs.</li>
+            <li>Gerar relatórios táticos assistidos por Inteligência Artificial.</li>
+            <li>Exibir anúncios relevantes através do Google AdSense.</li>
+            <li>Melhorar a experiência do usuário e a funcionalidade da plataforma.</li>
+          </ul>
+
+          <h2 className="text-2xl font-bold mt-12 mb-6 border-b border-border/30 pb-2">3. Google AdSense e Cookies</h2>
+          <p>
+            Utilizamos o <strong>Google AdSense</strong> para veicular anúncios. O Google utiliza cookies (como o cookie DART) para exibir anúncios com base nas suas visitas a este e outros sites na Internet. Você pode optar por não utilizar o cookie DART visitando a Política de Privacidade da rede de conteúdo e dos anúncios do Google.
           </p>
           <p>
-            O uso continuado de nosso site será considerado como aceitação de nossas práticas em torno de privacidade e informações pessoais. Se você tiver alguma dúvida sobre como lidamos com dados do usuário e informações pessoais, entre em contato conosco através da página <Link href="/sobre">Sobre</Link>.
+            Utilizamos o <strong>Google Analytics</strong> para entender como os usuários interagem com o site. Esses dados são anônimos e focados em métricas de tráfego.
           </p>
+
+          <h2 className="text-2xl font-bold mt-12 mb-6 border-b border-border/30 pb-2">4. Proteção de Dados</h2>
+          <p>
+            Implementamos medidas de segurança técnicas e organizacionais para proteger seus dados contra acesso não autorizado, alteração ou destruição. Utilizamos serviços de infraestrutura de nuvem líderes de mercado (Google Cloud/Firebase) para garantir a integridade dos dados.
+          </p>
+
+          <h2 className="text-2xl font-bold mt-12 mb-6 border-b border-border/30 pb-2">5. Seus Direitos</h2>
+          <p>
+            Como usuário, você tem o direito de:
+          </p>
+          <ul>
+            <li>Solicitar a remoção de seus dados de preferência.</li>
+            <li>Solicitar a anonimização de seu nome em nossos rankings públicos (entre em contato via Discord ou e-mail).</li>
+            <li>Revogar permissões de cookies através das configurações do seu navegador.</li>
+          </ul>
+
+          <h2 className="text-2xl font-bold mt-12 mb-6 border-b border-border/30 pb-2">6. Alterações nesta Política</h2>
+          <p>
+            Reservamo-nos o direito de atualizar esta política a qualquer momento. Notificaremos os usuários sobre mudanças significativas publicando um aviso em nossa plataforma.
+          </p>
+
+          <div className="mt-16 p-6 bg-accent/5 border border-accent/20 rounded-xl">
+            <h3 className="text-xl font-bold text-accent mb-4">Contato</h3>
+            <p className="m-0 italic">
+              Para questões relacionadas à privacidade, entre em contato através do e-mail: <strong>contato@hllbrasil.com</strong>
+            </p>
+          </div>
         </CardContent>
       </Card>
     </div>

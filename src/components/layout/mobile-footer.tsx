@@ -3,15 +3,15 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, Briefcase, Trophy, Users, Crosshair } from 'lucide-react';
+import { Home, Trophy, Users, Crown as CrownIcon, BookUser as BookUserIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const navItems = [
-  { href: '/', label: 'Ranking', icon: Home },
+  { href: '/', label: 'Início', icon: Home },
+  { href: '/ranking', label: 'Ranking', icon: Trophy },
   { href: '/clans', label: 'Clãs', icon: Users },
-  { href: '/armas', label: 'Arsenal', icon: Crosshair },
-  { href: '/hall-of-fame', label: 'Hall da Fama', icon: Trophy },
-  { href: '/caserna', label: 'Caserna', icon: Briefcase },
+  { href: '/hall-of-fame', label: 'Hall da Fama', icon: CrownIcon },
+  { href: '/politica-de-privacidade', label: 'Privacidade', icon: BookUserIcon },
 ];
 
 export function MobileFooter() {

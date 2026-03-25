@@ -27,9 +27,9 @@ import Image from 'next/image';
 
 
 interface ClanPageProps {
-  params: {
+  params: Promise<{
     clanId: string;
-  };
+  }>;
 }
 
 const ranksInOrder = [
@@ -118,12 +118,20 @@ export default function ClanPage({ params }: ClanPageProps) {
               <p className="text-xl text-muted-foreground">Tag: [{clan.tag}]</p>
             </div>
         </div>
-         <Button asChild>
-            <Link href={`/clan-admin/dashboard/${clanId}`}>
-                <Settings className="mr-2 h-4 w-4" />
-                Painel do Admin
-            </Link>
-        </Button>
+        <div className="flex flex-col sm:flex-row gap-3">
+          <Button asChild variant="outline" className="border-accent text-accent hover:bg-accent/10 font-bold">
+              <Link href={`/clans/${clanId}/preferences`}>
+                  <Users className="mr-2 h-4 w-4" />
+                  Cadastrar Minhas Preferências
+              </Link>
+          </Button>
+          <Button asChild>
+              <Link href={`/clan-admin/dashboard/${clanId}`}>
+                  <Settings className="mr-2 h-4 w-4" />
+                  Painel do Admin
+              </Link>
+          </Button>
+        </div>
       </div>
       
        <Tabs defaultValue="hierarchy">

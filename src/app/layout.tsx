@@ -7,14 +7,25 @@ import { Header } from '@/components/layout/header';
 import { FirebaseClientProvider } from '@/firebase';
 import { Sidebar, SidebarProvider, SidebarInset } from '@/components/ui/sidebar';
 import { MobileFooter } from '@/components/layout/mobile-footer';
-import { Home, Trophy, Briefcase, Info, BookUser, Users, Crosshair } from 'lucide-react';
+import { 
+  Home as HomeIcon, 
+  Trophy as TrophyIcon, 
+  Briefcase as BriefcaseIcon, 
+  Info as InfoIcon, 
+  BookUser as BookUserIcon, 
+  Users as UsersIcon, 
+  Crosshair as CrosshairIcon,
+  Crown as CrownIcon
+} from 'lucide-react';
 import { SidebarContent, SidebarMenu, SidebarMenuItem, SidebarMenuButton } from '@/components/ui/sidebar';
 import Link from 'next/link';
 import Script from 'next/script';
+import { Footer } from '@/components/Footer';
 
 export const metadata: Metadata = {
-  title: 'Hell Let Loose BR',
-  description: 'Global player rankings for Hell Let Loose',
+  title: 'Hell Let Loose BR | Dashboard & Ranking Comunidade Brasil',
+  description: 'A maior plataforma de estatísticas, rankings e gestão de clãs para a comunidade brasileira de Hell Let Loose. Acompanhe seu desempenho e lidere seu clã.',
+  keywords: 'Hell Let Loose, HLL, Brasil, Ranking, Estatísticas, Clãs, FPS Tático, WWII',
 };
 
 export default function RootLayout({
@@ -54,38 +65,43 @@ export default function RootLayout({
                 <SidebarContent className="py-4">
                     <SidebarMenu>
                         <SidebarMenuItem>
+                            <SidebarMenuButton asChild tooltip="Início">
+                                <Link href="/"><HomeIcon /><span>Início</span></Link>
+                            </SidebarMenuButton>
+                        </SidebarMenuItem>
+                        <SidebarMenuItem>
                             <SidebarMenuButton asChild tooltip="Ranking">
-                                <Link href="/"><Home /><span>Ranking</span></Link>
+                                <Link href="/ranking"><TrophyIcon /><span>Ranking Geral</span></Link>
                             </SidebarMenuButton>
                         </SidebarMenuItem>
                          <SidebarMenuItem>
                             <SidebarMenuButton asChild tooltip="Clãs">
-                                <Link href="/clans"><Users /><span>Clãs</span></Link>
+                                <Link href="/clans"><UsersIcon /><span>Clãs</span></Link>
                             </SidebarMenuButton>
                         </SidebarMenuItem>
                         <SidebarMenuItem>
                             <SidebarMenuButton asChild tooltip="Arsenal">
-                                <Link href="/armas"><Crosshair /><span>Arsenal</span></Link>
+                                <Link href="/armas"><CrosshairIcon /><span>Arsenal</span></Link>
                             </SidebarMenuButton>
                         </SidebarMenuItem>
                          <SidebarMenuItem>
                             <SidebarMenuButton asChild tooltip="Hall da Fama">
-                                <Link href="/hall-of-fame"><Trophy /><span>Hall da Fama</span></Link>
+                                <Link href="/hall-of-fame"><CrownIcon /><span>Hall da Fama</span></Link>
                             </SidebarMenuButton>
                         </SidebarMenuItem>
                          <SidebarMenuItem>
                             <SidebarMenuButton asChild tooltip="Caserna">
-                                <Link href="/caserna"><Briefcase /><span>Caserna</span></Link>
+                                <Link href="/caserna"><BriefcaseIcon /><span>Caserna</span></Link>
                             </SidebarMenuButton>
                         </SidebarMenuItem>
                          <SidebarMenuItem>
                             <SidebarMenuButton asChild tooltip="Sobre">
-                                <Link href="/sobre"><Info /><span>Sobre</span></Link>
+                                <Link href="/sobre"><InfoIcon /><span>Sobre</span></Link>
                             </SidebarMenuButton>
                         </SidebarMenuItem>
                         <SidebarMenuItem>
                             <SidebarMenuButton asChild tooltip="Privacidade">
-                                <Link href="/politica-de-privacidade"><BookUser /><span>Privacidade</span></Link>
+                                <Link href="/politica-de-privacidade"><BookUserIcon /><span>Privacidade</span></Link>
                             </SidebarMenuButton>
                         </SidebarMenuItem>
                     </SidebarMenu>
@@ -94,6 +110,7 @@ export default function RootLayout({
             <SidebarInset>
                 <Header />
                 <main className="flex-1">{children}</main>
+                <Footer />
                 <MobileFooter />
             </SidebarInset>
           </SidebarProvider>
