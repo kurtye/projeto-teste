@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useTransition } from 'react';
+import { useState, useEffect } from 'react';
 import { getAvailableWeapons, getWeaponLeaderboard } from './actions';
 import type { WeaponLeaderboardEntry } from '@/lib/types';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -11,9 +11,12 @@ import { Crosshair, Trophy, Search } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { AdBanner } from '@/components/AdBanner';
 import Link from 'next/link';
+import Image from 'next/image';
+import { getClanFromPlayerName } from '@/lib/clans';
 
 type AvailableWeapon = {
   name: string;
+  totalKills: number;
 };
 
 const getRankHighlightClasses = (rank: number): string => {
@@ -60,7 +63,7 @@ export default function ArmasPage() {
           Arsenal da Comunidade
         </h1>
         <p className="text-muted-foreground mt-2">
-          Placar de líderes para cada arma. Descubra quem são os melhores com sua arma favorita.
+          Descubra quem são os melhores com cada arma. Selecione uma arma para ver o ranking de abates.
         </p>
       </div>
 
@@ -79,7 +82,7 @@ export default function ArmasPage() {
           <CardDescription>
             {isWeaponsLoading 
                 ? <Skeleton className="h-5 w-48" /> 
-                : "Selecione uma arma para ver os jogadores com mais abates."}
+                : `${availableWeapons.length} armas disponíveis. Selecione uma para ver o placar.`}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -91,10 +94,13 @@ export default function ArmasPage() {
                         <SelectTrigger>
                             <SelectValue placeholder="Selecione uma arma..." />
                         </SelectTrigger>
-                        <SelectContent>
+                        <SelectContent className="max-h-80">
                             {availableWeapons.map((weapon) => (
                                 <SelectItem key={weapon.name} value={weapon.name}>
-                                    {weapon.name}
+                                    <div className="flex items-center justify-between w-full gap-4">
+                                        <span>{weapon.name}</span>
+                                        <span className="text-xs text-muted-foreground tabular-nums">{weapon.totalKills.toLocaleString()} kills</span>
+                                    </div>
                                 </SelectItem>
                             ))}
                         </SelectContent>
@@ -110,14 +116,15 @@ export default function ArmasPage() {
                 <Table>
                     <TableHeader>
                     <TableRow>
-                        <TableHead className="w-[80px]">Rank</TableHead>
+                        <TableHead className="w-[80px]">Posição</TableHead>
                         <TableHead>Jogador</TableHead>
-                        <TableHead className="text-right">Total de Kills</TableHead>
+                        <TableHead className="text-right">Total de Abates</TableHead>
                     </TableRow>
                     </TableHeader>
                     <TableBody>
                         {leaderboard.map((player, index) => {
                             const rank = index + 1;
+                            const detectedClan = getClanFromPlayerName(player.playerName);
                             return (
                                 <TableRow key={player.playerId}>
                                     <TableCell className={cn("font-bold text-lg", getRankHighlightClasses(rank))}>
@@ -126,7 +133,10 @@ export default function ArmasPage() {
                                         </div>
                                     </TableCell>
                                     <TableCell>
-                                      <Link href={`/player/${encodeURIComponent(player.playerId)}`} className="font-medium hover:underline">
+                                      <Link href={`/player/${encodeURIComponent(player.playerId)}`} className="font-medium hover:underline flex items-center gap-2">
+                                        {detectedClan?.logoUrl && (
+                                          <Image src={detectedClan.logoUrl} alt={detectedClan.name} width={20} height={20} className="rounded-full object-cover flex-shrink-0" />
+                                        )}
                                         {player.playerName}
                                       </Link>
                                     </TableCell>

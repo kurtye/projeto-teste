@@ -5,3 +5,15 @@ runConfig:
   # Increase this value if you'd like to automatically spin up
   # more instances in response to increased traffic.
   maxInstances: 1
+
+env:
+  - variable: GEMINI_API_KEY
+    value: AIzaSyBMExVFgzO1NugAWVcIXsBqpBl0eJrKHNg
+    availability:
+      - BUILD
+      - RUNTIME
+  - variable: NEXT_PUBLIC_ADMIN_PASSWORD
+    value: Web@102030
+    availability:
+      - BUILD
+      - RUNTIME

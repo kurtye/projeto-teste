@@ -15,6 +15,7 @@ const servers = [
   { name: 'OCL', url: 'https://ocabala-stats.hlladmin.com/games' },
   { name: 'GOAT', url: 'https://goat-stats.hlladmin.com/games' },
   { name: 'SAP', url: 'https://sap-stats.hlladmin.com/api' },
+  { name: 'SMK', url: 'http://stats.smk-hll.com' },
 ];
 
 const pixKey = '00020126330014br.gov.bcb.pix0111007235441075204000053039865802BR5925MARLON HENRIQUE RAMALHO A6009SAO PAULO62580520SAN2025102700304547650300017br.gov.bcb.brcode01051.0.06304FD3D';
@@ -45,87 +46,86 @@ export default function SobrePage() {
 
       <div className="grid gap-8 md:grid-cols-2">
         <div className="space-y-8">
-            <Card>
-                <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                    <Server className="h-6 w-6" />
-                    Fontes dos Dados
-                    </CardTitle>
-                    <CardDescription>
-                    As estatísticas são extraídas publicamente dos seguintes servidores da comunidade:
-                    </CardDescription>
-                </CardHeader>
-                <CardContent>
-                    <ul className="space-y-2">
-                    {servers.map((server) => (
-                        <li key={server.name}>
-                        <Link href={server.url} target="_blank" rel="noopener noreferrer" className="text-accent underline hover:text-accent/80">
-                           {server.name} - Estatísticas
-                        </Link>
-                        </li>
-                    ))}
-                    </ul>
-                </CardContent>
-            </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Server className="h-6 w-6" />
+                Fontes dos Dados
+              </CardTitle>
+              <CardDescription>
+                As estatísticas são extraídas publicamente dos seguintes servidores da comunidade:
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ul className="space-y-2">
+                {servers.map((server) => (
+                  <li key={server.name}>
+                    <Link href={server.url} target="_blank" rel="noopener noreferrer" className="text-accent underline hover:text-accent/80">
+                      {server.name} - Estatísticas
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </CardContent>
+          </Card>
 
-            <Card>
-                <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                    <Phone className="h-6 w-6" />
-                    Contato
-                    </CardTitle>
-                    <CardDescription>
-                    Para sugestões, dúvidas ou relatar um problema.
-                    </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                    <div className="flex items-center gap-3">
-                        <Mail className="h-5 w-5 text-muted-foreground" />
-                        <a href="mailto:marlonhrafonso@gmail.com" className="font-mono hover:underline">
-                            marlonhrafonso@gmail.com
-                        </a>
-                    </div>
-                     <div className="flex items-center gap-3">
-                        <Phone className="h-5 w-5 text-muted-foreground" />
-                        <span className="font-mono">+55 11 950311208</span>
-                    </div>
-                </CardContent>
-            </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Phone className="h-6 w-6" />
+                Contato
+              </CardTitle>
+              <CardDescription>
+                Para sugestões, dúvidas ou relatar um problema.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="flex items-center gap-3">
+                <Mail className="h-5 w-5 text-muted-foreground" />
+                <a href="mailto:marlonhrafonso@gmail.com" className="font-mono hover:underline">
+                  marlonhrafonso@gmail.com
+                </a>
+              </div>
+              <div className="flex items-center gap-3">
+                <Phone className="h-5 w-5 text-muted-foreground" />
+                <span className="font-mono">+55 11 950311208</span>
+              </div>
+            </CardContent>
+          </Card>
         </div>
 
         <Card className="flex flex-col">
-            <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                <Beer className="h-6 w-6 text-yellow-400" />
-                Quer me pagar uma breja?
-                </CardTitle>
-                <CardDescription>
-                Se você curte o projeto, considere fazer uma contribuição para ajudar a manter os custos do servidor.
-                </CardDescription>
-            </CardHeader>
-            <CardContent className="flex-grow flex flex-col items-center justify-center text-center space-y-4">
-                 <div className="w-48 h-48 bg-white rounded-lg flex items-center justify-center p-2">
-                    <Image src="/pix.png" alt="QR Code PIX" width={180} height={180} className="rounded-md" />
-                </div>
-                <p className="text-muted-foreground text-sm">Ou use o Pix Copia e Cola:</p>
-                 <div className="flex flex-col items-center gap-2 w-full max-w-xs">
-                    <textarea
-                      readOnly
-                      className="w-full text-xs p-2 rounded-md bg-muted/50 border text-center h-24 resize-none"
-                      value={pixKey}
-                    />
-                    <Button variant="outline" size="sm" onClick={() => copyToClipboard(pixKey)}>
-                        <Copy className="h-4 w-4 mr-2" />
-                        Copiar Chave
-                    </Button>
-                </div>
-            </CardContent>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Beer className="h-6 w-6 text-yellow-400" />
+              Quer me pagar uma breja?
+            </CardTitle>
+            <CardDescription>
+              Se você curte o projeto, considere fazer uma contribuição para ajudar a manter os custos do servidor.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex-grow flex flex-col items-center justify-center text-center space-y-4">
+            <div className="w-48 h-48 bg-white rounded-lg flex items-center justify-center p-2">
+              <Image src="/pix.png" alt="QR Code PIX" width={180} height={180} className="rounded-md" />
+            </div>
+            <p className="text-muted-foreground text-sm">Ou use o Pix Copia e Cola:</p>
+            <div className="flex flex-col items-center gap-2 w-full max-w-xs">
+              <textarea
+                readOnly
+                className="w-full text-xs p-2 rounded-md bg-muted/50 border text-center h-24 resize-none"
+                value={pixKey}
+              />
+              <Button variant="outline" size="sm" onClick={() => copyToClipboard(pixKey)}>
+                <Copy className="h-4 w-4 mr-2" />
+                Copiar Chave
+              </Button>
+            </div>
+          </CardContent>
         </Card>
       </div>
     </div>
   );
 }
 
-    
 
-    
+

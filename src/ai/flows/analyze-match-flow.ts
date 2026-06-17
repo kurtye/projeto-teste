@@ -12,6 +12,7 @@ import {z} from 'genkit';
 
 const AnalyzeMatchInputSchema = z.object({
   matchJson: z.string().describe('O JSON completo da partida retornado pela API.'),
+  factionFilter: z.enum(['all', 'axis', 'allies']).optional().describe('Filtro de facção: "all" para todas, "axis" para eixo, "allies" para aliados.'),
 });
 export type AnalyzeMatchInput = z.infer<typeof AnalyzeMatchInputSchema>;
 
@@ -29,8 +30,76 @@ const analyzeMatchFlow = ai.defineFlow(
     outputSchema: AnalyzeMatchOutputSchema,
   },
   async (input) => {
-    const response = await ai.generate({
-      prompt: `
+    const factionFilter = input.factionFilter || 'all';
+    const isSingleFaction = factionFilter !== 'all';
+    
+    let prompt: string;
+
+    if (isSingleFaction) {
+      // Modo análise de dados para facção única
+      const faccionName = factionFilter === 'axis' ? 'AXIS (Eixo)' : 'ALLIES (Aliados)';
+      const teamSide = factionFilter === 'axis' ? 'axis' : 'allies';
+      
+      prompt = `
+        Você é um Analista de Dados especialista em Hell Let Loose.
+        Sua tarefa é extrair e organizar dados brutos de uma partida em formato estruturado para análise.
+        
+        FILTRO CRÍTICO: Considere APENAS jogadores onde o campo JSON "team.side" é igual a "${teamSide}".
+        Ignore completamente qualquer jogador que tenha "team.side" diferente de "${teamSide}".
+        
+        Gere um relatório estruturado APENAS COM DADOS, SEM NARRATIVA. Seja objetivo e preciso.
+
+        **ESTRUTURA DO RELATÓRIO:**
+
+        ### MVP da Partida
+        Nome do jogador com melhor performance (considere Kills + Combate + Defesa + Suporte equilibrados)
+
+        ### Top 5 - Kills
+        1. Nome | Kills
+        2. Nome | Kills
+        ... (até 5)
+
+        ### Top 5 - Pontuação de Ataque (Offense)
+        1. Nome | Pontos
+        2. Nome | Pontos
+        ... (até 5)
+
+        ### Top 5 - Pontuação de Defesa (Defense)
+        1. Nome | Pontos
+        2. Nome | Pontos
+        ... (até 5)
+
+        ### Top 5 - Pontuação de Combate (Combat)
+        1. Nome | Pontos
+        2. Nome | Pontos
+        ... (até 5)
+
+        ### Top 5 - Pontuação de Suporte (Support)
+        1. Nome | Pontos
+        2. Nome | Pontos
+        ... (até 5)
+
+        ### Top 10 Ranking Geral (Pontuação Total)
+        Ranking dos 10 melhores jogadores por PONTUAÇÃO TOTAL SOMADA (Ataque + Defesa + Combate + Suporte).
+        
+        1. Nome | Pontos Totais (Ataque: X | Defesa: Y | Combate: Z | Suporte: W)
+        2. Nome | Pontos Totais (Ataque: X | Defesa: Y | Combate: Z | Suporte: W)
+        ... (até 10)
+
+        ### Estatísticas Gerais
+        - Total de Jogadores: X
+        - Total de Kills: X
+        - Pontuação Total de Ataque: X
+        - Pontuação Total de Defesa: X
+        - Pontuação Total de Combate: X
+        - Pontuação Total de Suporte: X
+
+        DADOS DA PARTIDA:
+        ${input.matchJson}
+      `;
+    } else {
+      // Modo narrativo para ambas facções
+      prompt = `
         Você é um Analista Tático Militar especialista no jogo Hell Let Loose.
         Sua tarefa é analisar o JSON de uma partida e gerar um relatório envolvente, técnico e detalhado em Markdown.
 
@@ -67,7 +136,11 @@ const analyzeMatchFlow = ai.defineFlow(
 
         DADOS DA PARTIDA:
         ${input.matchJson}
-      `,
+      `;
+    }
+
+    const response = await ai.generate({
+      prompt,
     });
 
     return response.text;

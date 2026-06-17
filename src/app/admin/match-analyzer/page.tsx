@@ -9,9 +9,14 @@ import { useToast } from '@/hooks/use-toast';
 import { runMatchAnalysisAction, publishToCasernaAction } from '../actions';
 import { Sparkles, FileJson, Sword, Shield, Target, Trophy, Info, Send } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Label } from '@/components/ui/label';
+
+type FactionFilter = 'all' | 'axis' | 'allies';
 
 export default function MatchAnalyzerPage() {
   const [matchJson, setMatchJson] = useState('');
+  const [factionFilter, setFactionFilter] = useState<FactionFilter>('all');
   const [report, setReport] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const [isPublishing, startPublishTransition] = useTransition();
@@ -33,7 +38,7 @@ export default function MatchAnalyzerPage() {
 
     startTransition(async () => {
       setReport(null);
-      const result = await runMatchAnalysisAction(matchJson);
+      const result = await runMatchAnalysisAction(matchJson, factionFilter);
       if (result.success && result.report) {
         setReport(result.report);
         toast({ title: 'Análise Concluída!', description: 'O relatório tático foi gerado com sucesso.' });
@@ -100,10 +105,25 @@ export default function MatchAnalyzerPage() {
               className="min-h-[200px] font-mono text-xs"
               disabled={isPending}
             />
-            <Button onClick={handleAnalyze} disabled={isPending || !matchJson.trim()} className="w-full sm:w-auto">
-              <Sparkles className={`mr-2 h-4 w-4 ${isPending ? 'animate-spin' : ''}`} />
-              {isPending ? 'Processando Dados...' : 'Gerar Relatório Tático'}
-            </Button>
+            <div className="flex flex-col sm:flex-row gap-4 items-end">
+              <div className="w-full sm:w-auto space-y-1">
+                <Label htmlFor="faction-select">Analisar por Facção</Label>
+                <Select value={factionFilter} onValueChange={(value) => setFactionFilter(value as FactionFilter)}>
+                  <SelectTrigger id="faction-select" className="w-full sm:w-[180px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todas as Facções</SelectItem>
+                    <SelectItem value="axis">Apenas Eixo</SelectItem>
+                    <SelectItem value="allies">Apenas Aliados</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button onClick={handleAnalyze} disabled={isPending || !matchJson.trim()} className="w-full sm:w-auto">
+                <Sparkles className={`mr-2 h-4 w-4 ${isPending ? 'animate-spin' : ''}`} />
+                {isPending ? 'Processando Dados...' : 'Gerar Relatório Tático'}
+              </Button>
+            </div>
           </CardContent>
         </Card>
 

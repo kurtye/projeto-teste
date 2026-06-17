@@ -24,7 +24,7 @@ import {
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
-import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
+import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { useFirestore } from '@/firebase';
 import { useState, useMemo } from 'react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -45,6 +45,7 @@ const HLL_ROLES = [
   'Antitanque',
   'Metralhadora',
   'Atirador de Elite',
+  'Artilharia',
   'Spotter',
   'Tripulante de Tanque',
   'Comandante de Tanque',
@@ -100,13 +101,34 @@ export function PlayerPreferencesForm({ clanId, members }: PlayerPreferencesForm
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
     if (!firestore) return;
+
+    // Find the member by name to get their document ID
+    const member = members.find(m => m.playerName === values.playerName);
+    if (!member) {
+      toast({
+        title: 'Membro não encontrado',
+        description: 'Não foi possível identificar o jogador selecionado.',
+        variant: 'destructive',
+      });
+      return;
+    }
     
     setIsSubmitting(true);
     try {
-      await addDoc(collection(firestore, 'clans', clanId, 'playerPreferences'), {
-        ...values,
-        updatedAt: serverTimestamp(),
-      });
+      // Save directly on the member doc via merge so other fields are preserved
+      await setDoc(
+        doc(firestore, 'clans', clanId, 'members', member.id),
+        {
+          primaryRole: values.primaryRole,
+          secondaryRole: values.secondaryRole1,
+          secondaryRole2: values.secondaryRole2,
+          roleToLearn: values.roleToLearn,
+          playstyle: values.playstyle,
+          notes: values.notes ?? '',
+          preferencesUpdatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
       
       form.reset();
       toast({

@@ -5,15 +5,17 @@ import { useClanAuth } from '../../layout';
 import { useRouter } from 'next/navigation';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { LogOut, Users, Edit, UserPlus, RefreshCw, CheckSquare, Square, List, Trophy, Shield, Star, Crown, ArrowUp, Diamond, Award, Medal, Search, CalendarDays, Trash2, Sparkles, ClipboardList } from 'lucide-react';
+import { LogOut, Users, Edit, UserPlus, RefreshCw, CheckSquare, Square, List, Trophy, Shield, Star, Crown, ArrowUp, Diamond, Award, Medal, Search, CalendarDays, Trash2, Sparkles, ClipboardList, LayoutDashboard } from 'lucide-react';
 import { useCollection, useMemoFirebase, useFirestore } from '@/firebase';
 import { collection, query, orderBy } from 'firebase/firestore';
 import type { PlayerAggregates, ClanMember, PromotionLog, PlayerPeriodStats } from '@/lib/types';
+import { getClanFromPlayerName } from '@/lib/clans';
 import { EditMemberDialog } from './_components/EditMemberDialog';
 import { RemoveMemberDialog } from './_components/RemoveMemberDialog';
 import { HierarchyView } from './_components/HierarchyView';
 import { RecentPromotions } from './_components/RecentPromotions';
 import { LineupBuilder } from './_components/LineupBuilder';
+import { MemberPreferencesDashboard } from './_components/MemberPreferencesDashboard';
 import {
   Table,
   TableBody,
@@ -50,6 +52,14 @@ const monthlyColumns: MonthlyColumn[] = [
   { key: 'totalOffense', label: 'Ataque', formatter: (val) => val.toLocaleString() },
   { key: 'totalDefense', label: 'Defesa', formatter: (val) => val.toLocaleString() },
   { key: 'totalSupport', label: 'Suporte', formatter: (val) => val.toLocaleString() },
+];
+
+const monthlyEfficiencyColumns: MonthlyColumn[] = [
+  { key: 'totalKills', label: 'Kills/h', formatter: (val) => val.toFixed(1) },
+  { key: 'totalCombat', label: 'Combate/h', formatter: (val) => val.toFixed(1) },
+  { key: 'totalOffense', label: 'Ataque/h', formatter: (val) => val.toFixed(1) },
+  { key: 'totalDefense', label: 'Defesa/h', formatter: (val) => val.toFixed(1) },
+  { key: 'totalSupport', label: 'Suporte/h', formatter: (val) => val.toFixed(1) },
 ];
 
 const MonthlySortableHeader = ({
@@ -115,6 +125,8 @@ export default function ClanDashboardPage({ params }: { params: Promise<{ clanId
     key: 'totalKills',
     direction: 'descending',
   });
+  
+  const [showEfficiency, setShowEfficiency] = useState(false);
 
   // State for recruitment tab
   const [isFindingTalents, startFindingTalents] = useTransition();
@@ -459,11 +471,25 @@ export default function ClanDashboardPage({ params }: { params: Promise<{ clanId
     setMonthlySortConfig({ key, direction });
   };
   
+  const getEfficiencyValue = (stat: PlayerPeriodStats, key: MonthlySortKey): number => {
+    const hours = (stat.totalTimeSeconds || 0) / 3600;
+    if (hours === 0) return 0;
+    const value = (stat[key] as number) || 0;
+    return value / hours;
+  };
+  
   const sortedMonthlyStats = useMemo(() => {
     const sortableStats = [...monthlyStats];
     sortableStats.sort((a, b) => {
-      const valA = a[monthlySortConfig.key] || 0;
-      const valB = b[monthlySortConfig.key] || 0;
+      let valA: number, valB: number;
+      
+      if (showEfficiency && monthlySortConfig.key !== 'totalTimeSeconds') {
+        valA = getEfficiencyValue(a, monthlySortConfig.key);
+        valB = getEfficiencyValue(b, monthlySortConfig.key);
+      } else {
+        valA = a[monthlySortConfig.key] || 0;
+        valB = b[monthlySortConfig.key] || 0;
+      }
 
       if (valA < valB) {
         return monthlySortConfig.direction === 'ascending' ? -1 : 1;
@@ -477,13 +503,17 @@ export default function ClanDashboardPage({ params }: { params: Promise<{ clanId
       return 0;
     });
     return sortableStats;
-  }, [monthlyStats, monthlySortConfig]);
+  }, [monthlyStats, monthlySortConfig, showEfficiency]);
 
   const orderedColumns = useMemo(() => {
-    const active = monthlyColumns.find(c => c.key === monthlySortConfig.key)!;
-    const others = monthlyColumns.filter(c => c.key !== monthlySortConfig.key);
+    const cols = showEfficiency ? monthlyEfficiencyColumns : monthlyColumns;
+    const active = cols.find(c => c.key === monthlySortConfig.key);
+    if (!active) {
+      return cols;
+    }
+    const others = cols.filter(c => c.key !== monthlySortConfig.key);
     return [active, ...others];
-  }, [monthlySortConfig.key]);
+  }, [monthlySortConfig.key, showEfficiency]);
 
 
   return (
@@ -515,13 +545,14 @@ export default function ClanDashboardPage({ params }: { params: Promise<{ clanId
 
       <Tabs defaultValue="list">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4">
-            <TabsList className="grid w-full grid-cols-3 md:grid-cols-6 h-auto">
+            <TabsList className="grid w-full grid-cols-4 md:grid-cols-7 h-auto">
                 <TabsTrigger value="list" className="py-2"><List className="mr-2 h-4 w-4"/>Lista</TabsTrigger>
                 <TabsTrigger value="hierarchy" className="py-2"><Users className="mr-2 h-4 w-4"/>Hierarquia</TabsTrigger>
                 <TabsTrigger value="lineup" className="py-2"><ClipboardList className="mr-2 h-4 w-4"/>Escalação</TabsTrigger>
                 <TabsTrigger value="promotions" className="py-2"><Medal className="mr-2 h-4 w-4"/>Promoções</TabsTrigger>
                 <TabsTrigger value="recruitment" className="py-2"><UserPlus className="mr-2 h-4 w-4"/>Recrutar</TabsTrigger>
                 <TabsTrigger value="monthly-stats" className="py-2"><CalendarDays className="mr-2 h-4 w-4"/>Stats Mensais</TabsTrigger>
+                <TabsTrigger value="preferences" className="py-2"><LayoutDashboard className="mr-2 h-4 w-4"/>Preferências</TabsTrigger>
             </TabsList>
             <div className='flex items-center gap-4'>
                 <div className="text-right">
@@ -561,12 +592,15 @@ export default function ClanDashboardPage({ params }: { params: Promise<{ clanId
                         {manualSearchResults.length > 0 && (
                             <div className="space-y-3 pt-2">
                                 <div className="max-h-60 overflow-y-auto space-y-1 pr-2">
-                                    {manualSearchResults.map(player => (
+                                    {manualSearchResults.map(player => {
+                                        const dClan = getClanFromPlayerName(player.latestPlayerName);
+                                        return (
                                         <div key={player.id} onClick={() => handleToggleSelectManualPlayer(player.id)} className="flex items-center gap-3 p-2 rounded-md hover:bg-muted cursor-pointer text-sm border border-transparent hover:border-accent/20 transition-all">
-                                            {selectedManualPlayers.has(player.id) ? <CheckSquare className="h-4 w-4 text-accent" /> : <Square className="h-4 w-4 text-muted-foreground" />}
+                                            {selectedManualPlayers.has(player.id) ? <CheckSquare className="h-4 w-4 text-accent flex-shrink-0" /> : <Square className="h-4 w-4 text-muted-foreground flex-shrink-0" />}
+                                            {dClan?.logoUrl && <Image src={dClan.logoUrl} alt={dClan.name} width={16} height={16} className="rounded-full flex-shrink-0 object-cover" />}
                                             <span className="truncate">{player.latestPlayerName}</span>
                                         </div>
-                                    ))}
+                                    )})}
                                 </div>
                                 <div className="flex flex-col gap-2 pt-2 border-t border-border/50">
                                     <Button size="sm" onClick={handleAddSelectedManualMembers} disabled={isAdding || selectedManualPlayers.size === 0}>
@@ -606,12 +640,15 @@ export default function ClanDashboardPage({ params }: { params: Promise<{ clanId
                             </CardHeader>
                             <CardContent className="py-0">
                                 <div className="space-y-1 max-h-40 overflow-y-auto px-1">
-                                    {potentialMembers.map(player => (
+                                    {potentialMembers.map(player => {
+                                        const dClan = getClanFromPlayerName(player.latestPlayerName);
+                                        return (
                                         <div key={player.id} onClick={() => handleToggleSelectNewMember(player.id)} className="flex items-center gap-3 p-2 rounded-md hover:bg-muted cursor-pointer text-sm">
-                                            {selectedNewMembers.has(player.id) ? <CheckSquare className="h-4 w-4 text-accent" /> : <Square className="h-4 w-4 text-muted-foreground" />}
+                                            {selectedNewMembers.has(player.id) ? <CheckSquare className="h-4 w-4 text-accent flex-shrink-0" /> : <Square className="h-4 w-4 text-muted-foreground flex-shrink-0" />}
+                                            {dClan?.logoUrl && <Image src={dClan.logoUrl} alt={dClan.name} width={16} height={16} className="rounded-full flex-shrink-0 object-cover" />}
                                             <span>{player.latestPlayerName}</span>
                                         </div>
-                                    ))}
+                                    )})}
                                 </div>
                             </CardContent>
                             <CardFooter className="flex items-center gap-2 pt-4">
@@ -648,10 +685,13 @@ export default function ClanDashboardPage({ params }: { params: Promise<{ clanId
                                 </TableRow>
                             ))
                             ) : sortedMembers && sortedMembers.length > 0 ? (
-                            sortedMembers.map((member) => (
+                            sortedMembers.map((member) => {
+                                const dClan = getClanFromPlayerName(member.playerName);
+                                return (
                                 <TableRow key={member.id}>
-                                    <TableCell className="font-medium">
-                                        <Link href={`/player/${encodeURIComponent(member.id)}`} className="hover:underline hover:text-accent">
+                                    <TableCell className="font-medium flex items-center gap-2 py-4">
+                                        {dClan?.logoUrl && <Image src={dClan.logoUrl} alt={dClan.name} width={20} height={20} className="rounded-full object-cover flex-shrink-0" />}
+                                        <Link href={`/player/${encodeURIComponent(member.id)}`} className="hover:underline hover:text-accent truncate max-w-[150px] sm:max-w-[200px]">
                                             {member.playerName}
                                         </Link>
                                     </TableCell>
@@ -687,7 +727,7 @@ export default function ClanDashboardPage({ params }: { params: Promise<{ clanId
                                     </TableCell>
                                 </TableRow>
                                 )
-                            )
+                            })
                             ) : (
                             <TableRow>
                                 <TableCell colSpan={4} className="h-24 text-center">
@@ -714,7 +754,7 @@ export default function ClanDashboardPage({ params }: { params: Promise<{ clanId
             )}
         </TabsContent>
         <TabsContent value="lineup">
-            <LineupBuilder members={members || []} isLoading={isLoadingMembers} />
+            <LineupBuilder members={members || []} isLoading={isLoadingMembers} clanId={clanId} />
         </TabsContent>
         <TabsContent value="promotions">
              {isLoadingPromotions ? (
@@ -813,6 +853,9 @@ export default function ClanDashboardPage({ params }: { params: Promise<{ clanId
                                 <Search className={`mr-2 h-4 w-4 ${isFetchingMonthlyStats ? 'animate-spin' : ''}`} />
                                 {isFetchingMonthlyStats ? 'Buscando...' : 'Buscar'}
                             </Button>
+                            <Button onClick={() => setShowEfficiency(!showEfficiency)} variant={showEfficiency ? 'default' : 'outline'} disabled={monthlyStats.length === 0} className="w-full sm:w-auto">
+                                {showEfficiency ? 'Ver Totais' : 'Ver Eficiência'}
+                            </Button>
                             <Button onClick={handleGenerateReport} disabled={isFetchingMonthlyStats || monthlyStats.length === 0 || isGeneratingReport} className="w-full sm:w-auto">
                                 <Sparkles className={`mr-2 h-4 w-4 ${isGeneratingReport ? 'animate-spin' : ''}`} />
                                 {isGeneratingReport ? 'Analisando...' : 'Analisar com IA'}
@@ -862,7 +905,7 @@ export default function ClanDashboardPage({ params }: { params: Promise<{ clanId
                                               col.key === monthlySortConfig.key && "font-semibold text-accent"
                                             )}
                                           >
-                                            {col.formatter((stat[col.key] as number) || 0)}
+                                            {col.formatter(showEfficiency && col.key !== 'totalTimeSeconds' ? getEfficiencyValue(stat, col.key) : (stat[col.key] as number) || 0)}
                                           </TableCell>
                                         ))}
                                     </TableRow>
@@ -900,6 +943,9 @@ export default function ClanDashboardPage({ params }: { params: Promise<{ clanId
 
                 </CardContent>
             </Card>
+        </TabsContent>
+        <TabsContent value="preferences">
+          <MemberPreferencesDashboard members={members || []} isLoading={isLoadingMembers} />
         </TabsContent>
       </Tabs>
     </div>

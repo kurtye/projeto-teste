@@ -8,15 +8,20 @@
  *
  * 1. A função `aggregatePlayerStats` é acionada por eventos do Firestore.
  *
- * 2. A nova função `autoSyncPublicMatches` é acionada por agendamento (Scheduler).
- *    Para implantar, você precisará habilitar a API do Cloud Scheduler no seu projeto Google Cloud.
- *    O Firebase CLI irá configurar o tópico Pub/Sub e o job do Scheduler para você durante o deploy.
+ * 2. A nova função `autoSyncPublicMatches`
+ *    é acionada por agendamento (Scheduler).
+ *    Para implantar, você precisará habilitar a
+ *    API do Cloud Scheduler no seu projeto Google Cloud.
+ *    O Firebase CLI irá configurar o tópico Pub/Sub
+ *    e o job do Scheduler para você durante o deploy.
  *    O agendamento está definido como "a cada 3 horas".
  *
- * 3. Copie o conteúdo deste arquivo para o arquivo `src/index.ts` dentro da
+ * 3. Copie o conteúdo deste arquivo para o arquivo
+ *    `src/index.ts` dentro da
  *    sua pasta `functions` do Firebase.
  *
- * 4. Copie o conteúdo de `functions.package.json.txt` para o arquivo `package.json`
+ * 4. Copie o conteúdo de `functions.package.json.txt`
+ *    para o arquivo `package.json`
  *    dentro da sua pasta `functions`.
  *
  * 5. Execute `npm install` dentro da pasta `functions`.
@@ -94,10 +99,109 @@ function getMonthId(date: Date): string {
 }
 
 /**
-* Gatilho do Firestore acionado na criação de um novo documento de partida.
-* Esta função processa dados da partida, agrega estatísticas para cada
-* jogador (geral, semanal e mensal) e depois exclui o documento.
-*/
+ * Mescla dois mapas de contadores (ex: weapons, death_by, most_killed)
+ * @param {Object} current O mapa atual (ou undefined/null)
+ * @param {Object} newData O novo mapa a ser adicionado
+ * @return {Object} O mapa mesclado
+ */
+function mergeCounterMaps(
+  current: { [key: string]: number } | undefined,
+  newData: { [key: string]: number } | undefined
+): { [key: string]: number } {
+  const result = {...(current || {})};
+  if (newData) {
+    for (const [key, value] of Object.entries(newData)) {
+      result[key] = (result[key] || 0) + (value || 0);
+    }
+  }
+  return result;
+}
+
+/**
+ * Agrega estatísticas de armas de uma partida para o ranking global.
+ * @param {Object} playerStats Array de estatísticas dos jogadores
+ * @param {string} serverName Nome do servidor
+ * @param {number} matchDate Data da partida
+ */
+async function aggregateWeaponsStats(
+  playerStats: PlayerStats[],
+  serverName: string,
+  matchDate: Date
+): Promise<void> {
+  const weekId = getWeekId(matchDate);
+  const monthId = getMonthId(matchDate);
+  const currentDate = new Date();
+  const currentWeekId = getWeekId(currentDate);
+  const currentMonthId = getMonthId(currentDate);
+
+  // Agregar armas globais e por período
+  for (const playerStat of playerStats) {
+    if (!playerStat.weapons || Object.keys(playerStat.weapons).length === 0) {
+      continue;
+    }
+
+    // Aggregation das armas globalmente
+    for (const [weaponName, killCount] of Object.entries(playerStat.weapons)) {
+      const globalWeaponRef = db.collection("weaponsRanking")
+        .doc("global");
+      const weeklyWeaponRef = db.collection("weaponsRankingWeekly")
+        .doc(currentWeekId);
+      const monthlyWeaponRef = db.collection("weaponsRankingMonthly")
+        .doc(currentMonthId);
+
+      // Update global ranking
+      await db.runTransaction(async (transaction) => {
+        const doc = await transaction.get(globalWeaponRef);
+        const currentData = doc.data() || {weapons: {}};
+        const weapons = currentData.weapons || {};
+        weapons[weaponName] = (weapons[weaponName] || 0) + (killCount || 0);
+
+        transaction.set(globalWeaponRef, {
+          weapons: weapons,
+          lastUpdated: new Date(),
+        }, {merge: true});
+      });
+
+      // Update weekly ranking (se for da semana atual)
+      if (weekId === currentWeekId) {
+        await db.runTransaction(async (transaction) => {
+          const doc = await transaction.get(weeklyWeaponRef);
+          const currentData = doc.data() || {weapons: {}};
+          const weapons = currentData.weapons || {};
+          weapons[weaponName] = (weapons[weaponName] || 0) + (killCount || 0);
+
+          transaction.set(weeklyWeaponRef, {
+            weapons: weapons,
+            weekId: currentWeekId,
+            lastUpdated: new Date(),
+          }, {merge: true});
+        });
+      }
+
+      // Update monthly ranking (se for do mês atual)
+      if (monthId === currentMonthId) {
+        await db.runTransaction(async (transaction) => {
+          const doc = await transaction.get(monthlyWeaponRef);
+          const currentData = doc.data() || {weapons: {}};
+          const weapons = currentData.weapons || {};
+          weapons[weaponName] = (weapons[weaponName] || 0) + (killCount || 0);
+
+          transaction.set(monthlyWeaponRef, {
+            weapons: weapons,
+            monthId: currentMonthId,
+            lastUpdated: new Date(),
+          }, {merge: true});
+        });
+      }
+    }
+  }
+}
+
+/**
+ * Gatilho do Firestore acionado na criação de um novo documento de partida.
+ * Esta função processa dados da partida, agrega estatísticas para cada
+ * jogador (geral, semanal e mensal) e depois exclui o documento.
+ */
 export const aggregatePlayerStats = onDocumentCreated(
   {
     document: "rawMatchResults/{matchId}",
@@ -148,9 +252,10 @@ export const aggregatePlayerStats = onDocumentCreated(
         const playerId = playerStat.player_id;
         const playerName = playerStat.player;
 
-        // --- TRANSAÇÃO ATÔMICA PARA ESTATÍSTICAS GERAIS E SUBCOLEÇÕES ---
+        // --- TRANSAÇÃO PARA ESTATÍSTICAS GERAIS ---
         await db.runTransaction(async (transaction) => {
-          const aggregatesRef = db.collection("playerAggregates").doc(playerId);
+          const aggregatesRef = db.collection("playerAggregates")
+            .doc(playerId);
           const playerDoc = await transaction.get(aggregatesRef);
           const currentData = playerDoc.data() || {};
           const currentProcessed = currentData.processedServers || {};
@@ -167,79 +272,59 @@ export const aggregatePlayerStats = onDocumentCreated(
             playerStat.longest_life_secs || 0,
           );
 
+          // Mescla os mapas de contadores
+          const mergedWeapons = mergeCounterMaps(
+            currentData.topWeapons,
+            playerStat.weapons
+          );
+          const mergedMostKilled = mergeCounterMaps(
+            currentData.topVictims,
+            playerStat.most_killed
+          );
+          const mergedDeathBy = mergeCounterMaps(
+            currentData.topKilledBy,
+            playerStat.death_by
+          );
+
           const updates = {
             matchesPlayed: admin.firestore.FieldValue.increment(1),
-            totalKills: admin.firestore.FieldValue.increment(playerStat.kills || 0),
-            totalDeaths: admin.firestore.FieldValue.increment(playerStat.deaths || 0),
-            totalCombat: admin.firestore.FieldValue.increment(playerStat.combat || 0),
-            totalOffense: admin.firestore.FieldValue.increment(playerStat.offense || 0),
-            totalDefense: admin.firestore.FieldValue.increment(playerStat.defense || 0),
-            totalSupport: admin.firestore.FieldValue.increment(playerStat.support || 0),
-            totalTimeSeconds: admin.firestore.FieldValue.increment(playerStat.time_seconds || 0),
-            totalTeamKills: admin.firestore.FieldValue.increment(playerStat.teamkills || 0),
-            totalDeathsByTK: admin.firestore.FieldValue.increment(playerStat.deaths_by_tk || 0),
+            totalKills: admin.firestore.FieldValue.increment(
+              playerStat.kills || 0
+            ),
+            totalDeaths: admin.firestore.FieldValue.increment(
+              playerStat.deaths || 0
+            ),
+            totalCombat: admin.firestore.FieldValue.increment(
+              playerStat.combat || 0
+            ),
+            totalOffense: admin.firestore.FieldValue.increment(
+              playerStat.offense || 0
+            ),
+            totalDefense: admin.firestore.FieldValue.increment(
+              playerStat.defense || 0
+            ),
+            totalSupport: admin.firestore.FieldValue.increment(
+              playerStat.support || 0
+            ),
+            totalTimeSeconds: admin.firestore.FieldValue.increment(
+              playerStat.time_seconds || 0
+            ),
+            totalTeamKills: admin.firestore.FieldValue.increment(
+              playerStat.teamkills || 0
+            ),
+            totalDeathsByTK: admin.firestore.FieldValue.increment(
+              playerStat.deaths_by_tk || 0
+            ),
             longestLifeSecs: newLongestLife,
+            topWeapons: mergedWeapons,
+            topVictims: mergedMostKilled,
+            topKilledBy: mergedDeathBy,
             playerId: playerId,
             latestPlayerName: playerName,
             [`processedServers.${serverName}`]: matchNumericId,
           };
           transaction.set(aggregatesRef, updates, {merge: true});
-
-
-          // Agrega estatísticas de armas (por jogador e global)
-          if (playerStat.weapons) {
-            const weaponsRef = aggregatesRef.collection("weaponUsage");
-            for (const weapon in playerStat.weapons) {
-              const kills = playerStat.weapons[weapon];
-              if (kills > 0) {
-                const weaponDocRef = weaponsRef.doc(weapon);
-                transaction.set(
-                  weaponDocRef,
-                  {name: weapon, count: admin.firestore.FieldValue.increment(kills)},
-                  {merge: true}
-                );
-                const globalWeaponRef = db.collection("globalWeaponStats").doc(weapon);
-                transaction.set(globalWeaponRef, {
-                  name: weapon,
-                  totalKills: admin.firestore.FieldValue.increment(kills),
-                }, {merge: true});
-              }
-            }
-          }
-
-          // Agrega estatísticas de 'morto por'
-          if (playerStat.death_by) {
-              const killedByRef = aggregatesRef.collection("killedBy");
-              for (const killer in playerStat.death_by) {
-                  const times = playerStat.death_by[killer];
-                  if (times > 0) {
-                      const killerDocRef = killedByRef.doc(killer);
-                      transaction.set(
-                          killerDocRef,
-                          {name: killer, count: admin.firestore.FieldValue.increment(times)},
-                          {merge: true}
-                      );
-                  }
-              }
-          }
-
-          // Agrega estatísticas de 'mais matou'
-          if (playerStat.most_killed) {
-              const killedPlayersRef = aggregatesRef.collection("killedPlayers");
-              for (const victim in playerStat.most_killed) {
-                  const times = playerStat.most_killed[victim];
-                  if (times > 0) {
-                      const victimDocRef = killedPlayersRef.doc(victim);
-                      transaction.set(
-                          victimDocRef,
-                          {name: victim, count: admin.firestore.FieldValue.increment(times)},
-                          {merge: true}
-                      );
-                  }
-              }
-          }
         });
-
 
         // --- ATUALIZAÇÕES PARA ESTATÍSTICAS SEMANAIS E MENSAIS ---
         if (!isHistorical) {
@@ -252,16 +337,106 @@ export const aggregatePlayerStats = onDocumentCreated(
           const periodBatch = db.batch();
           let periodUpdatesMade = false;
 
+          // Dados para agregação de períodos
+          const periodWeeklyData: {
+            [key: string]: any;
+          } = {};
+          const periodMonthlyData: {
+            [key: string]: any;
+          } = {};
+
+          // Lê os documentos de período se existirem
+          // para fazer merge dos contadores
+          if (matchWeekId === currentWeekId) {
+            const weeklyDocId = `${playerId}_${currentWeekId}`;
+            try {
+              const weeklyDoc = await db.collection("playerWeeklyStats")
+                .doc(weeklyDocId).get();
+              if (weeklyDoc.exists) {
+                const existingData = weeklyDoc.data() || {};
+                periodWeeklyData.topWeapons = mergeCounterMaps(
+                  existingData.topWeapons,
+                  playerStat.weapons
+                );
+                periodWeeklyData.topVictims = mergeCounterMaps(
+                  existingData.topVictims,
+                  playerStat.most_killed
+                );
+                periodWeeklyData.topKilledBy = mergeCounterMaps(
+                  existingData.topKilledBy,
+                  playerStat.death_by
+                );
+              } else {
+                periodWeeklyData.topWeapons = playerStat.weapons || {};
+                periodWeeklyData.topVictims = playerStat.most_killed || {};
+                periodWeeklyData.topKilledBy = playerStat.death_by || {};
+              }
+            } catch (e) {
+              periodWeeklyData.topWeapons = playerStat.weapons || {};
+              periodWeeklyData.topVictims = playerStat.most_killed || {};
+              periodWeeklyData.topKilledBy = playerStat.death_by || {};
+            }
+          }
+
+          if (matchMonthId === currentMonthId) {
+            const monthlyDocId = `${playerId}_${currentMonthId}`;
+            try {
+              const monthlyDoc = await db.collection("playerMonthlyStats")
+                .doc(monthlyDocId).get();
+              if (monthlyDoc.exists) {
+                const existingData = monthlyDoc.data() || {};
+                periodMonthlyData.topWeapons = mergeCounterMaps(
+                  existingData.topWeapons,
+                  playerStat.weapons
+                );
+                periodMonthlyData.topVictims = mergeCounterMaps(
+                  existingData.topVictims,
+                  playerStat.most_killed
+                );
+                periodMonthlyData.topKilledBy = mergeCounterMaps(
+                  existingData.topKilledBy,
+                  playerStat.death_by
+                );
+              } else {
+                periodMonthlyData.topWeapons = playerStat.weapons || {};
+                periodMonthlyData.topVictims = playerStat.most_killed || {};
+                periodMonthlyData.topKilledBy = playerStat.death_by || {};
+              }
+            } catch (e) {
+              periodMonthlyData.topWeapons = playerStat.weapons || {};
+              periodMonthlyData.topVictims = playerStat.most_killed || {};
+              periodMonthlyData.topKilledBy = playerStat.death_by || {};
+            }
+          }
+
           const periodIncrementData = {
-            totalKills: admin.firestore.FieldValue.increment(playerStat.kills || 0),
-            totalDeaths: admin.firestore.FieldValue.increment(playerStat.deaths || 0),
-            totalCombat: admin.firestore.FieldValue.increment(playerStat.combat || 0),
-            totalOffense: admin.firestore.FieldValue.increment(playerStat.offense || 0),
-            totalDefense: admin.firestore.FieldValue.increment(playerStat.defense || 0),
-            totalSupport: admin.firestore.FieldValue.increment(playerStat.support || 0),
-            totalTimeSeconds: admin.firestore.FieldValue.increment(playerStat.time_seconds || 0),
-            totalTeamKills: admin.firestore.FieldValue.increment(playerStat.teamkills || 0),
-            totalDeathsByTK: admin.firestore.FieldValue.increment(playerStat.deaths_by_tk || 0),
+            totalKills: admin.firestore.FieldValue.increment(
+              playerStat.kills || 0
+            ),
+            totalDeaths: admin.firestore.FieldValue.increment(
+              playerStat.deaths || 0
+            ),
+            totalCombat: admin.firestore.FieldValue.increment(
+              playerStat.combat || 0
+            ),
+            totalOffense: admin.firestore.FieldValue.increment(
+              playerStat.offense || 0
+            ),
+            totalDefense: admin.firestore.FieldValue.increment(
+              playerStat.defense || 0
+            ),
+            totalSupport: admin.firestore.FieldValue.increment(
+              playerStat.support || 0
+            ),
+            totalTimeSeconds: admin.firestore.FieldValue.increment(
+              playerStat.time_seconds || 0
+            ),
+            totalTeamKills: admin.firestore.FieldValue.increment(
+              playerStat.teamkills || 0
+            ),
+            totalDeathsByTK: admin.firestore.FieldValue.increment(
+              playerStat.deaths_by_tk || 0
+            ),
             longestLifeSecs: playerStat.longest_life_secs || 0,
           };
           const basePeriodData = {
@@ -272,9 +447,11 @@ export const aggregatePlayerStats = onDocumentCreated(
           // Agrega para a semana APENAS se a partida for da semana atual
           if (matchWeekId === currentWeekId) {
             const weeklyDocId = `${playerId}_${currentWeekId}`;
-            const weeklyRef = db.collection("playerWeeklyStats").doc(weeklyDocId);
+            const weeklyRef = db.collection("playerWeeklyStats")
+              .doc(weeklyDocId);
             periodBatch.set(weeklyRef, {
-              ...basePeriodData, periodId: currentWeekId, ...periodIncrementData,
+              ...basePeriodData, periodId:
+              currentWeekId, ...periodIncrementData, ...periodWeeklyData,
             }, {merge: true});
             periodUpdatesMade = true;
           }
@@ -282,9 +459,11 @@ export const aggregatePlayerStats = onDocumentCreated(
           // Agrega para o mês APENAS se a partida for do mês atual
           if (matchMonthId === currentMonthId) {
             const monthlyDocId = `${playerId}_${currentMonthId}`;
-            const monthlyRef = db.collection("playerMonthlyStats").doc(monthlyDocId);
+            const monthlyRef = db.collection("playerMonthlyStats")
+              .doc(monthlyDocId);
             periodBatch.set(monthlyRef, {
-              ...basePeriodData, periodId: currentMonthId, ...periodIncrementData,
+              ...basePeriodData, periodId:
+              currentMonthId, ...periodIncrementData, ...periodMonthlyData,
             }, {merge: true});
             periodUpdatesMade = true;
           }
@@ -296,6 +475,17 @@ export const aggregatePlayerStats = onDocumentCreated(
       });
 
       await Promise.all(playerPromises);
+
+      // Agrega as estatísticas de armas
+      if (!isHistorical) {
+        try {
+          await aggregateWeaponsStats(matchData.player_stats,
+            serverName, matchDate);
+        } catch (error) {
+          logger.error(`Erro ao agregar armas para ${logPrefix}:`, error);
+          // Continua mesmo se houver erro nas armas
+        }
+      }
 
       await snapshot.ref.delete();
       logger.log(`${logPrefix} agregada e documento excluído com sucesso.`);
@@ -320,6 +510,7 @@ const serversConfig = [
   {id: "OCL", name: "OCL", apiUrl: "https://ocabala-stats.hlladmin.com/api"},
   {id: "SAP", name: "SAP", apiUrl: "https://sap-stats.hlladmin.com/api"},
   {id: "SOH", name: "SOH", apiUrl: "https://sohhllbr-stats.hlladmin.com/api"},
+  {id: "SMK", name: "SMK", apiUrl: "http://stats.smk-hll.com/api"},
 ];
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -334,6 +525,11 @@ interface ScoreboardMapsResponse {
 
 // Reutilizando interface de MatchData e PlayerStats de cima
 
+/**
+ * Fetches all match IDs from the specified API URL using pagination.
+ * @param {string} apiUrl - The base URL of the API
+ * @return {Promise<number[]>} Promise resolving to an array of match IDs
+ */
 async function fetchAllMatchIds(apiUrl: string): Promise<number[]> {
   let allIds: number[] = [];
   let currentPage = 1;
@@ -349,8 +545,11 @@ async function fetchAllMatchIds(apiUrl: string): Promise<number[]> {
 
       if (!response.ok) {
         const errorText = await response.text();
-        logger.error(`[SYNC] Falha ao buscar a página ${currentPage} de mapas. Status: ${response.status}, Corpo: ${errorText}`);
-        throw new Error(`Falha ao buscar a lista de mapas na página ${currentPage}: ${response.statusText}`);
+        logger.error(`[SYNC] Falha ao buscar a página
+          ${currentPage} de mapas. Status: ${response.status},
+          Corpo: ${errorText}`);
+        throw new Error(`Falha ao buscar a lista
+          de mapas na página ${currentPage}: ${response.statusText}`);
       }
 
       const data: ScoreboardMapsResponse = await response.json();
@@ -359,7 +558,8 @@ async function fetchAllMatchIds(apiUrl: string): Promise<number[]> {
         const totalMatches = data.result.total;
         const pageSize = data.result.page_size;
         totalPages = Math.ceil(totalMatches / pageSize);
-        logger.log(`[SYNC] Total de partidas na API: ${totalMatches}. Total de páginas a buscar: ${totalPages}.`);
+        logger.log(`[SYNC] Total de partidas na API:
+          ${totalMatches}. Total de páginas a buscar: ${totalPages}.`);
       }
 
       const pageIds = data.result.maps.map((m) => m.id);
@@ -371,19 +571,23 @@ async function fetchAllMatchIds(apiUrl: string): Promise<number[]> {
       }
     } while (currentPage <= totalPages);
 
-    logger.log(`[SYNC] Busca de IDs concluída. Total de IDs encontrados: ${allIds.length}`);
+    logger.log(`[SYNC] Busca de IDs concluída.
+      Total de IDs encontrados: ${allIds.length}`);
     return allIds;
   } catch (error) {
-    logger.error(`[SYNC] Erro ao buscar todos os IDs de partida de ${apiUrl}:`, error);
+    logger.error(`[SYNC] Erro ao buscar todos os IDs de partida de
+      ${apiUrl}:`, error);
     throw error;
   }
 }
 
 /**
- * Função agendada para sincronizar automaticamente novas partidas de servidores públicos.
+ * Função agendada para sincronizar automaticamente novas partidas
+ * de servidores públicos.
  * Acionada a cada 3 horas.
  */
-export const autoSyncPublicMatches = onSchedule("every 3 hours", async (event) => {
+export const autoSyncPublicMatches =
+onSchedule("every 3 hours", async (event) => {
   logger.info("Iniciando rotina de sincronização automática de partidas.");
 
   for (const server of serversConfig) {
@@ -391,33 +595,43 @@ export const autoSyncPublicMatches = onSchedule("every 3 hours", async (event) =
     try {
       const syncStatusRef = db.collection("serverSyncStatus").doc(server.name);
       const syncDoc = await syncStatusRef.get();
-      const lastProcessedId = syncDoc.exists ? (syncDoc.data()?.lastProcessedId || 0) : 0;
-      logger.info(`[SYNC] Último ID processado para ${server.name}: ${lastProcessedId}`);
+      const lastProcessedId = syncDoc.exists ?
+        (syncDoc.data()?.lastProcessedId || 0) : 0;
+      logger.info(`[SYNC] Último ID processado para
+        ${server.name}: ${lastProcessedId}`);
 
       const allMatchIds = await fetchAllMatchIds(server.apiUrl);
       if (allMatchIds.length === 0) {
-        logger.warn(`[SYNC] Nenhum ID de partida encontrado para ${server.name}. Pulando.`);
+        logger.warn(`[SYNC] Nenhum ID de partida encontrado para
+          ${server.name}. Pulando.`);
         continue;
       }
 
-      const matchIdsToImport = allMatchIds.filter((id) => id > lastProcessedId).sort((a, b) => a - b);
+      const matchIdsToImport = allMatchIds.filter(
+        (id) => id > lastProcessedId).sort((a, b) => a - b);
       if (matchIdsToImport.length === 0) {
-        logger.info(`[SYNC] Nenhuma partida nova para importar de ${server.name}.`);
+        logger.info(`[SYNC] Nenhuma partida
+          nova para importar de ${server.name}.`);
         continue;
       }
 
-      logger.info(`[SYNC] Encontradas ${matchIdsToImport.length} novas partidas para importar de ${server.name}.`);
+      logger.info(`[SYNC] Encontradas
+        ${matchIdsToImport.length} novas partidas
+        para importar de ${server.name}.`);
       let matchesProcessedCount = 0;
       let highestIdInBatch = 0;
 
       for (const matchId of matchIdsToImport) {
         try {
           await delay(250);
-          const mapUrl = `${server.apiUrl}/get_map_scoreboard?map_id=${matchId}`;
+          const mapUrl =
+          `${server.apiUrl}/get_map_scoreboard?map_id=${matchId}`;
           const response = await fetch(mapUrl);
 
           if (!response.ok) {
-            logger.warn(`[SYNC] Falha ao buscar partida ID ${matchId} de ${server.name}. Status: ${response.status}. Pulando.`);
+            logger.warn(`[SYNC] Falha ao buscar partida ID
+              ${matchId} de ${server.name}. Status:
+              ${response.status}. Pulando.`);
             continue;
           }
 
@@ -425,17 +639,21 @@ export const autoSyncPublicMatches = onSchedule("every 3 hours", async (event) =
           const matchInfo: MatchData = mapData.result;
 
           if (!matchInfo || !matchInfo.player_stats) {
-            logger.warn(`[SYNC] Dados da partida ID ${matchId} de ${server.name} incompletos. Pulando.`);
+            logger.warn(`[SYNC] Dados da partida ID
+              ${matchId} de ${server.name} incompletos. Pulando.`);
             continue;
           }
 
-          const matchDocRef = db.collection("rawMatchResults").doc(matchInfo.id.toString());
-          await matchDocRef.set({...matchInfo, numeric_id: matchInfo.id, server: server.name});
+          const matchDocRef = db.collection("rawMatchResults")
+            .doc(matchInfo.id.toString());
+          await matchDocRef.set({...matchInfo,
+            numeric_id: matchInfo.id, server: server.name});
 
           matchesProcessedCount++;
           highestIdInBatch = Math.max(highestIdInBatch, matchId);
         } catch (innerError: any) {
-          logger.error(`[SYNC] Erro processando partida ID ${matchId} de ${server.name}:`, innerError.message);
+          logger.error(`[SYNC] Erro processando partida ID
+            ${matchId} de ${server.name}:`, innerError.message);
         }
       }
 
@@ -445,10 +663,14 @@ export const autoSyncPublicMatches = onSchedule("every 3 hours", async (event) =
           serverName: server.name,
           lastChecked: admin.firestore.FieldValue.serverTimestamp(),
         }, {merge: true});
-        logger.info(`[SYNC] Status de sincronização para ${server.name} atualizado para ID: ${highestIdInBatch}. Total processado no lote: ${matchesProcessedCount}.`);
+        logger.info(`[SYNC] Status de sincronização para
+          ${server.name} atualizado para ID:
+          ${highestIdInBatch}. Total processado no lote:
+          ${matchesProcessedCount}.`);
       }
     } catch (error: any) {
-      logger.error(`[ERRO GERAL SYNC] Falha na sincronização do servidor ${server.name}:`, error);
+      logger.error(`[ERRO GERAL SYNC]
+        Falha na sincronização do servidor ${server.name}:`, error);
     }
   }
   logger.info("Rotina de sincronização automática concluída.");

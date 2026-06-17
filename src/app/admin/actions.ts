@@ -45,6 +45,7 @@ const serversConfig = [
   { id: 'OCL', name: 'OCL', apiUrl: 'https://ocabala-stats.hlladmin.com/api' },
   { id: 'SAP', name: 'SAP', apiUrl: 'https://sap-stats.hlladmin.com/api' },
   { id: 'SOH', name: 'SOH', apiUrl: 'https://sohhllbr-stats.hlladmin.com/api' },
+  { id: 'SMK', name: 'SMK', apiUrl: 'http://stats.smk-hll.com/api' },
 ];
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -497,9 +498,9 @@ export async function updateGlobalStats(): Promise<{ success: boolean; error?: s
   }
 }
 
-export async function runMatchAnalysisAction(matchJson: string): Promise<{ success: boolean; report?: string; error?: string }> {
+export async function runMatchAnalysisAction(matchJson: string, factionFilter: 'all' | 'axis' | 'allies' = 'all'): Promise<{ success: boolean; report?: string; error?: string }> {
   try {
-    const report = await analyzeMatch({ matchJson });
+    const report = await analyzeMatch({ matchJson, factionFilter });
     return { success: true, report };
   } catch (error: any) {
     console.error('Error in match analysis action:', error);

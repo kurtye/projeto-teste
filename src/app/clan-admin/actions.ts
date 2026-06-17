@@ -369,3 +369,21 @@ export async function generateMonthlyReportAction(
   }
 }
     
+/**
+ * Saves a tactical lineup for a clan.
+ */
+export async function saveLineupAction(clanId: string, lineupData: any): Promise<{ success: boolean; error?: string }> {
+  try {
+    const lineupsRef = collection(db, 'clans', clanId, 'lineups');
+    await addDoc(lineupsRef, {
+      ...lineupData,
+      createdAt: serverTimestamp(),
+    });
+
+    revalidatePath(`/clan-admin/dashboard/${clanId}`);
+    return { success: true };
+  } catch (error: any) {
+    console.error("Error saving lineup:", error);
+    return { success: false, error: error.message };
+  }
+}
