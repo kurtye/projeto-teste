@@ -8,8 +8,8 @@ import { getWeek, getWeekYear } from 'date-fns';
 import { clans } from '@/lib/clans';
 import { unstable_cache } from 'next/cache';
 
-// Limite aumentado para mostrar mais jogadores no ranking. A esterilização manual e o JSON.parse já previnem o RangeError do Next.js
-const QUERY_LIMIT = 1000;
+// Limite de jogadores por query de ranking
+const QUERY_LIMIT = 500;
 
 // Tempo de cache em segundos (60s = 1 min)
 const CACHE_TTL = 60;
