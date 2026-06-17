@@ -45,6 +45,9 @@ import {
 } from '@/components/ui/chart';
 import { getHallOfFameStats } from '@/app/hall-of-fame/actions';
 import { AdBanner } from '@/components/AdBanner';
+import { getClanFromPlayerName } from '@/lib/clans';
+import Image from 'next/image';
+import { TacticalDNABar } from '@/components/TacticalDNA';
 
 interface PlayerProfilePageProps {
   params: {
@@ -205,16 +208,16 @@ export default function PlayerProfilePage({ params }: PlayerProfilePageProps) {
 
       return [
         { stat: 'Kills', value: getPercentage(player.totalKills, globalStats.maxTotalKills), full: player.totalKills || 0 },
-        { stat: 'Combat', value: getPercentage(player.totalCombat, globalStats.maxTotalCombat), full: player.totalCombat || 0 },
-        { stat: 'Support', value: getPercentage(player.totalSupport, globalStats.maxTotalSupport), full: player.totalSupport || 0 },
-        { stat: 'Defense', value: getPercentage(player.totalDefense, globalStats.maxTotalDefense), full: player.totalDefense || 0 },
-        { stat: 'Offense', value: getPercentage(player.totalOffense, globalStats.maxTotalOffense), full: player.totalOffense || 0 },
+        { stat: 'Combate', value: getPercentage(player.totalCombat, globalStats.maxTotalCombat), full: player.totalCombat || 0 },
+        { stat: 'Suporte', value: getPercentage(player.totalSupport, globalStats.maxTotalSupport), full: player.totalSupport || 0 },
+        { stat: 'Defesa', value: getPercentage(player.totalDefense, globalStats.maxTotalDefense), full: player.totalDefense || 0 },
+        { stat: 'Ofensiva', value: getPercentage(player.totalOffense, globalStats.maxTotalOffense), full: player.totalOffense || 0 },
       ];
   }, [player, globalStats]);
 
   const chartConfig = {
       value: { label: 'Performance (%)' },
-      full: { label: 'Raw Value' },
+      full: { label: 'Valor Bruto' },
   };
 
   if (isLoadingPlayer || isLoadingGlobalStats) {
@@ -247,12 +250,12 @@ export default function PlayerProfilePage({ params }: PlayerProfilePageProps) {
     return (
         <div className="container mx-auto px-4 py-8 text-center text-destructive">
             <ShieldAlert className="h-12 w-12 mx-auto mb-4" />
-            <h1 className="text-2xl font-bold">Error Loading Player</h1>
-            <p>Could not load data for this player. Please try again later.</p>
+            <h1 className="text-2xl font-bold">Erro ao Carregar Jogador</h1>
+            <p>Não foi possível carregar os dados deste jogador. Tente novamente mais tarde.</p>
              <Button asChild variant="outline" className="mt-6">
                 <Link href="/">
                     <ChevronLeft className="mr-2 h-4 w-4" />
-                    Back to Leaderboard
+                    Voltar ao Ranking
                 </Link>
             </Button>
         </div>
@@ -275,23 +278,34 @@ export default function PlayerProfilePage({ params }: PlayerProfilePageProps) {
         <Button asChild variant="outline">
             <Link href="/">
                 <ChevronLeft className="mr-2 h-4 w-4" />
-                Back to Leaderboard
+                Voltar ao Ranking
             </Link>
         </Button>
       </div>
       <div className="flex flex-col lg:flex-row items-center lg:items-start gap-8">
         <div className="flex flex-col items-center gap-2 text-center">
           <Avatar className="h-32 w-32 border-4 border-primary">
-            <AvatarFallback className="text-4xl">{player.latestPlayerName.slice(0, 2)}</AvatarFallback>
+            {(() => {
+                const detectedClan = getClanFromPlayerName(player.latestPlayerName);
+                return detectedClan?.logoUrl ? (
+                    <Image src={detectedClan.logoUrl} alt={detectedClan.name} fill className="object-cover" />
+                ) : (
+                    <AvatarFallback className="text-4xl">{player.latestPlayerName.slice(0, 2)}</AvatarFallback>
+                )
+            })()}
           </Avatar>
           <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2">
             <h1 className="text-4xl font-bold font-headline">{player.latestPlayerName}</h1>
-            {player.status === 'retired' && <Badge variant="default" className="text-base bg-slate-700 text-slate-100">Retired</Badge>}
+            {player.status === 'retired' && <Badge variant="default" className="text-base bg-slate-700 text-slate-100">Aposentado</Badge>}
           </div>
           <Badge className="text-base" variant="outline">
             <FileText className="mr-2 h-5 w-5 text-accent" /> ID: ...{player.id.slice(-6)}
           </Badge>
           <PlayerTrophies titles={playerTrophies} />
+          
+          <div className="mt-4 w-full flex justify-center pb-4">
+            <TacticalDNABar player={player} showLegend={true} className="max-w-[250px] h-3" />
+          </div>
         </div>
 
         <div className="flex-1 w-full space-y-6">
@@ -299,7 +313,7 @@ export default function PlayerProfilePage({ params }: PlayerProfilePageProps) {
             <CardHeader>
                 <CardTitle className="text-lg flex items-center gap-2">
                     <LineChart className="w-5 h-5"/> 
-                    Player Style (vs. Global Max)
+                    Estilo do Jogador (vs. Máx. Global)
                 </CardTitle>
             </CardHeader>
             <CardContent>
@@ -311,7 +325,7 @@ export default function PlayerProfilePage({ params }: PlayerProfilePageProps) {
                             formatter={(value, name, item) => (
                                 <div className="flex flex-col">
                                     <span className="font-bold">{`${item.payload.stat}: ${item.payload.full.toLocaleString()}`}</span>
-                                    <span className="text-xs text-muted-foreground">{`(${value}% of record)`}</span>
+                                    <span className="text-xs text-muted-foreground">{`(${value}% do recorde)`}</span>
                                 </div>
                             )}
                         />} 
@@ -320,7 +334,7 @@ export default function PlayerProfilePage({ params }: PlayerProfilePageProps) {
                         <PolarRadiusAxis angle={30} domain={[0, 100]} tick={false} axisLine={false} />
                         <PolarGrid />
                         <Radar
-                            name="Player Stats"
+                            name="Estatísticas"
                             dataKey="value"
                             stroke="hsl(var(--accent))"
                             fill="hsl(var(--accent))"
@@ -341,24 +355,70 @@ export default function PlayerProfilePage({ params }: PlayerProfilePageProps) {
           </AdBanner>
           
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-            <StatCard title="Total Score" value={totalScore.toLocaleString()} icon={Trophy} />
+            <StatCard title="Pontuação Total" value={totalScore.toLocaleString()} icon={Trophy} />
             <StatCard title="K/D Ratio" value={kdRatio.toFixed(2)} icon={Target} />
             <StatCard title="Total Kills" value={(player.totalKills || 0).toLocaleString()} icon={Swords} />
             <StatCard title="Total Deaths" value={(player.totalDeaths || 0).toLocaleString()} icon={Shield} />
-            <StatCard title="Combat Score" value={(player.totalCombat || 0).toLocaleString()} icon={Award} />
-            <StatCard title="Offense Score" value={(player.totalOffense || 0).toLocaleString()} icon={Target} />
-            <StatCard title="Defense Score" value={(player.totalDefense || 0).toLocaleString()} icon={Shield} />
-            <StatCard title="Support Score" value={(player.totalSupport || 0).toLocaleString()} icon={HeartPulse} />
-            <StatCard title="Time Played" value={formatTime(player.totalTimeSeconds || 0)} icon={Clock} />
-            <StatCard title="Longest Life" value={formatMinutes(player.longestLifeSecs || 0)} icon={Timer} />
+            <StatCard title="Combate" value={(player.totalCombat || 0).toLocaleString()} icon={Award} />
+            <StatCard title="Ofensiva" value={(player.totalOffense || 0).toLocaleString()} icon={Target} />
+            <StatCard title="Defesa" value={(player.totalDefense || 0).toLocaleString()} icon={Shield} />
+            <StatCard title="Suporte" value={(player.totalSupport || 0).toLocaleString()} icon={HeartPulse} />
+            <StatCard title="Tempo Jogado" value={formatTime(player.totalTimeSeconds || 0)} icon={Clock} />
+            <StatCard title="Vida Mais Longa" value={formatMinutes(player.longestLifeSecs || 0)} icon={Timer} />
             <StatCard title="Team Kills" value={(player.totalTeamKills || 0).toLocaleString()} icon={UserX} />
             <StatCard title="Deaths by TK" value={(player.totalDeathsByTK || 0).toLocaleString()} icon={UserCheck} />
           </div>
 
-          <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-3">
-             <InteractionList title="Top Weapons" icon={Crosshair} data={topWeapons} isLoading={isLoadingTopWeapons} />
-             <InteractionList title="Most Killed By" icon={Skull} data={mostKilledBy} isLoading={isLoadingKilledBy} />
-             <InteractionList title="Top Victims" icon={Target} data={mostKilledPlayers} isLoading={isLoadingKilledPlayers} />
+          <div className="grid gap-6 mt-6 md:grid-cols-2">
+              <Card className="bg-red-950/20 border-red-900/50">
+                  <CardHeader className="pb-2">
+                      <CardTitle className="text-lg flex items-center gap-2 text-red-500">
+                          <Skull className="w-5 h-5"/> Maior Algoz (Nêmesis)
+                      </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                      {isLoadingKilledBy ? (
+                          <Skeleton className="h-16 w-full" />
+                      ) : mostKilledBy && mostKilledBy.length > 0 ? (
+                          <div className="flex justify-between items-center bg-background/50 p-4 rounded-lg border border-red-900/30">
+                              <span className="text-xl font-bold font-headline truncate pr-4 text-foreground/90">{mostKilledBy[0].name}</span>
+                              <div className="flex flex-col items-end">
+                                  <span className="text-3xl font-black text-red-500">{mostKilledBy[0].count}</span>
+                                  <span className="text-xs text-muted-foreground uppercase tracking-widest">Mortes</span>
+                              </div>
+                          </div>
+                      ) : (
+                          <p className="text-muted-foreground italic h-16 flex items-center px-4">Nenhum registro encontrado.</p>
+                      )}
+                  </CardContent>
+              </Card>
+
+              <Card className="bg-green-950/20 border-green-900/50">
+                  <CardHeader className="pb-2">
+                      <CardTitle className="text-lg flex items-center gap-2 text-green-500">
+                          <Target className="w-5 h-5"/> Maior Vítima
+                      </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                      {isLoadingKilledPlayers ? (
+                          <Skeleton className="h-16 w-full" />
+                      ) : mostKilledPlayers && mostKilledPlayers.length > 0 ? (
+                          <div className="flex justify-between items-center bg-background/50 p-4 rounded-lg border border-green-900/30">
+                              <span className="text-xl font-bold font-headline truncate pr-4 text-foreground/90">{mostKilledPlayers[0].name}</span>
+                              <div className="flex flex-col items-end">
+                                  <span className="text-3xl font-black text-green-500">{mostKilledPlayers[0].count}</span>
+                                  <span className="text-xs text-muted-foreground uppercase tracking-widest">Abates</span>
+                              </div>
+                          </div>
+                      ) : (
+                          <p className="text-muted-foreground italic h-16 flex items-center px-4">Nenhum registro encontrado.</p>
+                      )}
+                  </CardContent>
+              </Card>
+          </div>
+
+          <div className="mt-6">
+             <InteractionList title="Armas Mais Usadas" icon={Crosshair} data={topWeapons} isLoading={isLoadingTopWeapons} />
           </div>
         </div>
       </div>

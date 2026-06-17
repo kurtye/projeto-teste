@@ -11,4 +11,16 @@ export const clans: Clan[] = [
     { id: 'sap', name: 'Senta a Púa', tag: 'SAP', adminEmails: ['sap@test.com'],  logoUrl: '/clan/sap.jpg' },
     { id: 'bold', name: 'B.O.L.D', tag: 'BOLD', adminEmails: ['bold@test.com'] },
     { id: 'soh', name: 'Sons of Hell', tag: 'SOH', adminEmails: ['soh@test.com'],  logoUrl: '/clan/soh.jpg' },
+    { id: 'bltz', name: 'Blitz', tag: 'BLTZ', adminEmails: ['bltz@test.com'],  logoUrl: '/clan/bltz.jpg' },
+    { id: 'stl', name: 'Steel', tag: 'STL', adminEmails: ['stl@test.com'],  logoUrl: '/clan/stl.jpg' },
 ];
+
+export function getClanFromPlayerName(playerName: string): Clan | undefined {
+    if (!playerName) return undefined;
+    
+    // Check specific patterns like [SMK], SMK|, -SMK-, etc. 
+    // Just looking for the tag inside the string is usually enough 
+    // since HLL clan tags are quite unique in caps.
+    const nameUpper = playerName.toUpperCase();
+    return clans.find(c => nameUpper.includes(c.tag));
+}

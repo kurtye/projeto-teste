@@ -4,6 +4,7 @@
 import { db } from '@/firebase/server';
 import { collection, query, orderBy, limit, getDocs, where } from 'firebase/firestore';
 import type { PlayerAggregates } from '@/lib/types';
+import { unstable_cache } from 'next/cache';
 
 // Função interna para sanitizar um jogador manualmente, sem recursão
 function sanitizePlayer(id: string, data: any): PlayerAggregates {
@@ -41,7 +42,7 @@ function hasClanTag(playerName: string): boolean {
   return CLAN_TAGS.some(tag => lowerPlayerName.includes(tag.toLowerCase()));
 }
 
-export async function getHallOfFameStats(): Promise<{
+async function _getHallOfFameStats(): Promise<{
   records: Record<string, PlayerAggregates | undefined>;
   efficiency: Record<string, (PlayerAggregates & { efficiencyValue: number }) | undefined>;
 }> {
@@ -68,7 +69,7 @@ export async function getHallOfFameStats(): Promise<{
         collection(db, 'playerAggregates'), 
         where('totalTimeSeconds', '>=', 36000),
         orderBy('totalTimeSeconds', 'desc'),
-        limit(100)
+        limit(1000)
       );
       
       const querySnapshot = await getDocs(q);
@@ -94,7 +95,7 @@ export async function getHallOfFameStats(): Promise<{
 
     // 3. Lobo Solitário
     const loneWolfPromise = async () => {
-      const q = query(collection(db, 'playerAggregates'), orderBy('totalKills', 'desc'), limit(100));
+      const q = query(collection(db, 'playerAggregates'), orderBy('totalKills', 'desc'), limit(1000));
       const querySnapshot = await getDocs(q);
       for (const docSnap of querySnapshot.docs) {
         const data = docSnap.data();
@@ -115,3 +116,9 @@ export async function getHallOfFameStats(): Promise<{
     return JSON.parse(JSON.stringify({ records: {}, efficiency: {} }));
   }
 }
+
+export const getHallOfFameStats = unstable_cache(
+    _getHallOfFameStats,
+    ['hall-of-fame-stats'],
+    { revalidate: 60 }
+);

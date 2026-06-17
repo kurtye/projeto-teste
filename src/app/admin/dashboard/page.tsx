@@ -50,6 +50,11 @@ const servers = [
     name: 'SOH',
     apiUrl: 'https://sohhllbr-stats.hlladmin.com/api'
   },
+  {
+    id: 'SMK',
+    name: 'SMK',
+    apiUrl: 'http://stats.smk-hll.com/api'
+  }
 ];
 
 type Server = (typeof servers)[0];
@@ -61,8 +66,8 @@ interface ServerImportState {
 }
 
 interface ServerSyncStatus {
-    processed: number;
-    total: number;
+  processed: number;
+  total: number;
 }
 
 export default function AdminDashboardPage() {
@@ -72,12 +77,12 @@ export default function AdminDashboardPage() {
       return acc;
     }, {} as Record<string, ServerImportState>)
   );
-  
+
   const [serverStatus, setServerStatus] = useState<Record<string, ServerSyncStatus> | null>(null);
   const [playerCount, setPlayerCount] = useState<number | null>(null);
   const [isFetchingStats, startFetchingStats] = useTransition();
   const [isUpdatingGlobalStats, startUpdatingGlobalStats] = useTransition();
-  
+
   const [manualImportIds, setManualImportIds] = useState('');
   const [manualImportServer, setManualImportServer] = useState<string>('');
   const [isManualImporting, setIsManualImporting] = useState(false);
@@ -86,7 +91,7 @@ export default function AdminDashboardPage() {
   const [rangeStartId, setRangeStartId] = useState('');
   const [rangeEndId, setRangeEndId] = useState('');
   const [isRangeImporting, setIsRangeImporting] = useState(false);
-  
+
   const [historicalImportServer, setHistoricalImportServer] = useState<string>('');
   const [historicalStartId, setHistoricalStartId] = useState('');
   const [historicalEndId, setHistoricalEndId] = useState('');
@@ -111,26 +116,26 @@ export default function AdminDashboardPage() {
   useEffect(() => {
     fetchStats();
   }, []);
-  
+
   const anyImportInProgress = Object.values(importStates).some(s => s.isImporting) || isManualImporting || isUpdatingGlobalStats || isRangeImporting || isHistoricalImporting;
 
   const handleUpdateGlobalStats = () => {
     startUpdatingGlobalStats(async () => {
-        toast({ title: 'Iniciando cálculo de recordes globais...', description: 'Isso pode levar alguns instantes.' });
-        const result = await updateGlobalStats();
-        if (result.success) {
-            toast({
-                title: 'Recordes Globais Atualizados!',
-                description: 'O gráfico de perfil dos jogadores agora usará os novos valores máximos.',
-            });
-            console.log("Max stats updated:", result.maxStats);
-        } else {
-            toast({
-                variant: 'destructive',
-                title: 'Falha ao Atualizar Recordes',
-                description: result.error || 'Ocorreu um erro desconhecido.',
-            });
-        }
+      toast({ title: 'Iniciando cálculo de recordes globais...', description: 'Isso pode levar alguns instantes.' });
+      const result = await updateGlobalStats();
+      if (result.success) {
+        toast({
+          title: 'Recordes Globais Atualizados!',
+          description: 'O gráfico de perfil dos jogadores agora usará os novos valores máximos.',
+        });
+        console.log("Max stats updated:", result.maxStats);
+      } else {
+        toast({
+          variant: 'destructive',
+          title: 'Falha ao Atualizar Recordes',
+          description: result.error || 'Ocorreu um erro desconhecido.',
+        });
+      }
     });
   };
 
@@ -182,7 +187,7 @@ export default function AdminDashboardPage() {
       }, 8000);
     }
   };
-  
+
   const handleManualImport = async () => {
     if (!manualImportServer || !manualImportIds) {
       toast({
@@ -196,9 +201,9 @@ export default function AdminDashboardPage() {
     setIsManualImporting(true);
     const server = servers.find(s => s.id === manualImportServer);
     if (!server) {
-        setIsManualImporting(false);
-        toast({ variant: 'destructive', title: 'Erro', description: 'Servidor selecionado não encontrado.' });
-        return;
+      setIsManualImporting(false);
+      toast({ variant: 'destructive', title: 'Erro', description: 'Servidor selecionado não encontrado.' });
+      return;
     }
 
     toast({ title: 'Iniciando Importação Manual', description: `Processando partidas para ${server.name}...` });
@@ -223,10 +228,10 @@ export default function AdminDashboardPage() {
     }
   };
 
-    const handleRangeImport = async () => {
+  const handleRangeImport = async () => {
     const startId = parseInt(rangeStartId, 10);
     const endId = parseInt(rangeEndId, 10);
-    
+
     if (!rangeImportServer || !startId || !endId || startId <= 0 || endId < startId) {
       toast({
         variant: 'destructive',
@@ -239,9 +244,9 @@ export default function AdminDashboardPage() {
     setIsRangeImporting(true);
     const server = servers.find(s => s.id === rangeImportServer);
     if (!server) {
-        setIsRangeImporting(false);
-        toast({ variant: 'destructive', title: 'Erro', description: 'Servidor selecionado não encontrado.' });
-        return;
+      setIsRangeImporting(false);
+      toast({ variant: 'destructive', title: 'Erro', description: 'Servidor selecionado não encontrado.' });
+      return;
     }
 
     toast({ title: 'Iniciando Importação por Intervalo', description: `De ${startId} a ${endId} para ${server.name}...` });
@@ -270,7 +275,7 @@ export default function AdminDashboardPage() {
   const handleHistoricalImport = async () => {
     const startId = parseInt(historicalStartId, 10);
     const endId = parseInt(historicalEndId, 10);
-    
+
     if (!historicalImportServer || !startId || !endId || startId <= 0 || endId < startId) {
       toast({
         variant: 'destructive',
@@ -283,9 +288,9 @@ export default function AdminDashboardPage() {
     setIsHistoricalImporting(true);
     const server = servers.find(s => s.id === historicalImportServer);
     if (!server) {
-        setIsHistoricalImporting(false);
-        toast({ variant: 'destructive', title: 'Erro', description: 'Servidor selecionado não encontrado.' });
-        return;
+      setIsHistoricalImporting(false);
+      toast({ variant: 'destructive', title: 'Erro', description: 'Servidor selecionado não encontrado.' });
+      return;
     }
 
     toast({ title: 'Iniciando Importação Histórica', description: `De ${startId} a ${endId} para ${server.name}...` });
@@ -327,44 +332,44 @@ export default function AdminDashboardPage() {
           </Button>
         </CardHeader>
         <CardContent className="space-y-8">
-          
-           <div className='grid grid-cols-1 md:grid-cols-3 gap-4'>
-             <Card className="bg-muted/30 md:col-span-2">
-                <CardHeader className='pb-2'>
-                    <CardTitle className='text-base flex items-center gap-2'>
-                        <History className="h-4 w-4 text-muted-foreground" />
-                        <span>Status de Sincronização de Partidas</span>
-                    </CardTitle>
-                </CardHeader>
-                <CardContent className="pt-2 space-y-3">
-                    {isFetchingStats ? (
-                        <div className="space-y-4">
-                           {Array.from({length: 3}).map((_, i) => <Skeleton key={i} className="h-8 w-full" />)}
+
+          <div className='grid grid-cols-1 md:grid-cols-3 gap-4'>
+            <Card className="bg-muted/30 md:col-span-2">
+              <CardHeader className='pb-2'>
+                <CardTitle className='text-base flex items-center gap-2'>
+                  <History className="h-4 w-4 text-muted-foreground" />
+                  <span>Status de Sincronização de Partidas</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="pt-2 space-y-3">
+                {isFetchingStats ? (
+                  <div className="space-y-4">
+                    {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-8 w-full" />)}
+                  </div>
+                ) : serverStatus ? (
+                  Object.entries(serverStatus).map(([server, status]) => (
+                    <div key={server}>
+                      {status ? (
+                        <>
+                          <div className="flex justify-between text-sm mb-1">
+                            <span className="font-semibold">{server}</span>
+                            <span className="font-mono text-muted-foreground">
+                              {status.processed.toLocaleString()} / {status.total.toLocaleString()}
+                            </span>
+                          </div>
+                          <Progress value={status.total > 0 ? (status.processed / status.total) * 100 : 0} />
+                        </>
+                      ) : (
+                        <div className="text-sm text-muted-foreground">
+                          <span className="font-semibold">{server}:</span> Falha ao carregar status.
                         </div>
-                    ) : serverStatus ? (
-                        Object.entries(serverStatus).map(([server, status]) => (
-                            <div key={server}>
-                                {status ? (
-                                  <>
-                                    <div className="flex justify-between text-sm mb-1">
-                                        <span className="font-semibold">{server}</span>
-                                        <span className="font-mono text-muted-foreground">
-                                            {status.processed.toLocaleString()} / {status.total.toLocaleString()}
-                                        </span>
-                                    </div>
-                                    <Progress value={status.total > 0 ? (status.processed / status.total) * 100 : 0} />
-                                  </>
-                                ) : (
-                                  <div className="text-sm text-muted-foreground">
-                                    <span className="font-semibold">{server}:</span> Falha ao carregar status.
-                                  </div>
-                                )}
-                            </div>
-                        ))
-                    ) : (
-                        <p className="text-sm text-muted-foreground">Nenhum status encontrado.</p>
-                    )}
-                </CardContent>
+                      )}
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-sm text-muted-foreground">Nenhum status encontrado.</p>
+                )}
+              </CardContent>
             </Card>
 
             <div className="space-y-4">
@@ -375,35 +380,35 @@ export default function AdminDashboardPage() {
                     <span>Jogadores na Base</span>
                   </CardTitle>
                 </CardHeader>
-                 <CardContent className="pt-2">
-                    <p className="text-sm font-medium text-muted-foreground mb-2">
-                      Total de jogadores únicos:
+                <CardContent className="pt-2">
+                  <p className="text-sm font-medium text-muted-foreground mb-2">
+                    Total de jogadores únicos:
+                  </p>
+                  {isFetchingStats ? (
+                    <Skeleton className="h-7 w-24" />
+                  ) : (
+                    <p className="text-2xl font-bold text-accent">
+                      {playerCount !== null ? playerCount.toLocaleString() : 'N/A'}
                     </p>
-                    {isFetchingStats ? (
-                       <Skeleton className="h-7 w-24" />
-                    ): (
-                      <p className="text-2xl font-bold text-accent">
-                        {playerCount !== null ? playerCount.toLocaleString() : 'N/A'}
-                      </p>
-                    )}
-                 </CardContent>
+                  )}
+                </CardContent>
               </Card>
-               <Card className="bg-card">
-                  <CardHeader className='pb-2'>
-                      <CardTitle className="flex items-center gap-2 text-base">
-                          <BarChart className="h-4 w-4 text-muted-foreground" />
-                          Recordes Globais
-                      </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                      <p className="text-sm text-muted-foreground mb-4">
-                        Calcule os valores máximos para as estatísticas usadas no gráfico de perfil do jogador.
-                      </p>
-                      <Button onClick={handleUpdateGlobalStats} disabled={anyImportInProgress}>
-                          <RefreshCw className={`mr-2 h-4 w-4 ${isUpdatingGlobalStats ? 'animate-spin' : ''}`} />
-                          {isUpdatingGlobalStats ? 'Calculando...' : 'Atualizar Recordes'}
-                      </Button>
-                  </CardContent>
+              <Card className="bg-card">
+                <CardHeader className='pb-2'>
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <BarChart className="h-4 w-4 text-muted-foreground" />
+                    Recordes Globais
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    Calcule os valores máximos para as estatísticas usadas no gráfico de perfil do jogador.
+                  </p>
+                  <Button onClick={handleUpdateGlobalStats} disabled={anyImportInProgress}>
+                    <RefreshCw className={`mr-2 h-4 w-4 ${isUpdatingGlobalStats ? 'animate-spin' : ''}`} />
+                    {isUpdatingGlobalStats ? 'Calculando...' : 'Atualizar Recordes'}
+                  </Button>
+                </CardContent>
               </Card>
             </div>
           </div>
@@ -422,11 +427,11 @@ export default function AdminDashboardPage() {
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="flex-grow space-y-4">
-                       <Button 
-                         onClick={() => handleImport(server)} 
-                         disabled={state.isImporting || anyImportInProgress}
-                         className="w-full"
-                       >
+                      <Button
+                        onClick={() => handleImport(server)}
+                        disabled={state.isImporting || anyImportInProgress}
+                        className="w-full"
+                      >
                         <DownloadCloud className={`mr-2 h-4 w-4 ${state.isImporting ? 'animate-spin' : ''}`} />
                         {state.isImporting ? 'Importando...' : 'Iniciar Importação'}
                       </Button>
@@ -442,173 +447,173 @@ export default function AdminDashboardPage() {
               })}
             </div>
           </div>
-          
-           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             <Card className="bg-card">
-                <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-lg">
-                        <Edit className="h-5 w-5 text-accent" />
-                        Importação Manual de Partidas
-                    </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                    <div className="space-y-2">
-                        <Label htmlFor="manual-ids">IDs das Partidas</Label>
-                        <Textarea
-                            id="manual-ids"
-                            placeholder="Cole os IDs aqui, separados por vírgula, espaço ou nova linha"
-                            value={manualImportIds}
-                            onChange={(e) => setManualImportIds(e.target.value)}
-                            disabled={anyImportInProgress}
-                            rows={4}
-                        />
-                    </div>
-                    <div className="space-y-2">
-                        <Label htmlFor="manual-server">Servidor</Label>
-                        <Select
-                          value={manualImportServer}
-                          onValueChange={setManualImportServer}
-                          disabled={anyImportInProgress}
-                        >
-                            <SelectTrigger id="manual-server">
-                                <SelectValue placeholder="Selecione um servidor" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {servers.map(server => (
-                                    <SelectItem key={server.id} value={server.id}>
-                                        {server.name}
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                    </div>
-                    <Button onClick={handleManualImport} disabled={anyImportInProgress}>
-                        <DownloadCloud className={`mr-2 h-4 w-4 ${isManualImporting ? 'animate-spin' : ''}`} />
-                        {isManualImporting ? 'Importando...' : 'Importar Partidas Específicas'}
-                    </Button>
-                </CardContent>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <Edit className="h-5 w-5 text-accent" />
+                  Importação Manual de Partidas
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="manual-ids">IDs das Partidas</Label>
+                  <Textarea
+                    id="manual-ids"
+                    placeholder="Cole os IDs aqui, separados por vírgula, espaço ou nova linha"
+                    value={manualImportIds}
+                    onChange={(e) => setManualImportIds(e.target.value)}
+                    disabled={anyImportInProgress}
+                    rows={4}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="manual-server">Servidor</Label>
+                  <Select
+                    value={manualImportServer}
+                    onValueChange={setManualImportServer}
+                    disabled={anyImportInProgress}
+                  >
+                    <SelectTrigger id="manual-server">
+                      <SelectValue placeholder="Selecione um servidor" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {servers.map(server => (
+                        <SelectItem key={server.id} value={server.id}>
+                          {server.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Button onClick={handleManualImport} disabled={anyImportInProgress}>
+                  <DownloadCloud className={`mr-2 h-4 w-4 ${isManualImporting ? 'animate-spin' : ''}`} />
+                  {isManualImporting ? 'Importando...' : 'Importar Partidas Específicas'}
+                </Button>
+              </CardContent>
             </Card>
 
-             <Card className="bg-card">
-                <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-lg">
-                        <BetweenHorizontalStart className="h-5 w-5 text-accent" />
-                        Importação por Intervalo de IDs
-                    </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                            <Label htmlFor="range-start-id">De (ID)</Label>
-                            <Input
-                                id="range-start-id"
-                                type="number"
-                                placeholder="Ex: 1000"
-                                value={rangeStartId}
-                                onChange={(e) => setRangeStartId(e.target.value)}
-                                disabled={anyImportInProgress}
-                            />
-                        </div>
-                        <div className="space-y-2">
-                            <Label htmlFor="range-end-id">Até (ID)</Label>
-                            <Input
-                                id="range-end-id"
-                                type="number"
-                                placeholder="Ex: 1050"
-                                value={rangeEndId}
-                                onChange={(e) => setRangeEndId(e.target.value)}
-                                disabled={anyImportInProgress}
-                            />
-                        </div>
-                    </div>
-                    <div className="space-y-2">
-                        <Label htmlFor="range-server">Servidor</Label>
-                        <Select
-                          value={rangeImportServer}
-                          onValueChange={setRangeImportServer}
-                          disabled={anyImportInProgress}
-                        >
-                            <SelectTrigger id="range-server">
-                                <SelectValue placeholder="Selecione um servidor" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {servers.map(server => (
-                                    <SelectItem key={server.id} value={server.id}>
-                                        {server.name}
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                    </div>
-                    <Button onClick={handleRangeImport} disabled={anyImportInProgress}>
-                        <DownloadCloud className={`mr-2 h-4 w-4 ${isRangeImporting ? 'animate-spin' : ''}`} />
-                        {isRangeImporting ? 'Importando Intervalo...' : 'Importar Intervalo'}
-                    </Button>
-                </CardContent>
+            <Card className="bg-card">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <BetweenHorizontalStart className="h-5 w-5 text-accent" />
+                  Importação por Intervalo de IDs
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="range-start-id">De (ID)</Label>
+                    <Input
+                      id="range-start-id"
+                      type="number"
+                      placeholder="Ex: 1000"
+                      value={rangeStartId}
+                      onChange={(e) => setRangeStartId(e.target.value)}
+                      disabled={anyImportInProgress}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="range-end-id">Até (ID)</Label>
+                    <Input
+                      id="range-end-id"
+                      type="number"
+                      placeholder="Ex: 1050"
+                      value={rangeEndId}
+                      onChange={(e) => setRangeEndId(e.target.value)}
+                      disabled={anyImportInProgress}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="range-server">Servidor</Label>
+                  <Select
+                    value={rangeImportServer}
+                    onValueChange={setRangeImportServer}
+                    disabled={anyImportInProgress}
+                  >
+                    <SelectTrigger id="range-server">
+                      <SelectValue placeholder="Selecione um servidor" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {servers.map(server => (
+                        <SelectItem key={server.id} value={server.id}>
+                          {server.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Button onClick={handleRangeImport} disabled={anyImportInProgress}>
+                  <DownloadCloud className={`mr-2 h-4 w-4 ${isRangeImporting ? 'animate-spin' : ''}`} />
+                  {isRangeImporting ? 'Importando Intervalo...' : 'Importar Intervalo'}
+                </Button>
+              </CardContent>
             </Card>
 
             <Card className="bg-card border-amber-500/50">
-                <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-lg text-amber-500">
-                        <Archive className="h-5 w-5" />
-                        Importação Histórica por Intervalo
-                    </CardTitle>
-                    <CardDescription>
-                        Use para carregar partidas antigas. <strong>Não afetará</strong> os rankings semanais ou mensais, apenas o geral.
-                    </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                            <Label htmlFor="historical-start-id">De (ID)</Label>
-                            <Input
-                                id="historical-start-id"
-                                type="number"
-                                placeholder="Ex: 1"
-                                value={historicalStartId}
-                                onChange={(e) => setHistoricalStartId(e.target.value)}
-                                disabled={anyImportInProgress}
-                            />
-                        </div>
-                        <div className="space-y-2">
-                            <Label htmlFor="historical-end-id">Até (ID)</Label>
-                            <Input
-                                id="historical-end-id"
-                                type="number"
-                                placeholder="Ex: 500"
-                                value={historicalEndId}
-                                onChange={(e) => setHistoricalEndId(e.target.value)}
-                                disabled={anyImportInProgress}
-                            />
-                        </div>
-                    </div>
-                    <div className="space-y-2">
-                        <Label htmlFor="historical-server">Servidor</Label>
-                        <Select
-                          value={historicalImportServer}
-                          onValueChange={setHistoricalImportServer}
-                          disabled={anyImportInProgress}
-                        >
-                            <SelectTrigger id="historical-server">
-                                <SelectValue placeholder="Selecione um servidor" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {servers.map(server => (
-                                    <SelectItem key={server.id} value={server.id}>
-                                        {server.name}
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                    </div>
-                    <Button onClick={handleHistoricalImport} disabled={anyImportInProgress} variant="secondary">
-                        <DownloadCloud className={`mr-2 h-4 w-4 ${isHistoricalImporting ? 'animate-spin' : ''}`} />
-                        {isHistoricalImporting ? 'Importando...' : 'Importar Dados Históricos'}
-                    </Button>
-                </CardContent>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-lg text-amber-500">
+                  <Archive className="h-5 w-5" />
+                  Importação Histórica por Intervalo
+                </CardTitle>
+                <CardDescription>
+                  Use para carregar partidas antigas. <strong>Não afetará</strong> os rankings semanais ou mensais, apenas o geral.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="historical-start-id">De (ID)</Label>
+                    <Input
+                      id="historical-start-id"
+                      type="number"
+                      placeholder="Ex: 1"
+                      value={historicalStartId}
+                      onChange={(e) => setHistoricalStartId(e.target.value)}
+                      disabled={anyImportInProgress}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="historical-end-id">Até (ID)</Label>
+                    <Input
+                      id="historical-end-id"
+                      type="number"
+                      placeholder="Ex: 500"
+                      value={historicalEndId}
+                      onChange={(e) => setHistoricalEndId(e.target.value)}
+                      disabled={anyImportInProgress}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="historical-server">Servidor</Label>
+                  <Select
+                    value={historicalImportServer}
+                    onValueChange={setHistoricalImportServer}
+                    disabled={anyImportInProgress}
+                  >
+                    <SelectTrigger id="historical-server">
+                      <SelectValue placeholder="Selecione um servidor" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {servers.map(server => (
+                        <SelectItem key={server.id} value={server.id}>
+                          {server.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Button onClick={handleHistoricalImport} disabled={anyImportInProgress} variant="secondary">
+                  <DownloadCloud className={`mr-2 h-4 w-4 ${isHistoricalImporting ? 'animate-spin' : ''}`} />
+                  {isHistoricalImporting ? 'Importando...' : 'Importar Dados Históricos'}
+                </Button>
+              </CardContent>
             </Card>
 
-           </div>
+          </div>
         </CardContent>
       </Card>
     </div>

@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState, useMemo, ReactNode, useEffect } from 'react';
+import { useState, useMemo, ReactNode, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import {
@@ -18,9 +18,11 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Search, Trophy, Skull, Crosshair, BarChart2, ShieldAlert, Target, Award, LayoutGrid, List, Zap } from 'lucide-react';
 import type { PlayerAggregates, ClanMemberInfo } from '@/lib/types';
+import { getClanFromPlayerName } from '@/lib/clans';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { TacticalDNABar } from '@/components/TacticalDNA';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { AdBanner } from '@/components/AdBanner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -46,7 +48,7 @@ interface RankingsData {
   semanal: PlayerAggregates[];
 }
 
-const CLANS = ['SMK', 'HRB', 'RZN', 'OCL', '3LPZ', 'WRT', 'SAP', 'BOLD', 'IDG', 'SOH'];
+const CLANS = ['SMK', 'HRB', 'RZN', 'OCL', '3LPZ', 'WRT', 'SAP', 'BOLD', 'IDG', 'SOH', 'BLTZ', 'STL'];
 
 const getRankHighlightClasses = (rank: number): string => {
     switch (rank) {
@@ -108,59 +110,6 @@ const SortableHeader = ({
   );
 };
 
-const TacticalDNABar = ({ player }: { player: any }) => {
-    // Calculamos o total específico dos 4 pilares para a proporção de 100%
-    const off = player.totalOffense || 0;
-    const def = player.totalDefense || 0;
-    const sup = player.totalSupport || 0;
-    const com = player.totalCombat || 0;
-    const total = off + def + sup + com || 1;
-
-    const items = [
-        { label: 'Ataque', value: (off / total) * 100, color: 'bg-red-500', textColor: 'text-red-500' },
-        { label: 'Defesa', value: (def / total) * 100, color: 'bg-blue-500', textColor: 'text-blue-500' },
-        { label: 'Suporte', value: (sup / total) * 100, color: 'bg-green-500', textColor: 'text-green-500' },
-        { label: 'Combate', value: (com / total) * 100, color: 'bg-amber-500', textColor: 'text-amber-500' },
-    ].sort((a, b) => b.value - a.value); // Ordena do maior para o menor
-
-    return (
-        <TooltipProvider>
-            <Tooltip>
-                <TooltipTrigger asChild>
-                    <div className="flex h-2 w-full max-w-[160px] overflow-hidden rounded-full bg-muted mt-2 cursor-help border border-border/20 shadow-inner">
-                        {items.map((item, idx) => (
-                            <div 
-                                key={idx}
-                                className={cn(item.color, "h-full transition-all duration-500 ease-in-out")} 
-                                style={{ width: `${item.value}%` }} 
-                            />
-                        ))}
-                    </div>
-                </TooltipTrigger>
-                <TooltipContent className="p-4 space-y-2 bg-popover/98 backdrop-blur-xl border-accent/20 shadow-2xl min-w-[180px]">
-                    <div className="flex flex-col gap-1">
-                        <p className="text-[10px] font-black uppercase tracking-[0.1em] text-accent mb-1 border-b border-border/50 pb-1">DNA ESTRATÉGICO</p>
-                        {items.map((item, idx) => (
-                            <div key={idx} className="flex items-center justify-between text-xs py-0.5">
-                                <div className="flex items-center gap-2">
-                                    <div className={cn("w-2 h-2 rounded-full shadow-sm", item.color)} /> 
-                                    <span className="font-medium text-foreground/90">{item.label}</span>
-                                </div>
-                                <span className={cn("font-bold tabular-nums", item.textColor)}>
-                                    {Math.round(item.value)}%
-                                </span>
-                            </div>
-                        ))}
-                    </div>
-                    <div className="pt-1 mt-1 border-t border-border/30">
-                        <p className="text-[9px] text-muted-foreground italic">Distribuição proporcional da pontuação</p>
-                    </div>
-                </TooltipContent>
-            </Tooltip>
-        </TooltipProvider>
-    );
-};
-
 const RankingDisplay = ({ 
     players, 
     viewMode, 
@@ -178,6 +127,29 @@ const RankingDisplay = ({
     clanMembers: Record<string, ClanMemberInfo>,
     isPPH?: boolean
 }) => {
+    const [visibleCount, setVisibleCount] = useState(50);
+    const loadMoreRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        // Reset when the array, sort or view changes
+        setVisibleCount(50);
+    }, [players, sortConfig, viewMode]);
+
+    useEffect(() => {
+        const observer = new IntersectionObserver(
+            (entries) => {
+                if (entries[0].isIntersecting) {
+                    setVisibleCount((prev) => Math.min(prev + 50, players.length));
+                }
+            },
+            { threshold: 0.1 }
+        );
+
+        if (loadMoreRef.current) observer.observe(loadMoreRef.current);
+        return () => observer.disconnect();
+    }, [players.length]);
+
+    const visiblePlayers = players.slice(0, visibleCount);
 
     const KingBadge = ({ playerId }: { playerId: string }) => {
         const titles = hallOfFame[playerId];
@@ -246,17 +218,28 @@ const RankingDisplay = ({
                           <Crosshair className="h-5 w-5 inline-block" /> <span className="hidden md:inline">{isPPH ? 'Kills/h' : 'Kills'}</span>
                         </SortableHeader>
                         <SortableHeader sortKey="totalDeaths" sortConfig={sortConfig} requestSort={requestSort} className="hidden md:table-cell">
-                          <Skull className="h-5 w-5 inline-block" /> <span className="hidden md:inline">{isPPH ? 'Mortes/h' : 'Mortes'}</span>
+                          <Skull className="h-5 w-5 inline-block" /> <span className="hidden md:inline">{isPPH ? 'Deaths/h' : 'Deaths'}</span>
                         </SortableHeader>
                         <SortableHeader sortKey="kdRatio" sortConfig={sortConfig} requestSort={requestSort}>
-                          <Target className="h-5 w-5 inline-block" /> <span className="hidden md:inline">K/D Ratio</span>
+                          <Target className="h-5 w-5 inline-block" /> <span className="hidden md:inline">K/D</span>
                         </SortableHeader>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                        {players.map((player, index) => {
+                        {visiblePlayers.map((player, index) => {
                             const rank = index + 1;
-                            const clanInfo = clanMembers[player.id];
+                            const clanInfoRaw = clanMembers[player.id];
+                            const detectedClan = getClanFromPlayerName(player.latestPlayerName);
+                            
+                            // Se o clan detectado for diferente do clã registrado, significa que
+                            // o jogador mudou de clã, então ignoramos a info antiga do banco de dados.
+                            const clanInfo = (detectedClan && clanInfoRaw && detectedClan.name !== clanInfoRaw.clanName) 
+                                ? undefined 
+                                : clanInfoRaw;
+
+                            const resolvedLogoUrl = detectedClan?.logoUrl || clanInfo?.clanLogoUrl;
+                            const resolvedClanName = detectedClan?.name || clanInfo?.clanName;
+
                             return (
                                 <TableRow key={player.id}>
                                     <TableCell className="p-2 md:p-4">
@@ -265,8 +248,8 @@ const RankingDisplay = ({
                                             <RankIndicator rank={rank} />
                                         </div>
                                         <Avatar>
-                                            {clanInfo && clanInfo.clanLogoUrl ? (
-                                                <Image src={clanInfo.clanLogoUrl} alt={clanInfo.clanName} fill className="object-cover" />
+                                            {resolvedLogoUrl ? (
+                                                <Image src={resolvedLogoUrl} alt={resolvedClanName || 'Clan'} fill className="object-cover" />
                                             ) : (
                                                 <AvatarFallback>{player.latestPlayerName.charAt(0)}</AvatarFallback>
                                             )}
@@ -312,13 +295,27 @@ const RankingDisplay = ({
                         })}
                     </TableBody>
                 </Table>
+                {visibleCount < players.length && (
+                    <div ref={loadMoreRef} className="h-10 w-full flex items-center justify-center text-muted-foreground my-4">
+                        <span className="animate-pulse">Carregando mais...</span>
+                    </div>
+                )}
             </div>
         </Card>
     ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mt-4">
-            {players.flatMap((player, index) => {
+            {visiblePlayers.flatMap((player, index) => {
                 const rank = index + 1;
-                const clanInfo = clanMembers[player.id];
+                const clanInfoRaw = clanMembers[player.id];
+                const detectedClan = getClanFromPlayerName(player.latestPlayerName);
+                
+                const clanInfo = (detectedClan && clanInfoRaw && detectedClan.name !== clanInfoRaw.clanName) 
+                    ? undefined 
+                    : clanInfoRaw;
+
+                const resolvedLogoUrl = detectedClan?.logoUrl || clanInfo?.clanLogoUrl;
+                const resolvedClanName = detectedClan?.name || clanInfo?.clanName;
+
                 const cardHighlightClass = 
                     rank === 1 ? "border-yellow-400 shadow-yellow-400/20" :
                     rank === 2 ? "border-slate-400 shadow-slate-400/20" :
@@ -330,8 +327,8 @@ const RankingDisplay = ({
                         <Card className={cn("h-full transition-all duration-200 relative", cardHighlightClass)}>
                             <CardHeader className="flex-row items-center gap-4 space-y-0 p-4">
                                 <Avatar className="h-12 w-12 border-2 border-transparent group-hover:border-primary">
-                                    {clanInfo && clanInfo.clanLogoUrl ? (
-                                        <Image src={clanInfo.clanLogoUrl} alt={clanInfo.clanName} fill className="object-cover" />
+                                    {resolvedLogoUrl ? (
+                                        <Image src={resolvedLogoUrl} alt={resolvedClanName || 'Clan'} fill className="object-cover" />
                                     ) : (
                                         <AvatarFallback className="text-xl font-bold bg-green-500/20 text-green-400 border-green-500/30">{rank}</AvatarFallback>
                                     )}
@@ -390,6 +387,11 @@ const RankingDisplay = ({
                 
                 return [playerCard];
             })}
+            {visibleCount < players.length && (
+                <div ref={loadMoreRef} className="col-span-1 sm:col-span-2 md:col-span-3 lg:col-span-4 h-10 w-full flex items-center justify-center text-muted-foreground my-4">
+                    <span className="animate-pulse">Carregando mais...</span>
+                </div>
+            )}
         </div>
     );
 };

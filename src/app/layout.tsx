@@ -34,7 +34,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="dark">
+    <html lang="pt-BR" className="dark">
       <head>
         <meta name="google-adsense-account" content="ca-pub-1957003967974734"></meta>
         <link rel="preconnect" href="https://fonts.googleapis.com" />

@@ -2,6 +2,7 @@
 'use client';
 
 import type { ClanMember } from '@/lib/types';
+import { getClanFromPlayerName } from '@/lib/clans';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import Link from 'next/link';
@@ -74,14 +75,20 @@ export function HierarchyView({ members }: HierarchyViewProps) {
             <CardContent>
                 {members.length > 0 ? (
                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-                    {members.map(member => (
+                    {members.map(member => {
+                        const dClan = getClanFromPlayerName(member.playerName);
+                        return (
                         <Link key={member.id} href={`/player/${encodeURIComponent(member.id)}`}>
                         <div className={cn(
                             "flex items-center gap-3 rounded-md p-2 transition-colors hover:bg-muted",
                             member.status !== 'active' && 'opacity-60 hover:opacity-100'
                         )}>
                             <Avatar className="h-10 w-10">
-                            <AvatarFallback>{member.playerName.charAt(0)}</AvatarFallback>
+                            {dClan?.logoUrl ? (
+                                <Image src={dClan.logoUrl} alt={dClan.name} fill className="object-cover" />
+                            ) : (
+                                <AvatarFallback>{member.playerName.charAt(0)}</AvatarFallback>
+                            )}
                             </Avatar>
                             <div className="overflow-hidden">
                             <p className="truncate font-medium">{member.playerName}</p>
@@ -89,7 +96,7 @@ export function HierarchyView({ members }: HierarchyViewProps) {
                             </div>
                         </div>
                         </Link>
-                    ))}
+                    )})}
                     </div>
                 ) : (
                      <p className="text-sm text-muted-foreground italic">Nenhum membro nesta patente.</p>

@@ -77,6 +77,14 @@ export interface ClanMember {
   status: 'active' | 'inactive' | 'trial';
   clanTag: string;
   preferredClasses?: string[];
+  // Filled by the preferences form
+  primaryRole?: string;
+  secondaryRole?: string;
+  secondaryRole2?: string;
+  roleToLearn?: string;
+  playstyle?: string;
+  notes?: string;
+  preferencesUpdatedAt?: any;
 }
 
 export interface PromotionLog {
@@ -109,4 +117,13 @@ export interface WeaponLeaderboardEntry {
   playerId: string;
   playerName: string;
   kills: number;
+}
+
+export interface PlayerPreference {
+  memberId?: string;
+  playerName: string;
+  primaryRole: string;
+  secondaryRole: string;
+  playstyle: string;
+  updatedAt?: any;
 }

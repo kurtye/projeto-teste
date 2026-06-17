@@ -23,9 +23,16 @@ const STAT_CATEGORY_NAMES: Record<string, string> = {
 
 export default async function RankingPage() {
     
-  const hallOfFameData = await getHallOfFameStats();
+  // Fetch all data in parallel (hall of fame + rankings + clan members)
+  const [hallOfFameData, geral, mensal, semanal, clanMembers] = await Promise.all([
+    getHallOfFameStats(),
+    getPlayerAggregates(),
+    getPlayerPeriodStats('monthly'),
+    getPlayerPeriodStats('weekly'),
+    getAllClanMembers(),
+  ]);
+
   const hallOfFame = hallOfFameData.records;
-  
   const fameMap: HallOfFameMap = {};
   
   if (hallOfFame) {
@@ -38,14 +45,6 @@ export default async function RankingPage() {
       }
     });
   }
-
-  // Fetch all rankings in parallel
-  const [geral, mensal, semanal, clanMembers] = await Promise.all([
-    getPlayerAggregates(),
-    getPlayerPeriodStats('monthly'),
-    getPlayerPeriodStats('weekly'),
-    getAllClanMembers(),
-  ]);
 
   const initialRankings = { geral, mensal, semanal };
 

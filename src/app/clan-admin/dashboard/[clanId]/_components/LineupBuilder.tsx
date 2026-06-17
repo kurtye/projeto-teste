@@ -12,6 +12,9 @@ import { useToast } from '@/hooks/use-toast';
 import { toPng } from 'html-to-image';
 import { useFirestore } from '@/firebase';
 import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
+import Image from 'next/image';
+import { getClanFromPlayerName } from '@/lib/clans';
+import { TacticalDNABar } from '@/components/TacticalDNA';
 import { 
   Users, 
   Sword, 
@@ -60,7 +63,7 @@ import type { ClanMember, PlayerAggregates, GlobalStats } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
-type SquadRole = 'Ataque' | 'Defesa' | 'Centro' | 'Flanco Esquerdo' | 'Flanco Direito';
+type SquadRole = 'Ataque' | 'Defesa' | 'Centro' | 'Flanco Esquerdo' | 'Flanco Direito' | 'Defesa Esquerda' | 'Defesa Direita' | 'Defesa Centro' | 'Ataque Centro' | 'Ataque Direita' | 'Ataque Esquerda';
 type SortCriteria = 'name' | 'kill' | 'attack' | 'defense' | 'support' | 'combat';
 
 interface Squad {
@@ -70,11 +73,14 @@ interface Squad {
   members: string[]; // member IDs
   role?: SquadRole;
   buildNodes?: boolean;
+  customPlayerInfo?: { id: string, playerName: string }[];
+  memberAssignments?: Record<string, { supplies?: boolean, hq?: 'QG 1' | 'QG 2' | 'QG 3' | null }>;
 }
 
 interface LineupBuilderProps {
   members: ClanMember[];
   isLoading: boolean;
+  clanId: string;
 }
 
 const SQUAD_TYPES = {
@@ -85,9 +91,13 @@ const SQUAD_TYPES = {
   recon: { label: 'Reconhecimento', icon: Binoculars, max: 2, color: 'bg-blue-500/10 text-blue-500 border-blue-500/20' },
 };
 
-const ROLES: SquadRole[] = ['Ataque', 'Defesa', 'Centro', 'Flanco Esquerdo', 'Flanco Direito'];
+const ROLES: SquadRole[] = [
+  'Ataque', 'Defesa', 'Centro', 'Flanco Esquerdo', 'Flanco Direito',
+  'Defesa Esquerda', 'Defesa Direita', 'Defesa Centro',
+  'Ataque Centro', 'Ataque Direita', 'Ataque Esquerda'
+];
 
-export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
+export function LineupBuilder({ members, isLoading, clanId }: LineupBuilderProps) {
   const [matchName, setMatchName] = useState('Operação Sem Nome');
   const [squads, setSquads] = useState<Squad[]>([]);
   const [selectedMemberIds, setSelectedNewMemberIds] = useState<Set<string>>(new Set());
@@ -97,6 +107,9 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
   const [statsMap, setStatsMap] = useState<Record<string, PlayerAggregates>>({});
   const [globalStats, setGlobalStats] = useState<GlobalStats | null>(null);
   const [sortCriteria, setSortCriteria] = useState<SortCriteria>('name');
+  const [customPlayers, setCustomPlayers] = useState<Record<string, { id: string, playerName: string, isCustom: boolean }>>({});
+  const [newCustomPlayerName, setNewCustomPlayerName] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
   
   const lineupRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
@@ -212,52 +225,16 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
     return { ...primaryRole, powerScore: avgEfficiency };
   };
 
-  const TacticalDNABar = ({ memberId, className }: { memberId: string, className?: string }) => {
-    const player = statsMap[memberId];
-    if (!player) return null;
-
-    const off = player.totalOffense || 0;
-    const def = player.totalDefense || 0;
-    const sup = player.totalSupport || 0;
-    const com = player.totalCombat || 0;
-    const total = off + def + sup + com || 1;
-
-    const items = [
-        { label: 'Ataque', value: (off / total) * 100, color: 'bg-red-500', textColor: 'text-red-500' },
-        { label: 'Defesa', value: (def / total) * 100, color: 'bg-blue-500', textColor: 'text-blue-500' },
-        { label: 'Suporte', value: (sup / total) * 100, color: 'bg-green-500', textColor: 'text-green-500' },
-        { label: 'Combate', value: (com / total) * 100, color: 'bg-amber-500', textColor: 'text-amber-500' },
-    ].sort((a, b) => b.value - a.value);
-
-    return (
-        <TooltipProvider>
-            <Tooltip>
-                <TooltipTrigger asChild>
-                    <div className={cn("flex h-1.5 w-full overflow-hidden rounded-full bg-muted cursor-help border border-border/10", className)}>
-                        {items.map((item, idx) => (
-                            <div 
-                                key={idx}
-                                className={cn(item.color, "h-full transition-all duration-500")} 
-                                style={{ width: `${item.value}%` }} 
-                            />
-                        ))}
-                    </div>
-                </TooltipTrigger>
-                <TooltipContent className="p-3 bg-popover/98 border-accent/20 min-w-[150px]">
-                    <p className="text-[10px] font-black uppercase tracking-widest text-accent mb-2 border-b border-border/50 pb-1">DNA TÁTICO</p>
-                    {items.map((item, idx) => (
-                        <div key={idx} className="flex items-center justify-between text-[10px] py-0.5">
-                            <div className="flex items-center gap-1.5">
-                                <div className={cn("w-1.5 h-1.5 rounded-full", item.color)} /> 
-                                <span className="font-medium">{item.label}</span>
-                            </div>
-                            <span className={cn("font-bold", item.textColor)}>{Math.round(item.value)}%</span>
-                        </div>
-                    ))}
-                </TooltipContent>
-            </Tooltip>
-        </TooltipProvider>
-    );
+  const addCustomPlayer = () => {
+    if (!newCustomPlayerName.trim()) return;
+    const id = `custom-${Math.random().toString(36).substr(2, 9)}`;
+    setCustomPlayers(prev => ({
+      ...prev,
+      [id]: { id, playerName: newCustomPlayerName.trim(), isCustom: true }
+    }));
+    setSelectedNewMemberIds(prev => new Set(prev).add(id));
+    setNewCustomPlayerName('');
+    toast({ title: "Sucesso!", description: `Jogador customizado "${newCustomPlayerName}" adicionado.` });
   };
 
   const addSquad = (type: keyof typeof SQUAD_TYPES) => {
@@ -305,7 +282,44 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
   };
 
   const removeMemberFromSquad = (memberId: string, squadId: string) => {
-    setSquads(currentSquads => currentSquads.map(s => s.id === squadId ? { ...s, members: s.members.filter(id => id !== memberId) } : s));
+    setSquads(currentSquads => currentSquads.map(s => {
+      if (s.id !== squadId) return s;
+      const nextAssignments = { ...(s.memberAssignments || {}) };
+      delete nextAssignments[memberId];
+      return { 
+        ...s, 
+        members: s.members.filter(id => id !== memberId),
+        memberAssignments: nextAssignments 
+      };
+    }));
+  };
+
+  const toggleMemberSupply = (squadId: string, memberId: string) => {
+    setSquads(currentSquads => currentSquads.map(s => {
+      if (s.id !== squadId) return s;
+      const current = s.memberAssignments?.[memberId] || {};
+      return {
+        ...s,
+        memberAssignments: {
+          ...s.memberAssignments,
+          [memberId]: { ...current, supplies: !current.supplies }
+        }
+      };
+    }));
+  };
+
+  const setMemberHQ = (squadId: string, memberId: string, hq: 'QG 1' | 'QG 2' | 'QG 3' | null) => {
+    setSquads(currentSquads => currentSquads.map(s => {
+      if (s.id !== squadId) return s;
+      const current = s.memberAssignments?.[memberId] || {};
+      return {
+        ...s,
+        memberAssignments: {
+          ...s.memberAssignments,
+          [memberId]: { ...current, hq }
+        }
+      };
+    }));
   };
 
   const handleDragStart = (e: React.DragEvent, memberId: string) => {
@@ -330,7 +344,10 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
     setActiveDropZone(null);
   };
 
-  const getMemberData = (id: string) => members.find(m => m.id === id);
+  const getMemberData = (id: string) => {
+    if (id.startsWith('custom-')) return customPlayers[id];
+    return members.find(m => m.id === id);
+  };
   const getMemberName = (id: string) => getMemberData(id)?.playerName || 'Desconhecido';
 
   const TacticalProfileIcon = ({ memberId }: { memberId: string }) => {
@@ -363,24 +380,40 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
       <div className={cn("flex flex-wrap gap-1 mt-0.5", compact ? "scale-90 origin-left" : "mt-1.5")}>
         {member.preferredClasses.map(cls => {
           const shortName = cls
-            .replace('Comandante', 'CMD')
-            .replace('Oficial', 'OFC')
-            .replace('Atirador Automático', 'AR')
-            .replace('Anti-Tanque', 'AT')
-            .replace('Atirador de Elite', 'SNI')
-            .replace('Cmt de Tanque', 'TCM')
-            .replace('Tripulante', 'TRI')
-            .replace('Engenheiro', 'ENG')
-            .replace('Metralhador', 'MG')
-            .replace('Fuzileiro', 'FUZ')
-            .replace('Médico', 'MED')
-            .replace('Suporte', 'SUP')
-            .replace('Assalto', 'ASL')
-            .replace('Observador', 'OBS')
-            .substring(0, 3)
-            .toUpperCase();
+            .replace('Comandante', 'CMD').replace('Oficial', 'OFC')
+            .replace('Atirador Automático', 'AR').replace('Anti-Tanque', 'AT')
+            .replace('Atirador de Elite', 'SNI').replace('Cmt de Tanque', 'TCM')
+            .replace('Tripulante', 'TRI').replace('Engenheiro', 'ENG')
+            .replace('Metralhador', 'MG').replace('Fuzileiro', 'FUZ')
+            .replace('Médico', 'MED').replace('Suporte', 'SUP')
+            .replace('Assalto', 'ASL').replace('Observador', 'OBS')
+            .substring(0, 3).toUpperCase();
           return <span key={cls} className="text-[8px] font-bold px-1 py-px bg-accent/20 text-accent rounded border border-accent/20 leading-none">{shortName}</span>;
         })}
+      </div>
+    );
+  };
+
+  const PreferenceInfo = ({ memberId }: { memberId: string }) => {
+    const member = getMemberData(memberId);
+    if (!member?.primaryRole && !member?.playstyle) return null;
+
+    return (
+      <div className="flex flex-col gap-0.5 mt-1 border-l-2 border-accent/30 pl-2">
+        <div className="flex items-center gap-1.5">
+          {member.primaryRole && (
+            <span className="text-[10px] font-bold text-accent uppercase">{member.primaryRole}</span>
+          )}
+          {member.primaryRole && member.playstyle && (
+            <span className="text-[9px] text-muted-foreground">•</span>
+          )}
+          {member.playstyle && (
+            <span className="text-[10px] text-muted-foreground font-medium">{member.playstyle}</span>
+          )}
+        </div>
+        {member.secondaryRole && member.secondaryRole !== 'Nenhuma' && (
+          <span className="text-[9px] text-muted-foreground italic">Alt: {member.secondaryRole}</span>
+        )}
       </div>
     );
   };
@@ -413,11 +446,53 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
       else s.members.forEach(mId => {
         const m = getMemberData(mId);
         const profile = getTacticalProfile(mId);
-        text += `- ${m?.playerName}${profile ? ` [${profile.label} ${profile.powerScore}%]` : ''}${m?.preferredClasses?.length ? ` (${m.preferredClasses.join(', ')})` : ''}\n`;
+        const assigns = s.memberAssignments?.[mId];
+        let assignText = '';
+        if (assigns?.supplies) assignText += ' [SUP]';
+        if (assigns?.hq) assignText += ` [${assigns.hq}]`;
+        
+        text += `- ${m?.playerName}${profile ? ` [${profile.label} ${profile.powerScore}%]` : ''}${assignText}${m?.preferredClasses?.length ? ` (${m.preferredClasses.join(', ')})` : ''}\n`;
       });
       text += `\n`;
     });
     navigator.clipboard.writeText(text).then(() => toast({ title: 'Copiado!', description: 'Escalação em texto copiada para a área de transferência.' }));
+  };
+
+  const handleSaveLineup = async () => {
+    if (squads.length === 0) {
+      toast({ variant: 'destructive', title: 'Erro', description: 'Adicione pelo menos um pelotão antes de salvar.' });
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const { saveLineupAction } = await import('@/app/clan-admin/actions');
+      const result = await saveLineupAction(clanId, {
+        name: matchName,
+        squads: squads.map(s => ({
+          ...s,
+          // We save custom player info too if they are in the squad
+          customPlayerInfo: s.members
+            .filter(mId => mId.startsWith('custom-'))
+            .map(mId => ({
+              id: mId,
+              playerName: customPlayers[mId].playerName
+            }))
+        })),
+        date: new Date().toISOString(),
+      });
+
+      if (result.success) {
+        toast({ title: 'Salvo!', description: 'Escalação salva com sucesso.' });
+      } else {
+        toast({ variant: 'destructive', title: 'Erro ao Salvar', description: result.error || 'Erro desconhecido' });
+      }
+    } catch (err) {
+      console.error('Save error:', err);
+      toast({ variant: 'destructive', title: 'Erro ao Salvar', description: 'Ocorreu um erro inesperado.' });
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -494,7 +569,7 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
                                 <TableCell className={cn("text-right tabular-nums", sortCriteria === 'defense' && "text-accent font-bold")}>{Math.round((stats?.totalDefense || 0) / hours)}</TableCell>
                                 <TableCell className={cn("text-right tabular-nums", sortCriteria === 'support' && "text-accent font-bold")}>{Math.round((stats?.totalSupport || 0) / hours)}</TableCell>
                                 <TableCell className={cn("text-right tabular-nums", sortCriteria === 'combat' && "text-accent font-bold")}>{Math.round((stats?.totalCombat || 0) / hours)}</TableCell>
-                                <TableCell className="w-32"><TacticalDNABar memberId={m.id} /></TableCell>
+                                <TableCell className="w-32"><TacticalDNABar player={statsMap[m.id]} /></TableCell>
                               </TableRow>
                             );
                           })}
@@ -505,7 +580,21 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
                 </Dialog>
               </div>
               <CardDescription className="text-[11px] leading-tight">DNA Tático: Proporção acumulada. Poder: Eficiência vs Recorde.</CardDescription>
-              <div className="pt-2">
+              
+              <div className="pt-2 space-y-2">
+                <div className="flex gap-1.5">
+                  <Input 
+                    placeholder="Nome do Jogador Custom" 
+                    className="h-8 text-[11px] bg-muted/50 border-accent/10" 
+                    value={newCustomPlayerName}
+                    onChange={(e) => setNewCustomPlayerName(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && addCustomPlayer()}
+                  />
+                  <Button variant="outline" size="icon" className="h-8 w-8 flex-shrink-0" onClick={addCustomPlayer}>
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </div>
+                
                 <Select value={sortCriteria} onValueChange={(val) => setSortCriteria(val as SortCriteria)}>
                   <SelectTrigger className="h-8 text-[10px] bg-muted/50 border-accent/10">
                     <div className="flex items-center gap-2">
@@ -527,7 +616,37 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
             <CardContent className="p-0">
               <ScrollArea className="h-[600px] px-4">
                 <div className="space-y-1 py-2">
-                  {sortedActiveMembers.length === 0 && !isLoading ? (
+                  {/* Custom Players Section */}
+                  {Object.values(customPlayers).length > 0 && (
+                    <div className="mb-4 space-y-1">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-accent/70 px-2">Customizados</p>
+                      {Object.values(customPlayers).map(player => {
+                        const isSelected = selectedMemberIds.has(player.id);
+                        const isAssigned = memberAssignmentMap.has(player.id);
+                        const isBeingDragged = draggedMemberId === player.id;
+                        return (
+                          <div key={player.id} draggable onDragStart={(e) => handleDragStart(e, player.id)} className={cn("flex flex-col p-2 rounded-md cursor-grab transition-all text-sm group border border-accent/10 bg-accent/5", isSelected ? "bg-accent/15 border-accent/30" : "hover:bg-accent/10", isBeingDragged && "opacity-40 grayscale scale-95")}>
+                            <div className="flex items-center gap-2 overflow-hidden">
+                              <button onClick={(e) => { e.stopPropagation(); toggleMemberSelection(player.id); }} className="hover:scale-110 transition-transform">
+                                {isSelected ? <CheckSquare className="h-4 w-4 text-accent flex-shrink-0" /> : <Square className="h-4 w-4 text-muted-foreground flex-shrink-0" />}
+                              </button>
+                              <div className="flex flex-col overflow-hidden w-full">
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-2 truncate">
+                                    <Badge variant="outline" className="text-[8px] px-1 bg-accent/20">C</Badge>
+                                    <span className={cn("truncate font-bold text-accent", isAssigned && "text-muted-foreground line-through")}>{player.playerName}</span>
+                                  </div>
+                                  {isAssigned && <Badge variant="outline" className="text-[9px] py-0 px-1 opacity-70">OK</Badge>}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {sortedActiveMembers.length === 0 && !isLoading && Object.values(customPlayers).length === 0 ? (
                     <p className="text-xs text-muted-foreground text-center py-8 italic">Nenhum membro ativo encontrado.</p>
                   ) : sortedActiveMembers.map(member => {
                     const isSelected = selectedMemberIds.has(member.id);
@@ -541,15 +660,22 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
                           </button>
                           <div className="flex flex-col overflow-hidden w-full">
                             <div className="flex items-center justify-between">
-                              <span className={cn("truncate font-medium", isAssigned && "text-muted-foreground line-through")}>{member.playerName}</span>
+                              <div className="flex items-center gap-2 truncate">
+                                {(() => {
+                                  const dClan = getClanFromPlayerName(member.playerName);
+                                  return dClan?.logoUrl ? <Image src={dClan.logoUrl} alt={dClan.name} width={14} height={14} className="rounded-full flex-shrink-0 object-cover" /> : null;
+                                })()}
+                                <span className={cn("truncate font-medium", isAssigned && "text-muted-foreground line-through")}>{member.playerName}</span>
+                              </div>
                               <div className="flex items-center gap-1 flex-shrink-0">
                                 {isAssigned && <Badge variant="outline" className="text-[9px] py-0 px-1 opacity-70">OK</Badge>}
                                 <TacticalProfileIcon memberId={member.id} />
                               </div>
                             </div>
                             <div className="flex flex-col mt-1.5 gap-1">
+                               <PreferenceInfo memberId={member.id} />
                                <ClassBadges memberId={member.id} compact />
-                               <TacticalDNABar memberId={member.id} className="w-full" />
+                               <TacticalDNABar player={statsMap[member.id]} className="w-full" />
                             </div>
                           </div>
                         </div>
@@ -585,6 +711,10 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
                   <div className="flex items-center gap-1"><Wrench className="h-4 w-4 text-blue-400" /> <span className="text-blue-400">{squads.filter(s => s.buildNodes).length}/3 Equipes de Nodos</span></div>
                 </div>
                 <div className="flex gap-2">
+                  <Button variant="outline" size="sm" onClick={handleSaveLineup} disabled={isSaving}>
+                    {isSaving ? <Zap className="mr-2 h-4 w-4 animate-pulse" /> : <ShieldCheck className="mr-2 h-4 w-4" />}
+                    Salvar
+                  </Button>
                   <Button variant="secondary" size="sm" onClick={handleCopyText}><Copy className="mr-2 h-4 w-4" /> Copiar Texto</Button>
                   <Button variant="default" size="sm" onClick={handleExportImage} disabled={isExporting}>{isExporting ? <Share2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}Exportar Imagem</Button>
                 </div>
@@ -604,7 +734,7 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
                         {m.playerName}
                         <TacticalProfileIcon memberId={m.id} />
                       </div>
-                      <TacticalDNABar memberId={m.id} className="w-20 mt-1" />
+                      <TacticalDNABar player={statsMap[m.id]} className="w-20 mt-1" />
                     </div>
                   </Badge>
                 ))}
@@ -656,12 +786,43 @@ export function LineupBuilder({ members, isLoading }: LineupBuilderProps) {
                                   <div className="flex items-center">
                                     <span className="truncate font-medium">{getMemberName(mId)}</span>
                                     <TacticalProfileIcon memberId={mId} />
+                                    {/* Assignment Badges Display */}
+                                    {squad.memberAssignments?.[mId]?.supplies && <Badge className="ml-1.5 h-4 px-1 text-[8px] bg-green-600 hover:bg-green-600">SUP</Badge>}
+                                    {squad.memberAssignments?.[mId]?.hq && <Badge className="ml-1 h-4 px-1 text-[8px] bg-blue-600 hover:bg-blue-600">{squad.memberAssignments[mId]?.hq}</Badge>}
                                   </div>
-                                  <ClassBadges memberId={mId} />
+                                   <ClassBadges memberId={mId} />
+                                  <PreferenceInfo memberId={mId} />
                                 </div>
                                 {!isExporting && <button onClick={() => removeMemberFromSquad(mId, squad.id)} className="text-muted-foreground hover:text-destructive transition-colors ml-2"><Trash2 className="h-4 w-4" /></button>}
                               </div>
-                              <TacticalDNABar memberId={mId} className="mt-2" />
+                              <TacticalDNABar player={statsMap[mId]} className="mt-2" />
+                              
+                              {/* Individual Assignment Controls */}
+                              {!isExporting && (
+                                <div className="flex items-center gap-1 mt-2 pt-2 border-t border-border/20">
+                                  <Button 
+                                    variant={squad.memberAssignments?.[mId]?.supplies ? "default" : "outline"} 
+                                    size="icon" 
+                                    className={cn("h-6 w-12 text-[8px] font-bold p-0", squad.memberAssignments?.[mId]?.supplies && "bg-green-600 hover:bg-green-700")}
+                                    onClick={() => toggleMemberSupply(squad.id, mId)}
+                                  >
+                                    SUPPLIER
+                                  </Button>
+                                  <div className="flex gap-0.5">
+                                    {['QG 1', 'QG 2', 'QG 3'].map((hq) => (
+                                      <Button 
+                                        key={hq}
+                                        variant={squad.memberAssignments?.[mId]?.hq === hq ? "default" : "outline"}
+                                        size="icon"
+                                        className={cn("h-6 w-8 text-[8px] font-bold p-0", squad.memberAssignments?.[mId]?.hq === hq && "bg-blue-600 hover:bg-blue-700")}
+                                        onClick={() => setMemberHQ(squad.id, mId, squad.memberAssignments?.[mId]?.hq === hq ? null : hq as any)}
+                                      >
+                                        {hq}
+                                      </Button>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
                             </div>
                           ))}
                           {squad.members.length === 0 && !isOver && <div className="h-20 flex flex-col items-center justify-center text-[11px] text-muted-foreground/50 italic border border-dashed border-muted-foreground/20 rounded">{isCommander ? "Arraste o Comandante aqui" : "Arraste um jogador aqui"}</div>}

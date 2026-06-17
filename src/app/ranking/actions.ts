@@ -6,9 +6,13 @@ import { collection, query, orderBy, limit, getDocs, where } from 'firebase/fire
 import type { PlayerAggregates, ClanMember, ClanMemberInfo } from '@/lib/types';
 import { getWeek, getWeekYear } from 'date-fns';
 import { clans } from '@/lib/clans';
+import { unstable_cache } from 'next/cache';
 
-// Limite reduzido para evitar overhead de serialização no RSC
-const QUERY_LIMIT = 100;
+// Limite aumentado para mostrar mais jogadores no ranking. A esterilização manual e o JSON.parse já previnem o RangeError do Next.js
+const QUERY_LIMIT = 1000;
+
+// Tempo de cache em segundos (60s = 1 min)
+const CACHE_TTL = 60;
 
 function sanitizePlayer(id: string, data: any): PlayerAggregates {
   return {
@@ -27,7 +31,9 @@ function sanitizePlayer(id: string, data: any): PlayerAggregates {
   };
 }
 
-export async function getPlayerAggregates(): Promise<PlayerAggregates[]> {
+// --- Funções internas (sem cache) ---
+
+async function _getPlayerAggregates(): Promise<PlayerAggregates[]> {
     const playersQuery = query(
       collection(db, 'playerAggregates'),
       orderBy('totalKills', 'desc'),
@@ -39,7 +45,7 @@ export async function getPlayerAggregates(): Promise<PlayerAggregates[]> {
     return JSON.parse(JSON.stringify(data));
 }
 
-export async function getPlayerPeriodStats(period: 'weekly' | 'monthly'): Promise<PlayerAggregates[]> {
+async function _getPlayerPeriodStats(period: 'weekly' | 'monthly'): Promise<PlayerAggregates[]> {
     const now = new Date();
     let colName: string;
     let periodId: string;
@@ -71,27 +77,62 @@ export async function getPlayerPeriodStats(period: 'weekly' | 'monthly'): Promis
     return JSON.parse(JSON.stringify(data));
 }
 
-export async function getAllClanMembers(): Promise<Record<string, ClanMemberInfo>> {
+async function _getAllClanMembers(): Promise<Record<string, ClanMemberInfo>> {
     const memberMap: Record<string, ClanMemberInfo> = {};
 
-    for (const clan of clans) {
-        const membersRef = collection(db, 'clans', clan.id, 'members');
-        try {
-            const snapshot = await getDocs(membersRef);
-            snapshot.forEach(docSnap => {
-                const memberData = docSnap.data() as ClanMember;
-                memberMap[memberData.playerId] = {
-                    clanId: clan.id,
-                    clanTag: clan.tag,
-                    clanName: clan.name,
-                    clanLogoUrl: clan.logoUrl || '',
-                    rank: String(memberData.rank || 'Recruta'),
-                };
-            });
-        } catch (error) {
-            console.error(`Error fetching members for clan ${clan.id}:`, error);
+    // Busca todos os clãs em paralelo em vez de sequencialmente
+    const results = await Promise.all(
+        clans.map(async (clan) => {
+            const membersRef = collection(db, 'clans', clan.id, 'members');
+            try {
+                const snapshot = await getDocs(membersRef);
+                const members: { playerId: string; info: ClanMemberInfo }[] = [];
+                snapshot.forEach(docSnap => {
+                    const memberData = docSnap.data() as ClanMember;
+                    members.push({
+                        playerId: memberData.playerId,
+                        info: {
+                            clanId: clan.id,
+                            clanTag: clan.tag,
+                            clanName: clan.name,
+                            clanLogoUrl: clan.logoUrl || '',
+                            rank: String(memberData.rank || 'Recruta'),
+                        },
+                    });
+                });
+                return members;
+            } catch (error) {
+                console.error(`Error fetching members for clan ${clan.id}:`, error);
+                return [];
+            }
+        })
+    );
+
+    for (const clanMembers of results) {
+        for (const member of clanMembers) {
+            memberMap[member.playerId] = member.info;
         }
     }
 
     return JSON.parse(JSON.stringify(memberMap));
 }
+
+// --- Funções exportadas com cache de 60s ---
+
+export const getPlayerAggregates = unstable_cache(
+    _getPlayerAggregates,
+    ['ranking-player-aggregates'],
+    { revalidate: CACHE_TTL }
+);
+
+export const getPlayerPeriodStats = unstable_cache(
+    _getPlayerPeriodStats,
+    ['ranking-player-period-stats'],
+    { revalidate: CACHE_TTL }
+);
+
+export const getAllClanMembers = unstable_cache(
+    _getAllClanMembers,
+    ['ranking-clan-members'],
+    { revalidate: CACHE_TTL }
+);
