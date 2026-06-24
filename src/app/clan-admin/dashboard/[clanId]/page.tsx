@@ -5,15 +5,15 @@ import { useClanAuth } from '../../layout';
 import { useRouter } from 'next/navigation';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { LogOut, Users, Edit, UserPlus, RefreshCw, CheckSquare, Square, List, Trophy, Shield, Star, Crown, ArrowUp, Diamond, Award, Medal, Search, CalendarDays, Trash2, Sparkles, ClipboardList, LayoutDashboard } from 'lucide-react';
+import { LogOut, Users, Edit, UserPlus, RefreshCw, CheckSquare, Square, Trophy, Brain, Shield, Star, Crown, ArrowUp, Diamond, Award, Medal, Search, CalendarDays, Trash2, Sparkles, ClipboardList, LayoutDashboard } from 'lucide-react';
 import { useCollection, useMemoFirebase, useFirestore } from '@/firebase';
 import { collection, query, orderBy } from 'firebase/firestore';
 import type { PlayerAggregates, ClanMember, PromotionLog, PlayerPeriodStats } from '@/lib/types';
 import { getClanFromPlayerName } from '@/lib/clans';
 import { EditMemberDialog } from './_components/EditMemberDialog';
 import { RemoveMemberDialog } from './_components/RemoveMemberDialog';
-import { HierarchyView } from './_components/HierarchyView';
-import { RecentPromotions } from './_components/RecentPromotions';
+import { ClanRanking } from './_components/ClanRanking';
+import { ClanIntelligenceDashboard } from './_components/ClanIntelligenceDashboard';
 import { LineupBuilder } from './_components/LineupBuilder';
 import { MemberPreferencesDashboard } from './_components/MemberPreferencesDashboard';
 import {
@@ -110,7 +110,6 @@ export default function ClanDashboardPage({ params }: { params: Promise<{ clanId
   const [isAdding, startAddingTransition] = useTransition();
   const [isPromoting, startPromotingTransition] = useTransition();
 
-  // State for manual search in List tab
   const [manualSearchQuery, setManualSearchQuery] = useState('');
   const [isSearchingManual, startSearchingManual] = useTransition();
   const [manualSearchResults, setManualSearchResults] = useState<PlayerAggregates[]>([]);
@@ -128,13 +127,11 @@ export default function ClanDashboardPage({ params }: { params: Promise<{ clanId
   
   const [showEfficiency, setShowEfficiency] = useState(false);
 
-  // State for recruitment tab
   const [isFindingTalents, startFindingTalents] = useTransition();
   const [unclaimedPlayers, setUnclaimedPlayers] = useState<PlayerPeriodStats[]>([]);
   const [selectedTalents, setSelectedTalents] = useState<Set<string>>(new Set());
   const [isAddingTalents, startAddingTalents] = useTransition();
   
-  // State for AI Report
   const [aiReport, setAiReport] = useState<string | null>(null);
   const [isGeneratingReport, startGeneratingReport] = useTransition();
 
@@ -543,13 +540,12 @@ export default function ClanDashboardPage({ params }: { params: Promise<{ clanId
         </Button>
       </div>
 
-      <Tabs defaultValue="list">
+      <Tabs defaultValue="ranking">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4">
-            <TabsList className="grid w-full grid-cols-4 md:grid-cols-7 h-auto">
-                <TabsTrigger value="list" className="py-2"><List className="mr-2 h-4 w-4"/>Lista</TabsTrigger>
-                <TabsTrigger value="hierarchy" className="py-2"><Users className="mr-2 h-4 w-4"/>Hierarquia</TabsTrigger>
+            <TabsList className="grid w-full grid-cols-4 md:grid-cols-6 h-auto">
+                <TabsTrigger value="ranking" className="py-2"><Trophy className="mr-2 h-4 w-4"/>Ranking</TabsTrigger>
+                <TabsTrigger value="intelligence" className="py-2"><Brain className="mr-2 h-4 w-4"/>Inteligência</TabsTrigger>
                 <TabsTrigger value="lineup" className="py-2"><ClipboardList className="mr-2 h-4 w-4"/>Escalação</TabsTrigger>
-                <TabsTrigger value="promotions" className="py-2"><Medal className="mr-2 h-4 w-4"/>Promoções</TabsTrigger>
                 <TabsTrigger value="recruitment" className="py-2"><UserPlus className="mr-2 h-4 w-4"/>Recrutar</TabsTrigger>
                 <TabsTrigger value="monthly-stats" className="py-2"><CalendarDays className="mr-2 h-4 w-4"/>Stats Mensais</TabsTrigger>
                 <TabsTrigger value="preferences" className="py-2"><LayoutDashboard className="mr-2 h-4 w-4"/>Preferências</TabsTrigger>
@@ -566,204 +562,14 @@ export default function ClanDashboardPage({ params }: { params: Promise<{ clanId
             </div>
         </div>
 
-        <TabsContent value="list" className="space-y-6">
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <Card className="lg:col-span-1 bg-muted/20 border-accent/10">
-                    <CardHeader>
-                        <CardTitle className="text-lg flex items-center gap-2">
-                            <Search className="h-5 w-5 text-accent" />
-                            Adição Manual
-                        </CardTitle>
-                        <CardDescription>Busque jogadores no banco de dados pelo nome.</CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                        <div className="flex gap-2">
-                            <Input 
-                                placeholder="Nome do jogador..." 
-                                value={manualSearchQuery}
-                                onChange={(e) => setManualSearchQuery(e.target.value)}
-                                onKeyDown={(e) => e.key === 'Enter' && handleManualSearch()}
-                            />
-                            <Button size="icon" onClick={handleManualSearch} disabled={isSearchingManual}>
-                                <Search className={cn("h-4 w-4", isSearchingManual && "animate-spin")} />
-                            </Button>
-                        </div>
-
-                        {manualSearchResults.length > 0 && (
-                            <div className="space-y-3 pt-2">
-                                <div className="max-h-60 overflow-y-auto space-y-1 pr-2">
-                                    {manualSearchResults.map(player => {
-                                        const dClan = getClanFromPlayerName(player.latestPlayerName);
-                                        return (
-                                        <div key={player.id} onClick={() => handleToggleSelectManualPlayer(player.id)} className="flex items-center gap-3 p-2 rounded-md hover:bg-muted cursor-pointer text-sm border border-transparent hover:border-accent/20 transition-all">
-                                            {selectedManualPlayers.has(player.id) ? <CheckSquare className="h-4 w-4 text-accent flex-shrink-0" /> : <Square className="h-4 w-4 text-muted-foreground flex-shrink-0" />}
-                                            {dClan?.logoUrl && <Image src={dClan.logoUrl} alt={dClan.name} width={16} height={16} className="rounded-full flex-shrink-0 object-cover" />}
-                                            <span className="truncate">{player.latestPlayerName}</span>
-                                        </div>
-                                    )})}
-                                </div>
-                                <div className="flex flex-col gap-2 pt-2 border-t border-border/50">
-                                    <Button size="sm" onClick={handleAddSelectedManualMembers} disabled={isAdding || selectedManualPlayers.size === 0}>
-                                        {isAdding ? 'Adicionando...' : `Adicionar ${selectedManualPlayers.size} selecionados`}
-                                    </Button>
-                                    <Button variant="ghost" size="sm" onClick={handleToggleSelectAllManual} className="text-[10px] h-6 uppercase font-bold tracking-widest">
-                                        {selectedManualPlayers.size === manualSearchResults.length ? 'Desmarcar Todos' : 'Marcar Todos'}
-                                    </Button>
-                                </div>
-                            </div>
-                        )}
-                    </CardContent>
-                </Card>
-
-                <Card className="lg:col-span-2">
-                    <CardHeader>
-                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                            <div>
-                                <CardTitle className="text-xl flex items-center gap-2">
-                                    <Users className="h-5 w-5"/>
-                                    <span>Membros do Clã</span>
-                                </CardTitle>
-                                <CardDescription>Gerencie as patentes e status dos jogadores.</CardDescription>
-                            </div>
-                            <Button variant="outline" onClick={handleSync} disabled={isSyncing || isPromoting}>
-                                <RefreshCw className={`mr-2 h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} />
-                                {isSyncing ? 'Buscando...' : 'Sincronizar por Tag'}
-                            </Button>
-                        </div>
-                    </CardHeader>
-                    <CardContent>
-                    {potentialMembers.length > 0 && (
-                        <Card className="mb-6 bg-muted/30 border-dashed border-accent/30">
-                            <CardHeader className="py-4">
-                                <CardTitle className="text-sm">Membros Sugeridos (por Tag)</CardTitle>
-                                <CardDescription className="text-xs">Estes jogadores usam a tag [{clan.tag}] mas não estão na lista.</CardDescription>
-                            </CardHeader>
-                            <CardContent className="py-0">
-                                <div className="space-y-1 max-h-40 overflow-y-auto px-1">
-                                    {potentialMembers.map(player => {
-                                        const dClan = getClanFromPlayerName(player.latestPlayerName);
-                                        return (
-                                        <div key={player.id} onClick={() => handleToggleSelectNewMember(player.id)} className="flex items-center gap-3 p-2 rounded-md hover:bg-muted cursor-pointer text-sm">
-                                            {selectedNewMembers.has(player.id) ? <CheckSquare className="h-4 w-4 text-accent flex-shrink-0" /> : <Square className="h-4 w-4 text-muted-foreground flex-shrink-0" />}
-                                            {dClan?.logoUrl && <Image src={dClan.logoUrl} alt={dClan.name} width={16} height={16} className="rounded-full flex-shrink-0 object-cover" />}
-                                            <span>{player.latestPlayerName}</span>
-                                        </div>
-                                    )})}
-                                </div>
-                            </CardContent>
-                            <CardFooter className="flex items-center gap-2 pt-4">
-                                <Button size="sm" onClick={handleAddSelectedMembers} disabled={isAdding || selectedNewMembers.size === 0}>
-                                    Adicionar {selectedNewMembers.size}
-                                </Button>
-                                <Button variant="ghost" size="sm" onClick={handleToggleSelectAll} disabled={isAdding} className="text-[10px]">
-                                    {selectedNewMembers.size === potentialMembers.length ? 'Desmarcar' : 'Todos'}
-                                </Button>
-                            </CardFooter>
-                        </Card>
-                    )}
-                    <div className="overflow-x-auto">
-                        <Table>
-                        <TableHeader>
-                            <TableRow>
-                            <TableHead>Jogador</TableHead>
-                            <TableHead>Patente</TableHead>
-                            <TableHead>Status</TableHead>
-                            <TableHead className="text-right">Ações</TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {isLoadingMembers ? (
-                            Array.from({ length: 5 }).map((_, i) => (
-                                <TableRow key={i}>
-                                <TableCell><Skeleton className="h-5 w-32" /></TableCell>
-                                <TableCell><Skeleton className="h-5 w-24" /></TableCell>
-                                <TableCell><Skeleton className="h-6 w-20 rounded-full" /></TableCell>
-                                <TableCell className="text-right space-x-2">
-                                    <Skeleton className="h-8 w-8 ml-auto inline-block" />
-                                    <Skeleton className="h-8 w-8 ml-auto inline-block" />
-                                </TableCell>
-                                </TableRow>
-                            ))
-                            ) : sortedMembers && sortedMembers.length > 0 ? (
-                            sortedMembers.map((member) => {
-                                const dClan = getClanFromPlayerName(member.playerName);
-                                return (
-                                <TableRow key={member.id}>
-                                    <TableCell className="font-medium flex items-center gap-2 py-4">
-                                        {dClan?.logoUrl && <Image src={dClan.logoUrl} alt={dClan.name} width={20} height={20} className="rounded-full object-cover flex-shrink-0" />}
-                                        <Link href={`/player/${encodeURIComponent(member.id)}`} className="hover:underline hover:text-accent truncate max-w-[150px] sm:max-w-[200px]">
-                                            {member.playerName}
-                                        </Link>
-                                    </TableCell>
-                                    <TableCell className="flex items-center gap-2">
-                                        {getRankImage(member.rank)}
-                                        {member.rank.replace(/-/g, ' ').replace('Capitao', 'Capitão')}
-                                    </TableCell>
-                                    <TableCell>
-                                    <Badge variant={getStatusVariant(member.status)} className="capitalize">{member.status}</Badge>
-                                    </TableCell>
-                                    <TableCell className="text-right space-x-1">
-                                        <Button 
-                                            variant="ghost" 
-                                            size="icon" 
-                                            onClick={() => handlePromote(member)}
-                                            disabled={isPromoting || member.rank === 'Comandante'}
-                                            title="Promover"
-                                        >
-                                            <ArrowUp className="h-4 w-4" />
-                                        </Button>
-                                        <Button variant="ghost" size="icon" onClick={() => setMemberToEdit(member)} title="Editar">
-                                            <Edit className="h-4 w-4" />
-                                        </Button>
-                                        <Button
-                                            variant="ghost"
-                                            size="icon"
-                                            onClick={() => setMemberToRemove(member)}
-                                            title="Remover"
-                                            className="text-destructive/70 hover:text-destructive hover:bg-destructive/10"
-                                        >
-                                            <Trash2 className="h-4 w-4" />
-                                        </Button>
-                                    </TableCell>
-                                </TableRow>
-                                )
-                            })
-                            ) : (
-                            <TableRow>
-                                <TableCell colSpan={4} className="h-24 text-center">
-                                Nenhum membro encontrado. Use a busca manual ou sincronização.
-                                </TableCell>
-                            </TableRow>
-                            )}
-                        </TableBody>
-                        </Table>
-                    </div>
-                    </CardContent>
-                </Card>
-            </div>
+        <TabsContent value="intelligence">
+            <ClanIntelligenceDashboard clanId={clanId} />
         </TabsContent>
-        <TabsContent value="hierarchy">
-            {isLoadingMembers ? (
-                <div className="space-y-4">
-                    <Skeleton className="h-32 w-full" />
-                    <Skeleton className="h-48 w-full" />
-                    <Skeleton className="h-64 w-full" />
-                </div>
-            ) : (
-                <HierarchyView members={members || []} />
-            )}
+        <TabsContent value="ranking">
+            <ClanRanking clanId={clan.id} />
         </TabsContent>
         <TabsContent value="lineup">
             <LineupBuilder members={members || []} isLoading={isLoadingMembers} clanId={clanId} />
-        </TabsContent>
-        <TabsContent value="promotions">
-             {isLoadingPromotions ? (
-                 <div className="space-y-4">
-                    <Skeleton className="h-48 w-full" />
-                </div>
-             ) : (
-                <RecentPromotions promotions={sortedPromotions || []} />
-             )}
         </TabsContent>
         <TabsContent value="recruitment">
             <Card>

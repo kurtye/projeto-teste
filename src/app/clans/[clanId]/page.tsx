@@ -9,8 +9,8 @@ import type { ClanMember } from '@/lib/types';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Users, List, Shield, Settings } from 'lucide-react';
-import { HierarchyView } from '@/app/clan-admin/dashboard/[clanId]/_components/HierarchyView';
+import { Trophy, Users, List, Settings } from 'lucide-react';
+import { ClanRanking } from '@/app/clan-admin/dashboard/[clanId]/_components/ClanRanking';
 import {
   Table,
   TableBody,
@@ -134,66 +134,13 @@ export default function ClanPage({ params }: ClanPageProps) {
         </div>
       </div>
       
-       <Tabs defaultValue="hierarchy">
-            <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="list"><List className="mr-2 h-4 w-4"/>Lista de Membros</TabsTrigger>
-                <TabsTrigger value="hierarchy"><Users className="mr-2 h-4 w-4"/>Hierarquia</TabsTrigger>
+       <Tabs defaultValue="ranking">
+            <TabsList className="grid w-full grid-cols-1 max-w-sm">
+                <TabsTrigger value="ranking"><Trophy className="mr-2 h-4 w-4"/>Ranking do Clã</TabsTrigger>
             </TabsList>
-            <TabsContent value="list">
-                <Card>
-                    <CardHeader>
-                        <CardTitle className="flex items-center gap-2"><Users />Membros</CardTitle>
-                        <CardDescription>Lista de todos os jogadores do clã.</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                         <Table>
-                            <TableHeader>
-                                <TableRow>
-                                <TableHead>Jogador</TableHead>
-                                <TableHead>Patente</TableHead>
-                                <TableHead>Status</TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {isLoadingMembers ? (
-                                    Array.from({ length: 10 }).map((_, i) => (
-                                        <TableRow key={i}>
-                                            <TableCell><Skeleton className="h-5 w-32" /></TableCell>
-                                            <TableCell><Skeleton className="h-5 w-24" /></TableCell>
-                                            <TableCell><Skeleton className="h-6 w-20 rounded-full" /></TableCell>
-                                        </TableRow>
-                                    ))
-                                ) : sortedMembers && sortedMembers.length > 0 ? (
-                                    sortedMembers.map((member) => (
-                                        <TableRow key={member.id}>
-                                            <TableCell className="font-medium">{member.playerName}</TableCell>
-                                            <TableCell>{member.rank.replace(/-/g, ' ').replace('Capitao', 'Capitão')}</TableCell>
-                                            <TableCell>
-                                                <Badge variant={getStatusVariant(member.status)}>{member.status}</Badge>
-                                            </TableCell>
-                                        </TableRow>
-                                    ))
-                                ) : (
-                                    <TableRow>
-                                        <TableCell colSpan={3} className="h-24 text-center">
-                                            Nenhum membro encontrado.
-                                        </TableCell>
-                                    </TableRow>
-                                )}
-                            </TableBody>
-                        </Table>
-                    </CardContent>
-                </Card>
-            </TabsContent>
-             <TabsContent value="hierarchy">
-                {isLoadingMembers ? (
-                    <div className="space-y-4">
-                        <Skeleton className="h-32 w-full" />
-                        <Skeleton className="h-48 w-full" />
-                    </div>
-                ) : (
-                    <HierarchyView members={publicMembers || []} />
-                )}
+
+             <TabsContent value="ranking">
+                <ClanRanking clanId={clan.id} />
             </TabsContent>
         </Tabs>
     </div>

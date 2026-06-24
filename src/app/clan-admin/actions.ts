@@ -387,3 +387,70 @@ export async function saveLineupAction(clanId: string, lineupData: any): Promise
     return { success: false, error: error.message };
   }
 }
+
+/**
+ * Fetches aggregate stats (from playerAggregates) for all members of a clan.
+ * Used for the clan-internal score ranking.
+ */
+export async function getClanMemberAggregates(clanId: string): Promise<{ success: boolean; players?: PlayerAggregates[]; error?: string }> {
+    try {
+        // 1. Get all member IDs for the clan
+        const membersRef = collection(db, 'clans', clanId, 'members');
+        const membersSnapshot = await getDocs(membersRef);
+        if (membersSnapshot.empty) {
+            return { success: true, players: [] };
+        }
+        const memberIds = membersSnapshot.docs.map(doc => doc.id);
+
+        const clan = clans.find(c => c.id === clanId);
+        if (!clan) return { success: false, error: "Clã não encontrado." };
+
+        // 2. Fetch playerAggregates for those members (Firestore 'in' query limited to 30 items)
+        const players: PlayerAggregates[] = [];
+        const chunkSize = 30;
+        for (let i = 0; i < memberIds.length; i += chunkSize) {
+            const chunk = memberIds.slice(i, i + chunkSize);
+
+            const statsQuery = query(
+                collection(db, 'playerAggregates'),
+                where('__name__', 'in', chunk)
+            );
+
+            const statsSnapshot = await getDocs(statsQuery);
+            statsSnapshot.forEach(docSnap => {
+                const data = docSnap.data();
+                const playerName = String(data.latestPlayerName || 'Unknown');
+                
+                // Only include if the name starts with the clan tag (ignoring leading special characters like '[')
+                const cleanStart = playerName.toUpperCase().trim().replace(/^[^A-Z0-9]+/, '');
+                
+                if (cleanStart.startsWith(clan.tag.toUpperCase())) {
+                    players.push({
+                        id: docSnap.id,
+                        playerId: data.playerId || docSnap.id,
+                        latestPlayerName: playerName,
+                        totalKills: Number(data.totalKills || 0),
+                        totalDeaths: Number(data.totalDeaths || 0),
+                        totalCombat: Number(data.totalCombat || 0),
+                        totalOffense: Number(data.totalOffense || 0),
+                        totalDefense: Number(data.totalDefense || 0),
+                        totalSupport: Number(data.totalSupport || 0),
+                        totalTimeSeconds: Number(data.totalTimeSeconds || 0),
+                    });
+                }
+            });
+        }
+
+        // 3. Sort by total score (combat + offense + defense + support) descending
+        players.sort((a, b) => {
+            const scoreA = (a.totalCombat || 0) + (a.totalOffense || 0) + (a.totalDefense || 0) + (a.totalSupport || 0);
+            const scoreB = (b.totalCombat || 0) + (b.totalOffense || 0) + (b.totalDefense || 0) + (b.totalSupport || 0);
+            return scoreB - scoreA;
+        });
+
+        return { success: true, players: JSON.parse(JSON.stringify(players)) };
+    } catch (error: any) {
+        console.error("Error fetching clan member aggregates:", error);
+        return { success: false, error: "Falha ao buscar estatísticas dos membros do clã." };
+    }
+}
