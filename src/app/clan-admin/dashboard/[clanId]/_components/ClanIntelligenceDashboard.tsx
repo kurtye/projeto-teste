@@ -38,9 +38,9 @@ interface ClanIntelligenceDashboardProps {
   clanId: string;
 }
 
-type Archetype = 'Ceifador' | 'Ponta de Lança' | 'Muralha' | 'Altruísta' | 'Generalista' | 'Desconhecido';
+export type Archetype = 'Ceifador' | 'Ponta de Lança' | 'Muralha' | 'Altruísta' | 'Generalista' | 'Desconhecido';
 
-function getArchetype(p: PlayerAggregates, averages: { c: number, o: number, d: number, s: number }): { name: Archetype; icon: any; color: string; desc: string } {
+export function getArchetype(p: PlayerAggregates, averages: { c: number, o: number, d: number, s: number }): { name: Archetype; icon: any; color: string; desc: string } {
   const combat = p.totalCombat || 0;
   const offense = p.totalOffense || 0;
   const defense = p.totalDefense || 0;

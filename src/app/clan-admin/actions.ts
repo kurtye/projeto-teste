@@ -454,3 +454,36 @@ export async function getClanMemberAggregates(clanId: string): Promise<{ success
         return { success: false, error: "Falha ao buscar estatísticas dos membros do clã." };
     }
 }
+
+export async function saveLineup(clanId: string, title: string, squadsData: any) {
+    try {
+        const docRef = await addDoc(collection(db, 'lineups'), {
+            clanId,
+            title,
+            squads: squadsData,
+            createdAt: serverTimestamp()
+        });
+        return { success: true, id: docRef.id };
+    } catch (error: any) {
+        console.error("Error saving lineup:", error);
+        return { success: false, error: "Falha ao salvar a escalação." };
+    }
+}
+
+export async function getLineup(lineupId: string) {
+    try {
+        const { getDoc } = await import('firebase/firestore');
+        const docRef = doc(db, 'lineups', lineupId);
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+            const data = docSnap.data();
+            // Convert serverTimestamp if present to string or null so it can be serialized
+            const createdAt = data.createdAt ? data.createdAt.toDate().toISOString() : null;
+            return { success: true, lineup: { ...data, createdAt } as any };
+        }
+        return { success: false, error: "Escalação não encontrada." };
+    } catch (error: any) {
+        console.error("Error fetching lineup:", error);
+        return { success: false, error: "Falha ao buscar a escalação." };
+    }
+}
