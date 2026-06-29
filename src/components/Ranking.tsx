@@ -413,7 +413,7 @@ export function Ranking({
   const [activeTab, setActiveTab] = useState<Period>('semanal');
   
   const processedPlayers = useMemo(() => {
-    let playersToProcess = initialRankings[activeTab === 'pph' ? 'geral' : activeTab] || [];
+    let playersToProcess = initialRankings[activeTab === 'pph' ? 'mensal' : activeTab] || [];
     
     // Filtro de elite para ranking de eficiência (mínimo 10 horas)
     if (activeTab === 'pph') {
@@ -549,7 +549,7 @@ export function Ranking({
                     <TabsTrigger value="mensal" className="data-[state=active]:bg-green-600 data-[state=active]:text-white">Mensal</TabsTrigger>
                     <TabsTrigger value="geral" className="data-[state=active]:bg-green-600 data-[state=active]:text-white">Geral</TabsTrigger>
                     <TabsTrigger value="pph" className="data-[state=active]:bg-amber-600 data-[state=active]:text-white gap-2">
-                        <Zap className="h-3 w-3" /> Eficiência
+                        <Zap className="h-3 w-3" /> Eficiência do Mês
                     </TabsTrigger>
                 </TabsList>
             </div>
@@ -605,7 +605,7 @@ export function Ranking({
             {activeTab === 'pph' && (
                 <div className="mt-2 text-xs text-muted-foreground bg-amber-500/10 p-2 rounded border border-amber-500/20 flex items-center gap-2">
                     <Zap className="h-3 w-3 text-amber-500" />
-                    <span>O ranking de eficiência requer um mínimo de 10 horas de combate jogadas. Valores expressos em Pontos por Hora (PPH).</span>
+                    <span>O ranking de eficiência do mês requer um mínimo de 10 horas de combate jogadas no mês. Valores expressos em Pontos por Hora (PPH).</span>
                 </div>
             )}
 
