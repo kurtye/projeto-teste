@@ -22,6 +22,39 @@ export interface PlayerAggregates {
   kdRatio?: number;
 }
 
+export interface MonthlyPlayerStats {
+  id: string; // YYYY_MM_playerId
+  playerId: string;
+  playerName: string;
+  month: string; // YYYY_MM
+
+  // Agregações
+  totalKills: number;
+  totalDeaths: number;
+  totalCombat: number;
+  totalOffense: number;
+  totalDefense: number;
+  totalSupport: number;
+  totalTimeSeconds?: number;
+  matchesPlayed?: number; // Partidas jogadas
+  
+  totalVehicleKills?: number;
+  totalVehiclesDestroyed?: number;
+  totalTeamkills?: number;
+  deathsByTk?: number; // Mortes por TK
+  
+  // Máximos
+  longestLifeSecs?: number;
+  maxKillsStreak: number;
+
+  // Roles
+  timePlayedByRole?: Record<number, number>; // key is role id
+  mainRole?: number;
+  topWeapons?: Record<string, number>;
+  topVictims?: Record<string, number>; // Quem ele mais matou
+  topKilledBy?: Record<string, number>; // Quem mais matou ele
+}
+
 export interface PlayerPeriodStats {
   id: string; // Document ID
   playerId: string;

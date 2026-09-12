@@ -6,13 +6,41 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Brain, Users, Sword, Shield, Crosshair, HeartPulse, Trophy, Activity, Loader2 } from 'lucide-react';
-import { Archetype, getArchetype } from './ClanIntelligenceDashboard';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
-import { getClanMemberAggregates } from '../../../actions';
-
-import { saveLineup } from '../../../actions';
+import { getClanMemberAggregates, saveLineup } from '../../../actions';
 import { useToast } from '@/hooks/use-toast';
+
+export type Archetype = 'Ceifador' | 'Ponta de Lança' | 'Muralha' | 'Altruísta' | 'Generalista' | 'Desconhecido';
+
+export function getArchetype(p: PlayerAggregates, averages: { c: number, o: number, d: number, s: number }): { name: Archetype; icon: any; color: string; desc: string } {
+  const combat = p.totalCombat || 0;
+  const offense = p.totalOffense || 0;
+  const defense = p.totalDefense || 0;
+  const support = p.totalSupport || 0;
+  const total = combat + offense + defense + support;
+
+  if (total === 0) return { name: 'Desconhecido', icon: Users, color: 'text-gray-500', desc: 'Sem dados suficientes' };
+
+  const avgC = averages.c || 1;
+  const avgO = averages.o || 1;
+  const avgD = averages.d || 1;
+  const avgS = averages.s || 1;
+
+  const relC = combat / avgC;
+  const relO = offense / avgO;
+  const relD = defense / avgD;
+  const relS = support / avgS;
+
+  const maxRel = Math.max(relC, relO, relD, relS);
+
+  if (maxRel < 1.15) return { name: 'Generalista', icon: Users, color: 'text-blue-400', desc: 'Equilibrado com a média do clã' };
+  
+  if (relO === maxRel) return { name: 'Ponta de Lança', icon: Sword, color: 'text-red-500', desc: 'Acima da média em Ataque' };
+  if (relC === maxRel) return { name: 'Ceifador', icon: Crosshair, color: 'text-purple-500', desc: 'Acima da média em Combate' };
+  if (relS === maxRel) return { name: 'Altruísta', icon: HeartPulse, color: 'text-green-500', desc: 'Acima da média em Suporte' };
+  return { name: 'Muralha', icon: Shield, color: 'text-yellow-500', desc: 'Acima da média em Defesa' };
+}
 import { Copy, Save, Share2, ExternalLink } from 'lucide-react';
 
 export interface LineupBuilderProps {

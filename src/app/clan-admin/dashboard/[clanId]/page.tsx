@@ -540,7 +540,7 @@ export default function ClanDashboardPage({ params }: { params: Promise<{ clanId
         </Button>
       </div>
 
-      <Tabs defaultValue="ranking">
+      <Tabs defaultValue={clanId === 'hrb' ? 'intelligence' : 'ranking'}>
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4">
             <TabsList className="grid w-full grid-cols-4 md:grid-cols-6 h-auto">
                 <TabsTrigger value="ranking" className="py-2"><Trophy className="mr-2 h-4 w-4"/>Ranking</TabsTrigger>

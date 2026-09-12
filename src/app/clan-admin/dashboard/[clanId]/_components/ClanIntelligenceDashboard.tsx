@@ -1,13 +1,13 @@
 'use client';
 
 import { useState, useTransition, useMemo, useEffect } from 'react';
-import type { PlayerAggregates } from '@/lib/types';
+import type { MonthlyPlayerStats } from '@/lib/types';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Brain, Trophy, Activity, Sword, Shield, HeartPulse, Crosshair, Users, Info } from 'lucide-react';
-import { getClanMemberAggregates } from '../../../actions';
+import { Brain, Trophy, Activity, Sword, Shield, HeartPulse, Crosshair, Users, Skull, Flame, Target, Truck, Zap, Star, UserX, Clock, Medal } from 'lucide-react';
+import { getClanMonthlyAggregates } from '../../../actions';
 import {
   Radar,
   RadarChart,
@@ -15,13 +15,10 @@ import {
   PolarAngleAxis,
   PolarRadiusAxis,
   ResponsiveContainer,
-  ScatterChart,
-  Scatter,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ZAxis
+  PieChart,
+  Pie,
+  Cell,
+  Tooltip
 } from 'recharts';
 import {
   Table,
@@ -33,68 +30,91 @@ import {
 } from '@/components/ui/table';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { ROLE_MAPPING } from '@/lib/roles';
+import { format, subMonths } from 'date-fns';
 
 interface ClanIntelligenceDashboardProps {
   clanId: string;
 }
 
-export type Archetype = 'Ceifador' | 'Ponta de Lança' | 'Muralha' | 'Altruísta' | 'Generalista' | 'Desconhecido';
-
-export function getArchetype(p: PlayerAggregates, averages: { c: number, o: number, d: number, s: number }): { name: Archetype; icon: any; color: string; desc: string } {
-  const combat = p.totalCombat || 0;
-  const offense = p.totalOffense || 0;
-  const defense = p.totalDefense || 0;
-  const support = p.totalSupport || 0;
-  const total = combat + offense + defense + support;
-
-  if (total === 0) return { name: 'Desconhecido', icon: Info, color: 'text-gray-500', desc: 'Sem dados suficientes' };
-
-  // Evita divisão por zero
-  const avgC = averages.c || 1;
-  const avgO = averages.o || 1;
-  const avgD = averages.d || 1;
-  const avgS = averages.s || 1;
-
-  // Calculamos quantas vezes o jogador é maior que a média do clã naquele status
-  const relC = combat / avgC;
-  const relO = offense / avgO;
-  const relD = defense / avgD;
-  const relS = support / avgS;
-
-  const maxRel = Math.max(relC, relO, relD, relS);
-
-  // Se o maior pico de habilidade do jogador for menor que 1.15x a média (15% acima da média), 
-  // significa que ele é bem equilibrado. Reduzimos de 1.3 para 1.15 para destacar mais os especialistas.
-  if (maxRel < 1.15) return { name: 'Generalista', icon: Users, color: 'text-blue-400', desc: 'Equilibrado com a média do clã' };
-  
-  if (relO === maxRel) return { name: 'Ponta de Lança', icon: Sword, color: 'text-red-500', desc: 'Acima da média em Ataque' };
-  if (relC === maxRel) return { name: 'Ceifador', icon: Crosshair, color: 'text-purple-500', desc: 'Acima da média em Combate' };
-  if (relS === maxRel) return { name: 'Altruísta', icon: HeartPulse, color: 'text-green-500', desc: 'Acima da média em Suporte' };
-  return { name: 'Muralha', icon: Shield, color: 'text-yellow-500', desc: 'Acima da média em Defesa' };
+const formatTime = (seconds: number): string => {
+    if (isNaN(seconds) || seconds < 0) return '0h';
+    const hours = Math.floor(seconds / 3600);
+    return `${hours}h`;
 }
 
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+// Colors for PieChart
+const COLORS = ['#ef4444', '#f97316', '#f59e0b', '#84cc16', '#22c55e', '#06b6d4', '#3b82f6', '#8b5cf6', '#d946ef', '#f43f5e', '#64748b', '#a8a29e'];
+
+export function getDivision(mainRole: number | undefined) {
+    if (mainRole === undefined) return { name: 'Desconhecida', color: 'text-gray-500', icon: Info };
+    const roleName = ROLE_MAPPING[mainRole]?.name;
+    
+    if (['Officer', 'Spotter', 'Tank Commander'].includes(roleName)) {
+        return { name: 'Liderança', color: 'text-yellow-500', icon: Star };
+    }
+    if (['Assault', 'Auto Rifleman', 'Machine Gunner', 'Rifleman'].includes(roleName)) {
+        return { name: 'Linha de Frente', color: 'text-red-500', icon: Sword };
+    }
+    if (['Medic', 'Support', 'Engineer'].includes(roleName)) {
+        return { name: 'Apoio & Logística', color: 'text-green-500', icon: HeartPulse };
+    }
+    if (['Crewman', 'Anti-Tank'].includes(roleName)) {
+        return { name: 'Anti-Blindados & Veículos', color: 'text-orange-500', icon: Truck };
+    }
+    if (['Sniper'].includes(roleName)) {
+        return { name: 'Reconhecimento', color: 'text-purple-500', icon: Crosshair };
+    }
+    return { name: 'Geral', color: 'text-blue-500', icon: Users };
+}
+
+const StatCard = ({ title, value, icon: Icon, subtext, highlightColor }: { title: string; value: string | number; icon: React.ElementType; subtext?: string; highlightColor?: string; }) => (
+  <Card className="bg-card/50 backdrop-blur-sm transition-all hover:border-accent hover:shadow-lg border-accent/10">
+    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+      <CardTitle className="text-sm font-medium">{title}</CardTitle>
+      <Icon className={cn("h-4 w-4", highlightColor || "text-accent")} />
+    </CardHeader>
+    <CardContent>
+      <div className={cn("text-2xl font-bold", highlightColor || "text-foreground")}>{value}</div>
+      {subtext && <p className="text-xs text-muted-foreground mt-1 uppercase font-bold tracking-wider">{subtext}</p>}
+    </CardContent>
+  </Card>
+);
 
 export function ClanIntelligenceDashboard({ clanId }: ClanIntelligenceDashboardProps) {
-  const [players, setPlayers] = useState<(PlayerAggregates & { totalScore: number; hoursPlayed: number })[]>([]);
+  const [players, setPlayers] = useState<(MonthlyPlayerStats & { totalScore: number; hoursPlayed: number })[]>([]);
   const [isFetching, startFetching] = useTransition();
   const [hasFetched, setHasFetched] = useState(false);
-  const [minHoursFilter, setMinHoursFilter] = useState<number>(200);
+  const [minHoursFilter, setMinHoursFilter] = useState<number>(0);
+  const [periodFilter, setPeriodFilter] = useState<string>('current');
+  const [sortConfig, setSortConfig] = useState<{ key: 'hoursPlayed' | 'totalKills' | 'totalScore' | 'kdRatio'; direction: 'asc' | 'desc' }>({ key: 'totalScore', direction: 'desc' });
 
   useEffect(() => {
-    // Auto fetch on mount
     handleFetch();
-  }, []);
+  }, [periodFilter]);
 
   const handleFetch = () => {
     startFetching(async () => {
-      const result = await getClanMemberAggregates(clanId);
+      const now = new Date();
+      const currentMonthStr = format(now, 'yyyy-MM');
+      const lastMonthStr = format(subMonths(now, 1), 'yyyy-MM');
+      const twoMonthsAgoStr = format(subMonths(now, 2), 'yyyy-MM');
+
+      let periodsToFetch = [`month_${currentMonthStr}`];
+      if (periodFilter === '3months') {
+        periodsToFetch = [`month_${currentMonthStr}`, `month_${lastMonthStr}`, `month_${twoMonthsAgoStr}`];
+      }
+
+      const result = await getClanMonthlyAggregates(clanId, periodsToFetch);
       if (result.success && result.players) {
         const enhanced = result.players.map(p => {
           const totalScore = (p.totalCombat || 0) + (p.totalOffense || 0) + (p.totalDefense || 0) + (p.totalSupport || 0);
+          const kdRatio = p.totalDeaths ? (p.totalKills / p.totalDeaths) : (p.totalKills || 0);
           return {
             ...p,
             totalScore,
+            kdRatio,
             hoursPlayed: (p.totalTimeSeconds || 0) / 3600,
           };
         });
@@ -107,6 +127,62 @@ export function ClanIntelligenceDashboard({ clanId }: ClanIntelligenceDashboardP
   const filteredPlayers = useMemo(() => {
     return players.filter(p => p.hoursPlayed >= minHoursFilter);
   }, [players, minHoursFilter]);
+
+  const sortedPlayers = useMemo(() => {
+    const sorted = [...filteredPlayers];
+    sorted.sort((a, b) => {
+      let valA = a[sortConfig.key] || 0;
+      let valB = b[sortConfig.key] || 0;
+      if (valA < valB) return sortConfig.direction === 'asc' ? -1 : 1;
+      if (valA > valB) return sortConfig.direction === 'asc' ? 1 : -1;
+      return 0;
+    });
+    return sorted;
+  }, [filteredPlayers, sortConfig]);
+
+  const requestSort = (key: 'hoursPlayed' | 'totalKills' | 'totalScore' | 'kdRatio') => {
+    let direction: 'asc' | 'desc' = 'desc';
+    if (sortConfig.key === key && sortConfig.direction === 'desc') {
+      direction = 'asc';
+    }
+    setSortConfig({ key, direction });
+  };
+
+  const globalStats = useMemo(() => {
+      let totalScore = 0;
+      let totalKills = 0;
+      let totalDeaths = 0;
+      let matchesPlayed = 0;
+      let totalVehiclesDestroyed = 0;
+      let totalTeamkills = 0;
+      let deathsByTk = 0;
+      let totalTimeSeconds = 0;
+
+      filteredPlayers.forEach(p => {
+          totalScore += p.totalScore;
+          totalKills += p.totalKills || 0;
+          totalDeaths += p.totalDeaths || 0;
+          matchesPlayed += p.matchesPlayed || 0;
+          totalVehiclesDestroyed += p.totalVehiclesDestroyed || 0;
+          totalTeamkills += p.totalTeamkills || 0;
+          deathsByTk += p.deathsByTk || 0;
+          totalTimeSeconds += p.totalTimeSeconds || 0;
+      });
+
+      const kdRatio = totalDeaths > 0 ? (totalKills / totalDeaths).toFixed(2) : totalKills.toFixed(2);
+
+      return {
+          totalScore,
+          totalKills,
+          totalDeaths,
+          matchesPlayed,
+          totalVehiclesDestroyed,
+          totalTeamkills,
+          deathsByTk,
+          totalTimeSeconds,
+          kdRatio
+      };
+  }, [filteredPlayers]);
 
   const averages = useMemo(() => {
     if (!filteredPlayers.length) return { c: 1, o: 1, d: 1, s: 1 };
@@ -133,71 +209,83 @@ export function ClanIntelligenceDashboard({ clanId }: ClanIntelligenceDashboardP
     ];
   }, [filteredPlayers, averages]);
 
-  const scatterData = useMemo(() => {
-    return filteredPlayers.map(p => ({
-      x: Math.round(p.hoursPlayed),
-      y: p.totalScore,
-      z: 1, // point size
-      name: p.latestPlayerName,
-    }));
+  const clanMeta = useMemo(() => {
+      const roleTotals: Record<number, number> = {};
+      filteredPlayers.forEach(p => {
+          if (p.timePlayedByRole) {
+              for (const [r, t] of Object.entries(p.timePlayedByRole)) {
+                  const roleId = Number(r);
+                  roleTotals[roleId] = (roleTotals[roleId] || 0) + (t as number);
+              }
+          }
+      });
+      return Object.entries(roleTotals)
+        .map(([id, t]) => ({ 
+            id: Number(id), 
+            name: ROLE_MAPPING[Number(id)]?.name || 'Desconhecido', 
+            seconds: t,
+            value: Math.floor(t / 3600) // in hours for chart
+        }))
+        .filter(r => r.value > 0)
+        .sort((a, b) => b.seconds - a.seconds);
   }, [filteredPlayers]);
 
-  const archetypeCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-    filteredPlayers.forEach(p => {
-      const arch = getArchetype(p, averages).name;
-      counts[arch] = (counts[arch] || 0) + 1;
-    });
-    return counts;
-  }, [filteredPlayers, averages]);
+  const divisionCounts = useMemo(() => {
+      const counts: Record<string, number> = {};
+      filteredPlayers.forEach(p => {
+          const div = getDivision(p.mainRole).name;
+          counts[div] = (counts[div] || 0) + 1;
+      });
+      return Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  }, [filteredPlayers]);
 
-  const CustomTooltip = ({ active, payload }: any) => {
-    if (active && payload && payload.length) {
-      const data = payload[0].payload;
-      return (
-        <div className="bg-background border border-border p-3 rounded-lg shadow-xl">
-          <p className="font-bold text-accent">{data.name}</p>
-          <p className="text-sm">Tempo Jogado: {data.x}h</p>
-          <p className="text-sm">Pontuação: {data.y.toLocaleString()}</p>
-        </div>
-      );
-    }
-    return null;
-  };
+  const clanWeapons = useMemo(() => {
+      const wTotals: Record<string, number> = {};
+      filteredPlayers.forEach(p => {
+          if (p.topWeapons) {
+              for (const [w, c] of Object.entries(p.topWeapons)) {
+                  wTotals[w] = (wTotals[w] || 0) + (c as number);
+              }
+          }
+      });
+      return Object.entries(wTotals)
+        .map(([w, c]) => ({ name: w, count: c }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 5);
+  }, [filteredPlayers]);
 
-  const suggestedDuos = useMemo(() => {
-    // 1. Calculate stats per hour
-    const playersStats = filteredPlayers.map(p => ({
-      ...p,
-      arch: getArchetype(p, averages),
-      atkScoreHr: p.hoursPlayed > 0 ? ((p.totalOffense || 0) + (p.totalCombat || 0)) / p.hoursPlayed : 0,
-      defScoreHr: p.hoursPlayed > 0 ? ((p.totalDefense || 0) + (p.totalSupport || 0)) / p.hoursPlayed : 0,
-      totScoreHr: p.hoursPlayed > 0 ? p.totalScore / p.hoursPlayed : 0,
-    }));
+  const clanNemesis = useMemo(() => {
+      const nTotals: Record<string, number> = {};
+      filteredPlayers.forEach(p => {
+          if (p.topKilledBy) {
+              for (const [n, c] of Object.entries(p.topKilledBy)) {
+                  nTotals[n] = (nTotals[n] || 0) + (c as number);
+              }
+          }
+      });
+      return Object.entries(nTotals)
+        .map(([n, c]) => ({ name: n, count: c }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 5);
+  }, [filteredPlayers]);
 
-    // 2. Attack Duos (Top 20 players in Attack)
-    const sortedAtk = [...playersStats].sort((a, b) => b.atkScoreHr - a.atkScoreHr);
-    const attackDuos = [];
-    for (let i = 0; i < 20 && i + 1 < sortedAtk.length; i += 2) {
-      attackDuos.push([sortedAtk[i], sortedAtk[i+1]]);
-    }
+  const awards = useMemo(() => {
+      if (filteredPlayers.length === 0) return null;
+      
+      const topKills = [...filteredPlayers].sort((a, b) => (b.totalKills || 0) - (a.totalKills || 0))[0];
+      const topVehicles = [...filteredPlayers].sort((a, b) => (b.totalVehiclesDestroyed || 0) - (a.totalVehiclesDestroyed || 0))[0];
+      const topStreak = [...filteredPlayers].sort((a, b) => (b.maxKillsStreak || 0) - (a.maxKillsStreak || 0))[0];
+      const topTK = [...filteredPlayers].sort((a, b) => (b.totalTeamkills || 0) - (a.totalTeamkills || 0))[0];
+      const topLife = [...filteredPlayers].sort((a, b) => (b.longestLifeSecs || 0) - (a.longestLifeSecs || 0))[0];
 
-    // 3. Defense Duos (Top 20 players in Defense)
-    const sortedDef = [...playersStats].sort((a, b) => b.defScoreHr - a.defScoreHr);
-    const defenseDuos = [];
-    for (let i = 0; i < 20 && i + 1 < sortedDef.length; i += 2) {
-      defenseDuos.push([sortedDef[i], sortedDef[i+1]]);
-    }
-
-    // 4. Efficiency Duos (Top 20 overall)
-    const sortedTot = [...playersStats].sort((a, b) => b.totScoreHr - a.totScoreHr);
-    const effDuos = [];
-    for (let i = 0; i < 20 && i + 1 < sortedTot.length; i += 2) {
-      effDuos.push([sortedTot[i], sortedTot[i+1]]);
-    }
-
-    return { attackDuos, defenseDuos, effDuos };
-  }, [filteredPlayers, averages]);
+      return {
+          exterminador: topKills,
+          cacador: topVehicles,
+          streak: topStreak,
+          tk: topTK,
+          sobrevivente: topLife
+      };
+  }, [filteredPlayers]);
 
   return (
     <div className="space-y-6">
@@ -205,31 +293,41 @@ export function ClanIntelligenceDashboard({ clanId }: ClanIntelligenceDashboardP
         <div>
           <h2 className="text-2xl font-bold font-headline flex items-center gap-2">
             <Brain className="text-accent h-6 w-6" />
-            Inteligência do Clã
+            Central de Estatísticas
           </h2>
           <p className="text-muted-foreground text-sm">
-            Análise comportamental e estatística dos seus membros.
+            O peso do seu clã no front.
           </p>
         </div>
-        <div className="flex items-center gap-3 w-full sm:w-auto">
+        <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
             <div className="flex items-center gap-2">
-                <span className="text-sm text-muted-foreground whitespace-nowrap">Mínimo de Horas:</span>
-                <Select value={minHoursFilter.toString()} onValueChange={(val) => setMinHoursFilter(Number(val))}>
-                    <SelectTrigger className="w-[120px]">
-                        <SelectValue placeholder="Filtro" />
+                <Select value={periodFilter} onValueChange={setPeriodFilter}>
+                    <SelectTrigger className="w-[150px]">
+                        <SelectValue placeholder="Período" />
                     </SelectTrigger>
                     <SelectContent>
-                        <SelectItem value="0">0 horas</SelectItem>
+                        <SelectItem value="current">Mês Atual</SelectItem>
+                        <SelectItem value="3months">Últimos 3 Meses</SelectItem>
+                    </SelectContent>
+                </Select>
+            </div>
+            <div className="flex items-center gap-2">
+                <Select value={minHoursFilter.toString()} onValueChange={(val) => setMinHoursFilter(Number(val))}>
+                    <SelectTrigger className="w-[120px]">
+                        <SelectValue placeholder="Filtro de Horas" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="0">Todas Horas</SelectItem>
+                        <SelectItem value="20">20+ horas</SelectItem>
                         <SelectItem value="50">50+ horas</SelectItem>
                         <SelectItem value="100">100+ horas</SelectItem>
                         <SelectItem value="200">200+ horas</SelectItem>
-                        <SelectItem value="500">500+ horas</SelectItem>
                     </SelectContent>
                 </Select>
             </div>
             <Button onClick={handleFetch} disabled={isFetching} variant="outline" size="sm">
             <Activity className={cn("mr-2 h-4 w-4", isFetching && "animate-spin")} />
-            Atualizar Dados
+            Atualizar
             </Button>
         </div>
       </div>
@@ -243,26 +341,155 @@ export function ClanIntelligenceDashboard({ clanId }: ClanIntelligenceDashboardP
         <Card>
             <CardContent className="flex flex-col items-center py-16">
                 <Brain className="h-16 w-16 text-muted-foreground mb-4 opacity-20" />
-                <p>Nenhum dado encontrado ou membros sem estatísticas registradas.</p>
+                <p>Nenhum dado encontrado para o período selecionado.</p>
             </CardContent>
         </Card>
       ) : (
         <>
+          {/* PAINEL GLOBAL DO CLÃ */}
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+              <StatCard title="Pontuação Total" value={globalStats.totalScore.toLocaleString()} icon={Trophy} highlightColor="text-yellow-400" />
+              <StatCard title="K/D Ratio Global" value={globalStats.kdRatio} icon={Target} highlightColor="text-red-400" />
+              <StatCard title="Total Kills" value={globalStats.totalKills.toLocaleString()} icon={Crosshair} />
+              <StatCard title="Total Deaths" value={globalStats.totalDeaths.toLocaleString()} icon={Skull} />
+              
+              <StatCard title="Partidas Jogadas" value={globalStats.matchesPlayed.toLocaleString()} icon={Users} subtext="Ingressos por membros" />
+              <StatCard title="Veículos Destruídos" value={globalStats.totalVehiclesDestroyed.toLocaleString()} icon={Truck} highlightColor="text-orange-500" />
+              <StatCard title="Tempo de Presença" value={formatTime(globalStats.totalTimeSeconds)} icon={Clock} />
+              <StatCard title="Team Kills Globais" value={globalStats.totalTeamkills.toLocaleString()} icon={UserX} highlightColor="text-red-500" />
+          </div>
+
+          {/* DESTAQUES DO CLÃ */}
+          {awards && (
+            <div className="pt-4 border-t border-border/50">
+                <h3 className="text-xl font-bold mb-4 flex items-center gap-2"><Medal className="text-accent"/> Condecorações e Destaques</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+                    <div className="bg-card border border-border p-4 rounded-xl flex flex-col items-center text-center">
+                        <Crosshair className="w-8 h-8 text-red-500 mb-2"/>
+                        <span className="font-bold text-sm">O Exterminador</span>
+                        <span className="text-xs text-muted-foreground">Mais Kills Totais</span>
+                        <div className="mt-3 font-bold text-lg">{awards.exterminador.playerName}</div>
+                        <div className="text-accent text-sm font-mono">{awards.exterminador.totalKills?.toLocaleString()} Kills</div>
+                    </div>
+                    <div className="bg-card border border-border p-4 rounded-xl flex flex-col items-center text-center">
+                        <Truck className="w-8 h-8 text-orange-500 mb-2"/>
+                        <span className="font-bold text-sm">Caçador de Aço</span>
+                        <span className="text-xs text-muted-foreground">Mais Veículos Destruídos</span>
+                        <div className="mt-3 font-bold text-lg">{awards.cacador.playerName}</div>
+                        <div className="text-accent text-sm font-mono">{awards.cacador.totalVehiclesDestroyed?.toLocaleString()} Destruídos</div>
+                    </div>
+                    <div className="bg-card border border-border p-4 rounded-xl flex flex-col items-center text-center">
+                        <Flame className="w-8 h-8 text-yellow-500 mb-2"/>
+                        <span className="font-bold text-sm">Perigo Constante</span>
+                        <span className="text-xs text-muted-foreground">Maior Kill Streak</span>
+                        <div className="mt-3 font-bold text-lg">{awards.streak.playerName}</div>
+                        <div className="text-accent text-sm font-mono">{awards.streak.maxKillsStreak?.toLocaleString()} Kills Seguidas</div>
+                    </div>
+                    <div className="bg-card border border-border p-4 rounded-xl flex flex-col items-center text-center">
+                        <UserX className="w-8 h-8 text-red-700 mb-2"/>
+                        <span className="font-bold text-sm">Inimigo do Estado</span>
+                        <span className="text-xs text-muted-foreground">Mais Team Kills</span>
+                        <div className="mt-3 font-bold text-lg">{awards.tk.playerName}</div>
+                        <div className="text-red-500 text-sm font-mono">{awards.tk.totalTeamkills?.toLocaleString()} Aliados Abatidos</div>
+                    </div>
+                    <div className="bg-card border border-border p-4 rounded-xl flex flex-col items-center text-center">
+                        <Shield className="w-8 h-8 text-green-500 mb-2"/>
+                        <span className="font-bold text-sm">O Sobrevivente</span>
+                        <span className="text-xs text-muted-foreground">Maior tempo de vida</span>
+                        <div className="mt-3 font-bold text-lg">{awards.sobrevivente.playerName}</div>
+                        <div className="text-accent text-sm font-mono">{formatTime(awards.sobrevivente.longestLifeSecs || 0)}</div>
+                    </div>
+                </div>
+            </div>
+          )}
+
+          {/* TOP PANELS: Weapons, Nemesis */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+             <Card className="bg-card/50 backdrop-blur-sm border-accent/10">
+               <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-lg"><Crosshair className="text-accent w-5 h-5"/> Arsenal do Clã</CardTitle>
+                  <CardDescription>Armas mais utilizadas pelo grupo no período.</CardDescription>
+               </CardHeader>
+               <CardContent>
+                  <ul className="space-y-3">
+                     {clanWeapons.map((w, i) => (
+                        <li key={i} className="flex justify-between items-center bg-background/50 p-2 rounded border border-border">
+                           <span className="font-bold truncate pr-4">{w.name}</span>
+                           <span className="text-accent font-mono">{w.count.toLocaleString()} Kills</span>
+                        </li>
+                     ))}
+                     {clanWeapons.length === 0 && <p className="text-muted-foreground text-sm italic">Sem dados de armas.</p>}
+                  </ul>
+               </CardContent>
+             </Card>
+
+             <Card className="bg-card/50 backdrop-blur-sm border-red-500/10">
+               <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-lg text-red-500"><Skull className="w-5 h-5"/> Inimigos Públicos Nº 1</CardTitle>
+                  <CardDescription>Jogadores adversários que mais abateram membros do clã.</CardDescription>
+               </CardHeader>
+               <CardContent>
+                  <ul className="space-y-3">
+                     {clanNemesis.map((n, i) => (
+                        <li key={i} className="flex justify-between items-center bg-background/50 p-2 rounded border border-red-500/20">
+                           <span className="font-bold text-red-400 truncate pr-4">{n.name}</span>
+                           <span className="font-mono text-muted-foreground">{n.count.toLocaleString()} Mortes</span>
+                        </li>
+                     ))}
+                     {clanNemesis.length === 0 && <p className="text-muted-foreground text-sm italic">Sem dados de nêmesis.</p>}
+                  </ul>
+               </CardContent>
+             </Card>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            
+            {/* Meta do Clã - Pie Chart */}
+            <Card className="bg-card/50 backdrop-blur-sm">
+              <CardHeader>
+                <CardTitle className="text-lg">O Meta do Clã</CardTitle>
+                <CardDescription>Distribuição de classes baseada em horas jogadas.</CardDescription>
+              </CardHeader>
+              <CardContent className="h-[300px] flex items-center justify-center">
+                {clanMeta.length > 0 ? (
+                    <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                        <Pie
+                        data={clanMeta}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={60}
+                        outerRadius={80}
+                        paddingAngle={2}
+                        dataKey="value"
+                        >
+                        {clanMeta.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                        ))}
+                        </Pie>
+                        <Tooltip formatter={(val) => `${val}h`} />
+                    </PieChart>
+                    </ResponsiveContainer>
+                ) : (
+                    <p className="text-muted-foreground italic text-sm">Sem dados de classe.</p>
+                )}
+              </CardContent>
+            </Card>
+
             {/* Gráfico Radar - Perfil Geral do Clã */}
             <Card className="bg-card/50 backdrop-blur-sm">
               <CardHeader>
-                <CardTitle className="text-lg">Identidade do Clã</CardTitle>
-                <CardDescription>Média de pontuação por categoria de todos os membros.</CardDescription>
+                <CardTitle className="text-lg">Foco de Ação</CardTitle>
+                <CardDescription>Pontuação média por categoria em combate.</CardDescription>
               </CardHeader>
-              <CardContent className="h-[350px]">
+              <CardContent className="h-[300px]">
                 <ResponsiveContainer width="100%" height="100%">
-                  <RadarChart cx="50%" cy="50%" outerRadius="80%" data={radarData}>
+                  <RadarChart cx="50%" cy="50%" outerRadius="70%" data={radarData}>
                     <PolarGrid stroke="currentColor" className="opacity-20" />
                     <PolarAngleAxis dataKey="subject" tick={{ fill: 'currentColor', fontSize: 12 }} />
                     <PolarRadiusAxis angle={30} domain={[0, 'dataMax']} tick={false} axisLine={false} />
                     <Radar
-                      name="Média do Clã"
+                      name="Média"
                       dataKey="A"
                       stroke="#d97706"
                       fill="#d97706"
@@ -274,103 +501,97 @@ export function ClanIntelligenceDashboard({ clanId }: ClanIntelligenceDashboardP
               </CardContent>
             </Card>
 
-            {/* Scatter Plot - Eficiência vs Dedicação */}
-            <Card className="bg-card/50 backdrop-blur-sm">
-              <CardHeader>
-                <CardTitle className="text-lg">Eficiência vs Dedicação</CardTitle>
-                <CardDescription>Comparação de Tempo Jogado x Pontuação Total dos membros.</CardDescription>
-              </CardHeader>
-              <CardContent className="h-[350px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
-                    <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
-                    <XAxis 
-                        type="number" 
-                        dataKey="x" 
-                        name="Horas" 
-                        unit="h" 
-                        stroke="currentColor" 
-                        tick={{ fill: 'currentColor' }} 
-                        label={{ value: 'Horas Jogadas', position: 'insideBottom', offset: -10, fill: 'currentColor' }}
-                    />
-                    <YAxis 
-                        type="number" 
-                        dataKey="y" 
-                        name="Pontuação" 
-                        stroke="currentColor" 
-                        tick={{ fill: 'currentColor' }}
-                        tickFormatter={(val) => `${(val / 1000).toFixed(0)}k`}
-                    />
-                    <ZAxis type="number" range={[50, 50]} />
-                    <Tooltip cursor={{ strokeDasharray: '3 3' }} content={<CustomTooltip />} />
-                    <Scatter name="Jogadores" data={scatterData} fill="#d97706" fillOpacity={0.6} />
-                  </ScatterChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
           </div>
 
-          {/* Arquétipos e Tabela */}
+          {/* Tabela de Membros */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-lg">Análise Individual e Arquétipos</CardTitle>
+              <CardTitle className="text-lg">Relatório de Membros</CardTitle>
               <CardDescription>
-                A inteligência artificial classificou os membros com base no comportamento em jogo.
+                Lista completa de atuação dos membros do clã no período.
               </CardDescription>
             </CardHeader>
             <CardContent>
-              {/* Summary Badges */}
               <div className="flex flex-wrap gap-4 mb-6 p-4 bg-muted/30 rounded-lg border border-accent/10">
-                <div className="w-full text-sm font-semibold mb-2">Composição de Especialistas:</div>
-                {Object.entries(archetypeCounts).map(([arch, count]) => (
-                  <div key={arch} className="flex items-center gap-2">
+                <div className="w-full text-sm font-semibold mb-2">Composição de Divisões (Por Classe Principal):</div>
+                {divisionCounts.map(([div, count]) => (
+                  <div key={div} className="flex items-center gap-2">
                     <Badge variant="outline" className="px-3 py-1 bg-background">
-                      {arch}: <span className="font-bold ml-1">{count}</span>
+                      {div}: <span className="font-bold ml-1">{count}</span>
                     </Badge>
                   </div>
                 ))}
               </div>
 
-              {/* Tabela de Inteligência */}
               <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
                       <TableHead>Jogador</TableHead>
-                      <TableHead>Arquétipo</TableHead>
-                      <TableHead className="text-right">Eficiência (Pts/Hora)</TableHead>
-                      <TableHead className="text-right">K/D Geral</TableHead>
-                      <TableHead className="text-right">Kills</TableHead>
+                      <TableHead>Classe Principal</TableHead>
+                      <TableHead>Divisão</TableHead>
+                      <TableHead className="text-right">
+                        <Button variant="ghost" size="sm" onClick={() => requestSort('hoursPlayed')} className="-mr-3 hover:bg-transparent font-bold">
+                          Horas {sortConfig.key === 'hoursPlayed' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                        </Button>
+                      </TableHead>
+                      <TableHead className="text-right">
+                        <Button variant="ghost" size="sm" onClick={() => requestSort('kdRatio')} className="-mr-3 hover:bg-transparent font-bold">
+                          K/D {sortConfig.key === 'kdRatio' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                        </Button>
+                      </TableHead>
+                      <TableHead className="text-right">
+                        <Button variant="ghost" size="sm" onClick={() => requestSort('totalKills')} className="-mr-3 hover:bg-transparent font-bold">
+                          Kills {sortConfig.key === 'totalKills' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                        </Button>
+                      </TableHead>
+                      <TableHead className="text-right">
+                        <Button variant="ghost" size="sm" onClick={() => requestSort('totalScore')} className="-mr-3 hover:bg-transparent font-bold">
+                          Pontuação {sortConfig.key === 'totalScore' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                        </Button>
+                      </TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredPlayers.map(player => {
-                      const arch = getArchetype(player, averages);
-                      const Icon = arch.icon;
-                      const efficiency = player.hoursPlayed > 0 ? Math.round(player.totalScore / player.hoursPlayed) : 0;
-                      const kd = player.totalDeaths ? (player.totalKills / player.totalDeaths).toFixed(2) : player.totalKills;
-                      
+                    {sortedPlayers.map(player => {
+                      const MainRoleIcon = player.mainRole !== undefined && ROLE_MAPPING[player.mainRole] ? ROLE_MAPPING[player.mainRole].icon : null;
+                      const mainRoleName = player.mainRole !== undefined && ROLE_MAPPING[player.mainRole] ? ROLE_MAPPING[player.mainRole].name : '-';
+                      const division = getDivision(player.mainRole);
+                      const DivIcon = division.icon;
+
                       return (
                         <TableRow key={player.id}>
                           <TableCell className="font-medium">
-                            <Link href={`/player/${encodeURIComponent(player.id)}`} className="hover:underline hover:text-accent">
-                              {player.latestPlayerName}
+                            <Link href={`/player/${encodeURIComponent(player.playerId)}`} className="hover:underline hover:text-accent font-bold">
+                              {player.playerName}
                             </Link>
                           </TableCell>
                           <TableCell>
-                            <div className="flex items-center gap-2" title={arch.desc}>
-                              <Icon className={cn("h-4 w-4", arch.color)} />
-                              <span className="text-sm">{arch.name}</span>
+                            {MainRoleIcon && (
+                              <div className="flex items-center gap-2">
+                                <MainRoleIcon className="w-4 h-4 text-muted-foreground" />
+                                <span className="text-sm">{mainRoleName}</span>
+                              </div>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-2" title={division.name}>
+                              <DivIcon className={cn("h-4 w-4", division.color)} />
+                              <span className="text-sm font-semibold">{division.name}</span>
                             </div>
                           </TableCell>
-                          <TableCell className="text-right">
-                            {efficiency.toLocaleString()}
+                          <TableCell className="text-right text-muted-foreground">
+                             {Math.round(player.hoursPlayed)}h
                           </TableCell>
                           <TableCell className="text-right">
-                            {kd}
+                            {/* @ts-ignore */}
+                            {player.kdRatio?.toFixed(2) || (player.totalKills || 0)}
                           </TableCell>
                           <TableCell className="text-right text-muted-foreground">
                             {player.totalKills?.toLocaleString()}
+                          </TableCell>
+                          <TableCell className="text-right text-accent font-bold">
+                            {player.totalScore.toLocaleString()}
                           </TableCell>
                         </TableRow>
                       );
@@ -380,134 +601,6 @@ export function ClanIntelligenceDashboard({ clanId }: ClanIntelligenceDashboardP
               </div>
             </CardContent>
           </Card>
-
-          {/* DUO MATCHMAKER */}
-          <div className="space-y-4 pt-6 border-t border-border/50">
-            <div>
-              <h3 className="text-2xl font-bold font-headline flex items-center gap-2 text-accent">
-                <Users className="h-6 w-6" />
-                Matchmaking de Duplas
-              </h3>
-              <p className="text-sm text-muted-foreground mt-1">
-                Sugestões automáticas de Esquadrões de 2 Homens (Oficial + Soldado) cruzando a eficiência por hora.
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              
-              {/* Spearhead */}
-              <Card className="bg-red-500/5 border-red-500/20">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-lg flex items-center gap-2 text-red-500">
-                    <Sword className="h-5 w-5" />
-                    Ponta de Lança (Ataque)
-                  </CardTitle>
-                  <CardDescription>Top pontuadores em Infiltração e Combate</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  {suggestedDuos.attackDuos.map((duo, i) => {
-                    const Icon0 = duo[0].arch.icon;
-                    const Icon1 = duo[1].arch.icon;
-                    return (
-                    <div key={i} className="flex justify-between items-center bg-background/50 p-3 rounded-lg border border-border/50">
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <Icon0 className={cn("h-3 w-3", duo[0].arch.color)} />
-                          <span className="font-bold text-sm">{duo[0].latestPlayerName}</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Icon1 className={cn("h-3 w-3", duo[1].arch.color)} />
-                          <span className="font-bold text-sm">{duo[1].latestPlayerName}</span>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-xs text-muted-foreground">Pts/Hr</div>
-                        <div className="font-bold text-red-500">
-                          {Math.round(duo[0].atkScoreHr + duo[1].atkScoreHr).toLocaleString()}
-                        </div>
-                      </div>
-                    </div>
-                    );
-                  })}
-                </CardContent>
-              </Card>
-
-              {/* Iron Wall */}
-              <Card className="bg-yellow-500/5 border-yellow-500/20">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-lg flex items-center gap-2 text-yellow-500">
-                    <Shield className="h-5 w-5" />
-                    Muralha (Defesa)
-                  </CardTitle>
-                  <CardDescription>Top pontuadores em Contenção e Suporte</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  {suggestedDuos.defenseDuos.map((duo, i) => {
-                    const Icon0 = duo[0].arch.icon;
-                    const Icon1 = duo[1].arch.icon;
-                    return (
-                    <div key={i} className="flex justify-between items-center bg-background/50 p-3 rounded-lg border border-border/50">
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <Icon0 className={cn("h-3 w-3", duo[0].arch.color)} />
-                          <span className="font-bold text-sm">{duo[0].latestPlayerName}</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Icon1 className={cn("h-3 w-3", duo[1].arch.color)} />
-                          <span className="font-bold text-sm">{duo[1].latestPlayerName}</span>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-xs text-muted-foreground">Pts/Hr</div>
-                        <div className="font-bold text-yellow-500">
-                          {Math.round(duo[0].defScoreHr + duo[1].defScoreHr).toLocaleString()}
-                        </div>
-                      </div>
-                    </div>
-                    );
-                  })}
-                </CardContent>
-              </Card>
-
-              {/* Tryhards */}
-              <Card className="bg-accent/5 border-accent/20">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-lg flex items-center gap-2 text-accent">
-                    <Trophy className="h-5 w-5" />
-                    Esquadrão Tryhard
-                  </CardTitle>
-                  <CardDescription>Pura eficiência (Melhor pontuação geral)</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  {suggestedDuos.effDuos.map((duo, i) => {
-                    const Icon0 = duo[0].arch.icon;
-                    const Icon1 = duo[1].arch.icon;
-                    return (
-                    <div key={i} className="flex justify-between items-center bg-background/50 p-3 rounded-lg border border-border/50">
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <Icon0 className={cn("h-3 w-3", duo[0].arch.color)} />
-                          <span className="font-bold text-sm">{duo[0].latestPlayerName}</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Icon1 className={cn("h-3 w-3", duo[1].arch.color)} />
-                          <span className="font-bold text-sm">{duo[1].latestPlayerName}</span>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-xs text-muted-foreground">Pts/Hr</div>
-                        <div className="font-bold text-accent">
-                          {Math.round(duo[0].totScoreHr + duo[1].totScoreHr).toLocaleString()}
-                        </div>
-                      </div>
-                    </div>
-                    );
-                  })}
-                </CardContent>
-              </Card>
-
-            </div>
-          </div>
 
         </>
       )}

@@ -18,7 +18,7 @@ function sanitizePlayer(id: string, data: any): PlayerAggregates {
   return {
     id: String(id || ''),
     playerId: String(data.playerId || id || ''),
-    latestPlayerName: String(data.latestPlayerName || 'Unknown'),
+    latestPlayerName: String(data.playerName || data.latestPlayerName || 'Unknown'),
     totalKills: Number(data.totalKills || 0),
     totalDeaths: Number(data.totalDeaths || 0),
     totalScore: Number(data.totalScore || 0),
@@ -33,38 +33,10 @@ function sanitizePlayer(id: string, data: any): PlayerAggregates {
 
 // --- Funções internas (sem cache) ---
 
-async function _getPlayerAggregates(): Promise<PlayerAggregates[]> {
-    const playersQuery = query(
-      collection(db, 'playerAggregates'),
-      orderBy('totalKills', 'desc'),
-      limit(QUERY_LIMIT)
-    );
-
-    const snapshot = await getDocs(playersQuery);
-    const data = snapshot.docs.map(doc => sanitizePlayer(doc.id, doc.data()));
-    return JSON.parse(JSON.stringify(data));
-}
-
-async function _getPlayerPeriodStats(period: 'weekly' | 'monthly'): Promise<PlayerAggregates[]> {
-    const now = new Date();
-    let colName: string;
-    let periodId: string;
-    
-    if (period === 'weekly') {
-        colName = 'playerWeeklyStats';
-        const year = getWeekYear(now, { weekStartsOn: 1 });
-        const week = getWeek(now, { weekStartsOn: 1 });
-        periodId = `week_${year}-${week.toString().padStart(2, "0")}`;
-    } else { // monthly
-        colName = 'playerMonthlyStats';
-        const year = now.getFullYear();
-        const month = (now.getMonth() + 1).toString().padStart(2, "0");
-        periodId = `month_${year}-${month}`;
-    }
-
+async function _getMonthlyPlayerStats(monthId: string): Promise<PlayerAggregates[]> {
     const q = query(
-        collection(db, colName),
-        where('periodId', '==', periodId),
+        collection(db, 'monthly_player_stats'),
+        where('month', '==', monthId),
         orderBy('totalKills', 'desc'),
         limit(QUERY_LIMIT)
     );
@@ -119,20 +91,14 @@ async function _getAllClanMembers(): Promise<Record<string, ClanMemberInfo>> {
 
 // --- Funções exportadas com cache de 60s ---
 
-export const getPlayerAggregates = unstable_cache(
-    _getPlayerAggregates,
-    ['ranking-player-aggregates'],
-    { revalidate: CACHE_TTL }
-);
-
-export const getPlayerPeriodStats = unstable_cache(
-    _getPlayerPeriodStats,
-    ['ranking-player-period-stats'],
+export const getMonthlyPlayerStats = unstable_cache(
+    _getMonthlyPlayerStats,
+    ['monthly-player-stats'],
     { revalidate: CACHE_TTL }
 );
 
 export const getAllClanMembers = unstable_cache(
     _getAllClanMembers,
-    ['ranking-clan-members'],
-    { revalidate: CACHE_TTL }
+    ['all-clan-members'],
+    { revalidate: 3600 }
 );

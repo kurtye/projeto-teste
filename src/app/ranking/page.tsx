@@ -1,7 +1,7 @@
 
-import { getHallOfFameStats } from '@/app/hall-of-fame/actions';
+import { getMonthlyHallOfFame } from '@/app/hall-of-fame/actions';
 import { Ranking } from '@/components/Ranking';
-import { getPlayerAggregates, getPlayerPeriodStats, getAllClanMembers } from './actions';
+import { getMonthlyPlayerStats, getAllClanMembers } from './actions';
 
 // Force dynamic rendering to always get the latest data
 export const dynamic = 'force-dynamic';
@@ -23,12 +23,13 @@ const STAT_CATEGORY_NAMES: Record<string, string> = {
 
 export default async function RankingPage() {
     
-  // Fetch all data in parallel (hall of fame + rankings + clan members)
-  const [hallOfFameData, geral, mensal, semanal, clanMembers] = await Promise.all([
-    getHallOfFameStats(),
-    getPlayerAggregates(),
-    getPlayerPeriodStats('monthly'),
-    getPlayerPeriodStats('weekly'),
+  const currentDate = new Date();
+  const currentMonthId = `month_${currentDate.getFullYear()}-${(currentDate.getMonth() + 1).toString().padStart(2, "0")}`;
+
+  // Fetch all data in parallel
+  const [hallOfFameData, mensal, clanMembers] = await Promise.all([
+    getMonthlyHallOfFame(currentMonthId),
+    getMonthlyPlayerStats(currentMonthId),
     getAllClanMembers(),
   ]);
 
@@ -46,7 +47,7 @@ export default async function RankingPage() {
     });
   }
 
-  const initialRankings = { geral, mensal, semanal };
+  const initialRankings = { mensal };
 
   return (
     <div className="container mx-auto px-4 py-8 mb-16 md:mb-0">

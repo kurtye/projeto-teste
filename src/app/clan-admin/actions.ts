@@ -16,7 +16,7 @@ import {
     limit,
     deleteDoc,
 } from 'firebase/firestore';
-import type { ClanMember, PlayerAggregates, PromotionLog, PlayerPeriodStats } from '@/lib/types';
+import type { ClanMember, PlayerAggregates, PromotionLog, PlayerPeriodStats, MonthlyPlayerStats } from '@/lib/types';
 import { revalidatePath } from 'next/cache';
 import { clans } from '@/lib/clans';
 import { analyzeClanPerformance } from '@/ai/flows/analyze-clan-performance';
@@ -452,6 +452,127 @@ export async function getClanMemberAggregates(clanId: string): Promise<{ success
     } catch (error: any) {
         console.error("Error fetching clan member aggregates:", error);
         return { success: false, error: "Falha ao buscar estatísticas dos membros do clã." };
+    }
+}
+
+/**
+ * Fetches and accumulates monthly_player_stats for players matching the clan tag across the specified months.
+ * Ignores the 'members' subcollection completely to avoid manual registration overhead.
+ */
+export async function getClanMonthlyAggregates(clanId: string, periodIds: string[]): Promise<{ success: boolean; players?: MonthlyPlayerStats[]; error?: string }> {
+    try {
+        const clan = clans.find(c => c.id === clanId);
+        if (!clan) return { success: false, error: "Clã não encontrado." };
+        const tagUpper = clan.tag.toUpperCase();
+
+        const accumulatedMap = new Map<string, MonthlyPlayerStats>();
+
+        for (const periodId of periodIds) {
+            // Fetch top 2000 players for this month to ensure we get active players
+            const statsQuery = query(
+                collection(db, 'monthly_player_stats'),
+                where('month', '==', periodId),
+                orderBy('totalKills', 'desc'),
+                limit(2000)
+            );
+
+            const statsSnapshot = await getDocs(statsQuery);
+            statsSnapshot.forEach(docSnap => {
+                const data = docSnap.data() as MonthlyPlayerStats;
+                const playerName = String(data.playerName || 'Unknown');
+                
+                // Only include if the name starts with the clan tag (ignoring leading special characters like '[')
+                const cleanStart = playerName.toUpperCase().trim().replace(/^[^A-Z0-9]+/, '');
+                
+                if (cleanStart.startsWith(tagUpper)) {
+                    const playerId = data.playerId;
+                    const existing = accumulatedMap.get(playerId);
+                    
+                    if (existing) {
+                        // Accumulate data
+                        existing.totalKills += (data.totalKills || 0);
+                        existing.totalDeaths += (data.totalDeaths || 0);
+                        existing.totalCombat += (data.totalCombat || 0);
+                        existing.totalOffense += (data.totalOffense || 0);
+                        existing.totalDefense += (data.totalDefense || 0);
+                        existing.totalSupport += (data.totalSupport || 0);
+                        existing.totalTimeSeconds = (existing.totalTimeSeconds || 0) + (data.totalTimeSeconds || 0);
+                        existing.matchesPlayed = (existing.matchesPlayed || 0) + (data.matchesPlayed || 0);
+                        existing.totalVehicleKills = (existing.totalVehicleKills || 0) + (data.totalVehicleKills || 0);
+                        existing.totalVehiclesDestroyed = (existing.totalVehiclesDestroyed || 0) + (data.totalVehiclesDestroyed || 0);
+                        existing.totalTeamkills = (existing.totalTeamkills || 0) + (data.totalTeamkills || 0);
+                        existing.deathsByTk = (existing.deathsByTk || 0) + (data.deathsByTk || 0);
+                        existing.maxKillsStreak = Math.max(existing.maxKillsStreak || 0, data.maxKillsStreak || 0);
+                        existing.longestLifeSecs = Math.max(existing.longestLifeSecs || 0, data.longestLifeSecs || 0);
+                        
+                        // Accumulate timePlayedByRole
+                        const existingRoles = existing.timePlayedByRole || {};
+                        const newRoles = data.timePlayedByRole || {};
+                        for (const [r, t] of Object.entries(newRoles)) {
+                            existingRoles[Number(r)] = (existingRoles[Number(r)] || 0) + t;
+                        }
+                        existing.timePlayedByRole = existingRoles;
+                        
+                        // Accumulate topWeapons
+                        const existingWeapons = existing.topWeapons || {};
+                        const newWeapons = data.topWeapons || {};
+                        for (const [w, c] of Object.entries(newWeapons)) {
+                            existingWeapons[w] = (existingWeapons[w] || 0) + c;
+                        }
+                        existing.topWeapons = existingWeapons;
+                        
+                        // Accumulate topVictims
+                        const existingVictims = existing.topVictims || {};
+                        const newVictims = data.topVictims || {};
+                        for (const [v, c] of Object.entries(newVictims)) {
+                            existingVictims[v] = (existingVictims[v] || 0) + c;
+                        }
+                        existing.topVictims = existingVictims;
+
+                        // Accumulate topKilledBy
+                        const existingKilledBy = existing.topKilledBy || {};
+                        const newKilledBy = data.topKilledBy || {};
+                        for (const [v, c] of Object.entries(newKilledBy)) {
+                            existingKilledBy[v] = (existingKilledBy[v] || 0) + c;
+                        }
+                        existing.topKilledBy = existingKilledBy;
+
+                    } else {
+                        // Deep clone the object to avoid mutating firestore data accidentally
+                        accumulatedMap.set(playerId, JSON.parse(JSON.stringify(data)));
+                    }
+                }
+            });
+        }
+
+        const players = Array.from(accumulatedMap.values());
+        
+        // Recalculate mainRole for accumulated data
+        players.forEach(p => {
+             let updatedMainRole = -1;
+             let updatedMaxTime = -1;
+             for (const [r, t] of Object.entries(p.timePlayedByRole || {})) {
+                 if ((t as number) > updatedMaxTime) {
+                     updatedMaxTime = t as number;
+                     updatedMainRole = Number(r);
+                 }
+             }
+             if (updatedMainRole !== -1) {
+                 p.mainRole = updatedMainRole;
+             }
+        });
+
+        // Sort by total score (combat + offense + defense + support) descending
+        players.sort((a, b) => {
+            const scoreA = (a.totalCombat || 0) + (a.totalOffense || 0) + (a.totalDefense || 0) + (a.totalSupport || 0);
+            const scoreB = (b.totalCombat || 0) + (b.totalOffense || 0) + (b.totalDefense || 0) + (b.totalSupport || 0);
+            return scoreB - scoreA;
+        });
+
+        return { success: true, players };
+    } catch (error: any) {
+        console.error("Error fetching clan monthly aggregates:", error);
+        return { success: false, error: "Falha ao buscar estatísticas mensais do clã." };
     }
 }
 

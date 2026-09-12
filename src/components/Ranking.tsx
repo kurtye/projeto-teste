@@ -29,9 +29,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 
 type ViewMode = 'card' | 'table';
-type SortKey = 'totalScore' | 'totalKills' | 'totalDeaths' | 'kdRatio';
+type SortKey = 'totalScore' | 'totalKills' | 'totalDeaths' | 'kdRatio' | 'totalTimeSeconds';
 type SortDirection = 'ascending' | 'descending';
-type Period = 'geral' | 'mensal' | 'semanal' | 'pph';
+type Period = 'mensal' | 'pph';
 
 interface SortConfig {
   key: SortKey;
@@ -43,9 +43,7 @@ interface HallOfFameMap {
 }
 
 interface RankingsData {
-  geral: PlayerAggregates[];
   mensal: PlayerAggregates[];
-  semanal: PlayerAggregates[];
 }
 
 const CLANS = ['SMK', 'HRB', 'RZN', 'OCL', '3LPZ', 'WRT', 'SAP', 'BOLD', 'IDG', 'SOH', 'BLTZ', 'STL'];
@@ -211,6 +209,9 @@ const RankingDisplay = ({
                     <TableHeader>
                       <TableRow>
                         <TableHead className="p-2 md:p-4">Jogador</TableHead>
+                        <SortableHeader sortKey="totalTimeSeconds" sortConfig={sortConfig} requestSort={requestSort} className="hidden md:table-cell">
+                          <span className="font-bold">⏱</span> <span className="hidden md:inline">Tempo</span>
+                        </SortableHeader>
                         <SortableHeader sortKey="totalScore" sortConfig={sortConfig} requestSort={requestSort} className="hidden md:table-cell">
                             <Award className="h-5 w-5 inline-block" /> <span className="hidden md:inline">{isPPH ? 'Score/h' : 'Score'}</span>
                         </SortableHeader>
@@ -282,6 +283,12 @@ const RankingDisplay = ({
                                         </div>
                                     </Link>
                                     </TableCell>
+                                    <TableCell className="hidden text-center md:table-cell">
+                                        {(player.totalTimeSeconds || 0) / 3600 >= 1 
+                                            ? ((player.totalTimeSeconds || 0) / 3600).toFixed(1) + 'h' 
+                                            : Math.floor((player.totalTimeSeconds || 0) / 60) + 'm'
+                                        }
+                                    </TableCell>
                                     <TableCell className="hidden text-center font-semibold md:table-cell">{formatVal(player.totalScore || 0)}</TableCell>
                                     <TableCell className="text-center">{formatVal(player.totalKills || 0)}</TableCell>
                                     <TableCell className="hidden text-center md:table-cell">{formatVal(player.totalDeaths || 0)}</TableCell>
@@ -343,10 +350,19 @@ const RankingDisplay = ({
                                 </div>
                             </CardHeader>
                              <CardContent className="p-4 pt-0">
-                                <div className="grid grid-cols-3 gap-2 text-sm">
+                                <div className="grid grid-cols-4 gap-2 text-sm">
+                                    <div>
+                                        <p className="font-bold text-lg">
+                                            {(player.totalTimeSeconds || 0) / 3600 >= 1 
+                                                ? ((player.totalTimeSeconds || 0) / 3600).toFixed(1) + 'h' 
+                                                : Math.floor((player.totalTimeSeconds || 0) / 60) + 'm'
+                                            }
+                                        </p>
+                                        <p className="text-xs text-muted-foreground">Tempo</p>
+                                    </div>
                                     <div>
                                         <p className="font-bold text-lg">{player.kdRatio?.toFixed(2)}</p>
-                                        <p className="text-xs text-muted-foreground">K/D Ratio</p>
+                                        <p className="text-xs text-muted-foreground">K/D</p>
                                     </div>
                                     <div>
                                         <p className="font-bold text-lg">{formatVal(player.totalKills || 0)}</p>
@@ -410,7 +426,7 @@ export function Ranking({
   const [clanFilter, setClanFilter] = useState<string | null>(null);
   const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'totalScore', direction: 'descending' });
   const [viewMode, setViewMode] = useState('card' as ViewMode);
-  const [activeTab, setActiveTab] = useState<Period>('semanal');
+  const [activeTab, setActiveTab] = useState<Period>('mensal');
   
   const processedPlayers = useMemo(() => {
     let playersToProcess = initialRankings[activeTab === 'pph' ? 'mensal' : activeTab] || [];
@@ -544,12 +560,10 @@ export function Ranking({
 
         <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as Period)} className="w-full">
             <div className="flex items-center justify-between">
-                <TabsList className="grid w-full grid-cols-4">
-                    <TabsTrigger value="semanal" className="data-[state=active]:bg-green-600 data-[state=active]:text-white">Semanal</TabsTrigger>
-                    <TabsTrigger value="mensal" className="data-[state=active]:bg-green-600 data-[state=active]:text-white">Mensal</TabsTrigger>
-                    <TabsTrigger value="geral" className="data-[state=active]:bg-green-600 data-[state=active]:text-white">Geral</TabsTrigger>
+                <TabsList className="grid w-full grid-cols-2">
+                    <TabsTrigger value="mensal" className="data-[state=active]:bg-green-600 data-[state=active]:text-white">Ranking Mensal</TabsTrigger>
                     <TabsTrigger value="pph" className="data-[state=active]:bg-amber-600 data-[state=active]:text-white gap-2">
-                        <Zap className="h-3 w-3" /> Eficiência do Mês
+                        <Zap className="h-3 w-3" /> Eficiência (PPH)
                     </TabsTrigger>
                 </TabsList>
             </div>
@@ -572,6 +586,14 @@ export function Ranking({
                     >
                         <Crosshair className="mr-2 h-4 w-4" />
                         Kills
+                    </Button>
+                    <Button 
+                        size="sm"
+                        variant={sortConfig.key === 'totalTimeSeconds' ? 'default' : 'outline'}
+                        onClick={() => requestSort('totalTimeSeconds')}
+                    >
+                        <span className="mr-2 font-bold text-sm">⏱</span>
+                        Hora Jogada
                     </Button>
                 </div>
                  <div className="hidden md:flex justify-center md:justify-end gap-0 md:gap-2 rounded-md overflow-hidden md:rounded-lg">
@@ -609,13 +631,7 @@ export function Ranking({
                 </div>
             )}
 
-            <TabsContent value="geral">
-                <RankingDisplay players={sortedAndFilteredPlayers} viewMode={viewMode} hallOfFame={initialHallOfFame} sortConfig={sortConfig} requestSort={requestSort} clanMembers={initialClanMembers}/>
-            </TabsContent>
             <TabsContent value="mensal">
-                <RankingDisplay players={sortedAndFilteredPlayers} viewMode={viewMode} hallOfFame={initialHallOfFame} sortConfig={sortConfig} requestSort={requestSort} clanMembers={initialClanMembers}/>
-            </TabsContent>
-            <TabsContent value="semanal">
                 <RankingDisplay players={sortedAndFilteredPlayers} viewMode={viewMode} hallOfFame={initialHallOfFame} sortConfig={sortConfig} requestSort={requestSort} clanMembers={initialClanMembers}/>
             </TabsContent>
             <TabsContent value="pph">
