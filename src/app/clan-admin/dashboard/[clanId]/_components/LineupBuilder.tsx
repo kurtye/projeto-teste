@@ -5,11 +5,13 @@ import type { PlayerAggregates } from '@/lib/types';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Brain, Users, Sword, Shield, Crosshair, HeartPulse, Trophy, Activity, Loader2 } from 'lucide-react';
+import { Brain, Users, Sword, Shield, Crosshair, HeartPulse, Loader2, Copy, Save, Share2, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { Badge } from '@/components/ui/badge';
-import { getClanMemberAggregates, saveLineup } from '../../../actions';
+import { getClanMonthlyAggregates, saveLineup } from '../../../actions';
+import { format, subMonths } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 export type Archetype = 'Ceifador' | 'Ponta de Lança' | 'Muralha' | 'Altruísta' | 'Generalista' | 'Desconhecido';
 
@@ -41,15 +43,16 @@ export function getArchetype(p: PlayerAggregates, averages: { c: number, o: numb
   if (relS === maxRel) return { name: 'Altruísta', icon: HeartPulse, color: 'text-green-500', desc: 'Acima da média em Suporte' };
   return { name: 'Muralha', icon: Shield, color: 'text-yellow-500', desc: 'Acima da média em Defesa' };
 }
-import { Copy, Save, Share2, ExternalLink } from 'lucide-react';
 
-export interface LineupBuilderProps {
-  members?: any[];
-  isLoading?: boolean;
-  clanId: string;
+export type StrategyType = 'Equilibrado' | 'Defesa' | 'Ataque' | 'Flancos';
+export type SquadIntent = 'Ataque' | 'Defesa' | 'Flanco' | 'Equilibrado' | 'Tanque' | 'Artilharia' | 'Comando' | 'Reserva';
+
+export interface SquadDefinition {
+  id: string;
+  name: string;
+  maxSlots: number;
+  intent: SquadIntent;
 }
-
-export type SquadType = 'B1' | 'B2' | 'B3' | 'L1' | 'L2' | 'L3' | 'L4' | 'L5' | 'FE' | 'FD' | 'DC' | 'DR' | 'T1' | 'T2' | 'Comando' | 'Artilharia' | 'Unassigned';
 
 export interface ClanMember {
   id: string; 
@@ -60,35 +63,33 @@ export interface ClanMember {
   hoursPlayed: number;
   primaryRole: Archetype; 
   playstyle: ReturnType<typeof getArchetype>;
-  atkScoreHr: number;
-  defScoreHr: number;
-  totScoreHr: number;
-  squad: SquadType;
+  elo: number;
+  atkScore: number;
+  defScore: number;
+  totScore: number;
+  ofcScore: number;
+  tankScore: number;
+  artiScore: number;
+  squad: string;
   isOfficer: boolean;
 }
 
-const SQUAD_NAMES: Record<SquadType, string> = {
-  Comando: 'Comando',
-  Artilharia: 'Artilharia',
-  T1: 'Tanque 1 (T1)',
-  T2: 'Tanque 2 (T2)',
-  B1: 'Batedores (B1)',
-  B2: 'Batedores (B2)',
-  B3: 'Batedores (B3)',
-  FE: 'Flanco Esq (FE)',
-  FD: 'Flanco Dir (FD)',
-  L1: 'Linha 1 (L1)',
-  L2: 'Linha 2 (L2)',
-  L3: 'Linha 3 (L3)',
-  L4: 'Linha 4 (L4)',
-  L5: 'Linha 5 (L5)',
-  DC: 'Defesa Central (DC)',
-  DR: 'Defesa Retaguarda (DR)',
-  Unassigned: 'Reservas'
-};
+export interface LineupBuilderProps {
+  clanId: string;
+}
 
 export function LineupBuilder({ clanId }: LineupBuilderProps) {
+  // Settings State
+  const [matchSize, setMatchSize] = useState<number>(35);
+  const [artillerySize, setArtillerySize] = useState<number>(3);
+  const [tankSquadsCount, setTankSquadsCount] = useState<number>(2);
+  const [tankSquadSize, setTankSquadSize] = useState<number>(3);
+  const [infantrySquadSize, setInfantrySquadSize] = useState<number>(6);
+  const [strategy, setStrategy] = useState<StrategyType>('Equilibrado');
+  const [period, setPeriod] = useState<'current' | '3months'>('3months');
+
   const [inputText, setInputText] = useState('');
+  const [squads, setSquads] = useState<SquadDefinition[]>([]);
   const [squadMembers, setSquadMembers] = useState<ClanMember[]>([]);
   const [isGenerated, setIsGenerated] = useState(false);
   const [draggedMemberId, setDraggedMemberId] = useState<string | null>(null);
@@ -97,21 +98,292 @@ export function LineupBuilder({ clanId }: LineupBuilderProps) {
   const [savedLink, setSavedLink] = useState<string | null>(null);
   const { toast } = useToast();
 
+  const [players, setPlayers] = useState<any[]>([]);
+  const [isFetching, startFetching] = useTransition();
+
+  useEffect(() => {
+    startFetching(async () => {
+      const now = new Date();
+      const currentMonthStr = format(now, 'yyyy-MM');
+      
+      const periodsToFetch = [`month_${currentMonthStr}`];
+      
+      if (period === '3months') {
+        const lastMonthStr = format(subMonths(now, 1), 'yyyy-MM');
+        const twoMonthsAgoStr = format(subMonths(now, 2), 'yyyy-MM');
+        periodsToFetch.push(`month_${lastMonthStr}`, `month_${twoMonthsAgoStr}`);
+      }
+
+      const result = await getClanMonthlyAggregates(clanId, periodsToFetch);
+      if (result.success && result.players) {
+        const enhanced = result.players.map(p => {
+          const totalScore = (p.totalCombat || 0) + (p.totalOffense || 0) + (p.totalDefense || 0) + (p.totalSupport || 0);
+          return {
+            ...p,
+            latestPlayerName: p.playerName, // getClanMonthlyAggregates uses playerName instead of latestPlayerName
+            totalScore,
+            hoursPlayed: (p.totalTimeSeconds || 0) / 3600,
+          };
+        });
+        setPlayers(enhanced);
+      }
+    });
+  }, [clanId, period]);
+
+  const averages = useMemo(() => {
+    if (!players.length) return { c: 1, o: 1, d: 1, s: 1, elo: 0 };
+    return {
+      c: players.reduce((sum, p) => sum + (p.totalCombat || 0), 0) / players.length,
+      o: players.reduce((sum, p) => sum + (p.totalOffense || 0), 0) / players.length,
+      d: players.reduce((sum, p) => sum + (p.totalDefense || 0), 0) / players.length,
+      s: players.reduce((sum, p) => sum + (p.totalSupport || 0), 0) / players.length,
+      elo: players.reduce((sum, p) => sum + (p.elo || 0), 0) / players.length,
+    };
+  }, [players]);
+
+    const handleParseAndGenerate = () => {
+    const lines = inputText.split('\n');
+    let currentCategory = 'Soldados';
+    const parsedMembersMap = new Map<string, ClanMember>();
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+
+      if (trimmed.toLowerCase().includes('soldados')) { currentCategory = 'Soldados'; continue; }
+      if (trimmed.toLowerCase().includes('blindados') || trimmed.toLowerCase().includes('tanques')) { currentCategory = 'Blindados'; continue; }
+      if (trimmed.toLowerCase().includes('oficiais')) { currentCategory = 'Oficiais'; continue; }
+      if (trimmed.toLowerCase().includes('comando')) { currentCategory = 'Comando'; continue; }
+      if (trimmed.toLowerCase().includes('artilharia')) { currentCategory = 'Artilharia'; continue; }
+
+      let rawName = trimmed.replace(/ocl\s*-\s*/i, '').replace(/ocl\s*/i, '').trim();
+      let isExplicitOfficer = false;
+      if (rawName.toLowerCase().includes('(ofc)')) {
+          isExplicitOfficer = true;
+          rawName = rawName.replace(/\(ofc\)/i, '').trim();
+      }
+
+      if (!rawName) continue;
+
+      const normalizeName = (name: string) => name.toLowerCase().replace(/[^a-z0-9]/g, '');
+      const normalizedRaw = normalizeName(rawName);
+
+      // Deduplication check
+      if (parsedMembersMap.has(normalizedRaw)) {
+          // If already in list, just upgrade to officer if needed, or keep first occurrence category
+          const existing = parsedMembersMap.get(normalizedRaw)!;
+          if (isExplicitOfficer || currentCategory === 'Oficiais' || currentCategory === 'Comando') {
+              existing.isOfficer = true;
+          }
+          if (currentCategory !== 'Soldados') {
+              existing.category = currentCategory;
+          }
+          continue;
+      }
+
+      // Match robusto ignorando _, -, espaços, etc.
+      const found = players.find(p => {
+          const normalizedDb = normalizeName(p.latestPlayerName);
+          
+          // Remove a tag HRB para comparar só o nick se ambos tiverem
+          const rawNick = normalizedRaw.replace(/^hrb/, '');
+          const dbNick = normalizedDb.replace(/^hrb/, '');
+          
+          if (rawNick && dbNick) {
+             return dbNick === rawNick;
+          }
+          
+          return normalizedDb === normalizedRaw;
+      });
+      const playstyle = found ? getArchetype(found, averages) : { name: 'Desconhecido' as Archetype, icon: Users, color: 'text-gray-500', desc: '' };
+      
+      const hrs = found && found.hoursPlayed > 0 ? found.hoursPlayed : 1;
+      const elo = found?.elo || averages.elo || 0;
+      
+      // Calculate specific scores per hour
+      const defScoreHr = found ? ((found.totalDefense || 0) * 1.5 + (found.totalSupport || 0) * 1.2) / hrs : 0;
+      const atkScoreHr = found ? ((found.totalOffense || 0) * 1.5 + (found.totalCombat || 0) * 0.8) / hrs : 0;
+      const totScoreHr = found ? ((found.totalScore || 0) / hrs) : 0;
+      
+      // officer score based on time played as Officer (0) and Commander (13)
+      const ofcTime = found ? ((found as any).timePlayedByRole?.[0] || 0) + ((found as any).timePlayedByRole?.[13] || 0) : 0;
+      const tankTime = found ? ((found as any).timePlayedByRole?.[11] || 0) + ((found as any).timePlayedByRole?.[12] || 0) : 0; // TankCommander(11), Crewman(12)
+      const artiTime = found ? ((found as any).timePlayedByRole?.[14] || 0) + ((found as any).timePlayedByRole?.[15] || 0) : 0;
+
+      parsedMembersMap.set(normalizedRaw, {
+        id: found ? found.id : `custom-${rawName}-${Math.random()}`,
+        playerName: found ? found.latestPlayerName : rawName,
+        category: currentCategory,
+        isCustom: !found,
+        totalScore: found ? found.totalScore : 0,
+        hoursPlayed: found ? found.hoursPlayed : 0,
+        primaryRole: playstyle.name,
+        playstyle,
+        elo,
+        atkScore: atkScoreHr + (elo * 0.1),
+        defScore: defScoreHr + (elo * 0.1),
+        totScore: totScoreHr + (elo * 0.1),
+        ofcScore: ofcTime,
+        tankScore: tankTime,
+        artiScore: artiTime,
+        squad: 'Reservas',
+        isOfficer: isExplicitOfficer || currentCategory === 'Oficiais' || currentCategory === 'Comando'
+      });
+    }
+
+    const parsedMembers = Array.from(parsedMembersMap.values());
+
+    // Generate Squads Structure
+    const newSquads: SquadDefinition[] = [];
+    newSquads.push({ id: 'Comando', name: 'Comando', maxSlots: 1, intent: 'Comando' });
+    
+    if (artillerySize > 0) {
+      newSquads.push({ id: 'Artilharia', name: 'Artilharia', maxSlots: artillerySize, intent: 'Artilharia' });
+    }
+
+    for (let i = 1; i <= tankSquadsCount; i++) {
+      newSquads.push({ id: `T${i}`, name: `Tanque ${i} (T${i})`, maxSlots: tankSquadSize, intent: 'Tanque' });
+    }
+
+    const tanksTotal = tankSquadsCount * tankSquadSize;
+    const remainingSlots = matchSize - 1 - artillerySize - tanksTotal;
+    const numInfantrySquads = Math.max(1, Math.ceil(remainingSlots / infantrySquadSize));
+
+    for (let i = 1; i <= numInfantrySquads; i++) {
+        let intent: SquadIntent = 'Equilibrado';
+        
+        if (strategy === 'Defesa') {
+            if (i <= Math.ceil(numInfantrySquads * 0.4)) intent = 'Defesa';
+            else if (i <= Math.ceil(numInfantrySquads * 0.7)) intent = 'Ataque';
+            else intent = 'Flanco';
+        } else if (strategy === 'Ataque') {
+            if (i <= Math.ceil(numInfantrySquads * 0.5)) intent = 'Ataque';
+            else if (i <= Math.ceil(numInfantrySquads * 0.8)) intent = 'Defesa';
+            else intent = 'Flanco';
+        } else if (strategy === 'Flancos') {
+            if (i <= Math.ceil(numInfantrySquads * 0.4)) intent = 'Flanco';
+            else if (i <= Math.ceil(numInfantrySquads * 0.7)) intent = 'Ataque';
+            else intent = 'Defesa';
+        }
+        
+        const prefix = intent === 'Defesa' ? 'DC' : intent === 'Ataque' ? 'ATK' : intent === 'Flanco' ? 'FLK' : 'INF';
+        newSquads.push({ id: `${prefix}-${i}`, name: `${intent} ${i}`, maxSlots: infantrySquadSize, intent });
+    }
+    newSquads.push({ id: 'Reservas', name: 'Reservas', maxSlots: 999, intent: 'Reserva' });
+    setSquads(newSquads);
+
+    // Distribution
+    const members = [...parsedMembers];
+    
+    const assignToSquad = (member: ClanMember, squadId: string, asOfficer: boolean = false) => {
+        member.squad = squadId;
+        if (asOfficer) member.isOfficer = true;
+    };
+
+    const getAvailable = () => members.filter(m => m.squad === 'Reservas');
+
+    // 1. Comando
+    const cmdCandidates = getAvailable().filter(m => m.category === 'Comando');
+    if (cmdCandidates.length > 0) {
+        assignToSquad(cmdCandidates[0], 'Comando', true);
+    } else {
+        const bestCmd = [...getAvailable()].sort((a,b) => b.ofcScore - a.ofcScore)[0];
+        if (bestCmd) assignToSquad(bestCmd, 'Comando', true);
+    }
+
+    // 2. Artilharia
+    const artSquad = newSquads.find(s => s.id === 'Artilharia');
+    if (artSquad) {
+        let pool = getAvailable().filter(m => m.category === 'Artilharia');
+        if (pool.length < artSquad.maxSlots) {
+             const others = getAvailable().filter(m => m.category !== 'Artilharia').sort((a,b) => b.artiScore - a.artiScore);
+             pool = [...pool, ...others];
+        }
+        for (let i = 0; i < Math.min(pool.length, artSquad.maxSlots); i++) {
+            assignToSquad(pool[i], 'Artilharia');
+        }
+    }
+
+    // 3. Tanques
+    const tankSquads = newSquads.filter(s => s.id.startsWith('T'));
+    if (tankSquads.length > 0) {
+        const totalTankSlots = tankSquads.reduce((sum, s) => sum + s.maxSlots, 0);
+        
+        let tankPool = getAvailable().filter(m => m.category === 'Blindados');
+        if (tankPool.length < totalTankSlots) {
+             const others = getAvailable().filter(m => m.category !== 'Blindados').sort((a,b) => b.tankScore - a.tankScore);
+             tankPool = [...tankPool, ...others.slice(0, totalTankSlots - tankPool.length)];
+        } else {
+             tankPool = tankPool.slice(0, totalTankSlots); // Trim if there are too many explicit tankers
+        }
+        
+        // Sort all selected tank players by tankScore descending to ensure best tankers are officers and squads are balanced
+        tankPool.sort((a,b) => b.tankScore - a.tankScore);
+        
+        let currentTankIdx = 0;
+        let tankDirection = 1;
+        
+        for (let i = 0; i < tankPool.length; i++) {
+            const squad = tankSquads[currentTankIdx];
+            const isOfficer = i < tankSquads.length; // The first person placed in each squad is the officer
+            
+            assignToSquad(tankPool[i], squad.id, isOfficer);
+            
+            currentTankIdx += tankDirection;
+            if (currentTankIdx >= tankSquads.length) {
+                currentTankIdx = tankSquads.length - 1;
+                tankDirection = -1;
+            } else if (currentTankIdx < 0) {
+                currentTankIdx = 0;
+                tankDirection = 1;
+            }
+        }
+    }
+
+    // 4. Infantry Officers
+    const infSquads = newSquads.filter(s => s.intent !== 'Comando' && s.intent !== 'Tanque' && s.intent !== 'Artilharia' && s.intent !== 'Reserva');
+    infSquads.forEach(sq => {
+        let pool = getAvailable();
+        const designatedOfc = pool.find(m => m.category === 'Oficiais' || m.isOfficer);
+        if (designatedOfc) {
+            assignToSquad(designatedOfc, sq.id, true);
+        } else {
+            const fallback = [...pool].sort((a,b) => b.ofcScore - a.ofcScore)[0];
+            if (fallback) assignToSquad(fallback, sq.id, true);
+        }
+    });
+
+    // 5. Fill Infantry Squads
+    infSquads.forEach(sq => {
+        const currMembers = members.filter(m => m.squad === sq.id);
+        const needed = sq.maxSlots - currMembers.length;
+        if (needed <= 0) return;
+
+        let pool = getAvailable();
+        if (sq.intent === 'Defesa') pool.sort((a,b) => b.defScore - a.defScore);
+        else if (sq.intent === 'Ataque') pool.sort((a,b) => b.atkScore - a.atkScore);
+        else pool.sort((a,b) => b.totScore - a.totScore);
+
+        for (let j = 0; j < Math.min(needed, pool.length); j++) {
+            assignToSquad(pool[j], sq.id, false);
+        }
+    });
+
+    setSquadMembers(members);
+    setIsGenerated(true);
+  };
+
   const handleCopyToWhatsApp = () => {
     let text = `📋 *Escalação Oficial*\n\n`;
 
-    const orderedSquads: SquadType[] = [
-      'Comando', 'Artilharia', 'T1', 'T2', 'B1', 'B2', 'B3', 
-      'FE', 'FD', 'L1', 'L2', 'L3', 'L4', 'L5', 'DC', 'DR'
-    ];
-
-    orderedSquads.forEach(sq => {
-      const members = squadMembers.filter(m => m.squad === sq);
+    squads.forEach(sq => {
+      if (sq.intent === 'Reserva') return;
+      const members = squadMembers.filter(m => m.squad === sq.id);
       if (members.length === 0) return;
 
       members.sort((a, b) => (a.isOfficer === b.isOfficer) ? 0 : a.isOfficer ? -1 : 1);
       
-      text += `*${SQUAD_NAMES[sq]}*\n`;
+      text += `*${sq.name}*\n`;
       members.forEach(m => {
         const ofcTag = m.isOfficer ? ' (OFC)' : '';
         text += `${m.playerName}${ofcTag}\n`;
@@ -120,28 +392,18 @@ export function LineupBuilder({ clanId }: LineupBuilderProps) {
     });
 
     navigator.clipboard.writeText(text).then(() => {
-      toast({
-        title: "Copiado!",
-        description: "Escalação copiada para a área de transferência. Agora é só colar no WhatsApp.",
-      });
+      toast({ title: "Copiado!", description: "Escalação copiada para a área de transferência." });
     });
   };
 
   const handleSaveLineup = async () => {
     setIsSaving(true);
-    
-    // Format data to save
-    const orderedSquads: SquadType[] = [
-      'Comando', 'Artilharia', 'T1', 'T2', 'B1', 'B2', 'B3', 
-      'FE', 'FD', 'L1', 'L2', 'L3', 'L4', 'L5', 'DC', 'DR'
-    ];
-    
     const squadsData: any = {};
-    orderedSquads.forEach(sq => {
-      const members = squadMembers.filter(m => m.squad === sq);
+    squads.forEach(sq => {
+      const members = squadMembers.filter(m => m.squad === sq.id);
       if (members.length > 0) {
         members.sort((a, b) => (a.isOfficer === b.isOfficer) ? 0 : a.isOfficer ? -1 : 1);
-        squadsData[sq] = members.map(m => ({
+        squadsData[sq.id] = members.map(m => ({
           playerName: m.playerName,
           isOfficer: m.isOfficer,
           arch: m.primaryRole,
@@ -155,179 +417,11 @@ export function LineupBuilder({ clanId }: LineupBuilderProps) {
       const origin = typeof window !== 'undefined' ? window.location.origin : '';
       const link = `${origin}/lineup/${result.id}`;
       setSavedLink(link);
-      toast({
-        title: "Escalação Salva!",
-        description: "O link público foi gerado com sucesso.",
-      });
+      toast({ title: "Escalação Salva!", description: "O link público foi gerado com sucesso." });
     } else {
-      toast({
-        title: "Erro",
-        description: "Não foi possível salvar a escalação.",
-        variant: "destructive"
-      });
+      toast({ title: "Erro", description: "Não foi possível salvar a escalação.", variant: "destructive" });
     }
     setIsSaving(false);
-  };
-
-  // Intelligence Data
-  const [players, setPlayers] = useState<(PlayerAggregates & { totalScore: number; hoursPlayed: number })[]>([]);
-  const [isFetching, startFetching] = useTransition();
-
-  useEffect(() => {
-    startFetching(async () => {
-      const result = await getClanMemberAggregates(clanId);
-      if (result.success && result.players) {
-        const enhanced = result.players.map(p => {
-          const totalScore = (p.totalCombat || 0) + (p.totalOffense || 0) + (p.totalDefense || 0) + (p.totalSupport || 0);
-          return {
-            ...p,
-            totalScore,
-            hoursPlayed: (p.totalTimeSeconds || 0) / 3600,
-          };
-        });
-        setPlayers(enhanced);
-      }
-    });
-  }, [clanId]);
-
-  const averages = useMemo(() => {
-    if (!players.length) return { c: 1, o: 1, d: 1, s: 1 };
-    return {
-      c: players.reduce((sum, p) => sum + (p.totalCombat || 0), 0) / players.length,
-      o: players.reduce((sum, p) => sum + (p.totalOffense || 0), 0) / players.length,
-      d: players.reduce((sum, p) => sum + (p.totalDefense || 0), 0) / players.length,
-      s: players.reduce((sum, p) => sum + (p.totalSupport || 0), 0) / players.length,
-    };
-  }, [players]);
-
-  const handleParseAndGenerate = () => {
-    const lines = inputText.split('\n');
-    let currentCategory = 'Soldados';
-    const parsedMembers: ClanMember[] = [];
-
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed) continue;
-
-      if (trimmed.toLowerCase().includes('soldados')) { currentCategory = 'Soldados'; continue; }
-      if (trimmed.toLowerCase().includes('blindados')) { currentCategory = 'Blindados'; continue; }
-      if (trimmed.toLowerCase().includes('oficiais')) { currentCategory = 'Oficiais'; continue; }
-      if (trimmed.toLowerCase().includes('comando')) { currentCategory = 'Comando'; continue; }
-      if (trimmed.toLowerCase().includes('artilharia')) { currentCategory = 'Artilharia'; continue; }
-
-      let rawName = trimmed.replace(/ocl\s*-\s*/i, '').replace(/ocl\s*/i, '').trim();
-      if (!rawName) continue;
-
-      const found = players.find(p => p.latestPlayerName.toLowerCase().includes(rawName.toLowerCase()));
-      const playstyle = found ? getArchetype(found, averages) : { name: 'Desconhecido' as Archetype, icon: Users, color: 'text-gray-500', desc: '' };
-      
-      parsedMembers.push({
-        id: found ? found.id : `custom-${rawName}-${Math.random()}`,
-        playerName: found ? found.latestPlayerName : rawName,
-        category: currentCategory,
-        isCustom: !found,
-        totalScore: found ? found.totalScore : 0,
-        hoursPlayed: found ? found.hoursPlayed : 0,
-        primaryRole: playstyle.name,
-        playstyle,
-        atkScoreHr: found && found.hoursPlayed > 0 ? ((found.totalOffense || 0) + (found.totalCombat || 0)) / found.hoursPlayed : 0,
-        defScoreHr: found && found.hoursPlayed > 0 ? ((found.totalDefense || 0) + (found.totalSupport || 0)) / found.hoursPlayed : 0,
-        totScoreHr: found && found.hoursPlayed > 0 ? found.totalScore / found.hoursPlayed : 0,
-        squad: 'Unassigned',
-        isOfficer: currentCategory === 'Oficiais' || currentCategory === 'Comando'
-      });
-    }
-
-    // Auto-fill Algorithm
-    const newMembers = [...parsedMembers];
-
-    const getBest = (pool: ClanMember[], sortBy: 'atkScoreHr' | 'defScoreHr' | 'totScoreHr', count: number) => {
-      return [...pool].sort((a, b) => b[sortBy] - a[sortBy]).slice(0, count);
-    };
-
-    // 1. Comando e Artilharia
-    const comandoTarget = newMembers.find(m => m.category === 'Comando');
-    if (comandoTarget) comandoTarget.squad = 'Comando';
-
-    const artiTarget = newMembers.find(m => m.category === 'Artilharia');
-    if (artiTarget) artiTarget.squad = 'Artilharia';
-
-    // 2. Tanques
-    const blindados = newMembers.filter(m => m.category === 'Blindados' && m.squad === 'Unassigned');
-    const bestTanks = getBest(blindados, 'totScoreHr', 6);
-    bestTanks.forEach((m, idx) => { m.squad = idx < 3 ? 'T1' : 'T2'; });
-
-    // --- PRIORIDADE MÁXIMA: ESPECIALISTAS DE DEFESA E ATAQUE --- //
-
-    // 3. Oficiais: Distribuir os Oficiais de forma inteligente
-    const oficiais = newMembers.filter(m => m.category === 'Oficiais' && m.squad === 'Unassigned');
-    
-    // 3.1 Oficiais de Defesa (DC, DR)
-    ['DC', 'DR'].forEach(sq => {
-      const pool = oficiais.filter(m => m.squad === 'Unassigned');
-      const bestOFC = getBest(pool, 'defScoreHr', 1)[0];
-      if (bestOFC) bestOFC.squad = sq as SquadType;
-    });
-
-    // 3.2 Oficiais Batedores (B1, B2, B3)
-    ['B1', 'B2', 'B3'].forEach(sq => {
-      const pool = oficiais.filter(m => m.squad === 'Unassigned');
-      const bestOFC = getBest(pool, 'atkScoreHr', 1)[0];
-      if (bestOFC) bestOFC.squad = sq as SquadType;
-    });
-
-    // 3.3 Oficiais Restantes para Linhas e Flancos
-    const remainingInfSquads: SquadType[] = ['FE', 'FD', 'L1', 'L2', 'L3', 'L4', 'L5'];
-    oficiais.filter(m => m.squad === 'Unassigned').forEach((ofc, idx) => {
-      if (idx < remainingInfSquads.length) {
-        ofc.squad = remainingInfSquads[idx];
-      }
-    });
-
-    // 4. Soldados Especialistas (Defesa e Ataque)
-    // 4.1 Soldados Defesa (DC, DR)
-    ['DC', 'DR'].forEach(sq => {
-      const bestDef = getBest(newMembers.filter(m => m.squad === 'Unassigned' && !m.isOfficer && m.category !== 'Blindados'), 'defScoreHr', 1)[0];
-      if (bestDef) bestDef.squad = sq as SquadType;
-    });
-
-    // 4.2 Soldados Batedores (B1, B2, B3)
-    ['B1', 'B2', 'B3'].forEach(sq => {
-      const bestAtk = getBest(newMembers.filter(m => m.squad === 'Unassigned' && !m.isOfficer && m.category !== 'Blindados'), 'atkScoreHr', 1)[0];
-      if (bestAtk) bestAtk.squad = sq as SquadType;
-    });
-
-    // 5. Promoção de Soldados (Se faltou Oficial em algum squad, promovemos os melhores soldados globais)
-    const allInfSquads: SquadType[] = ['DC', 'DR', 'B1', 'B2', 'B3', 'FE', 'FD', 'L1', 'L2', 'L3', 'L4', 'L5'];
-    const squadsWithoutOfficer = allInfSquads.filter(sq => !newMembers.some(m => m.squad === sq && m.isOfficer));
-    
-    squadsWithoutOfficer.forEach(sq => {
-      const pool = newMembers.filter(m => m.squad === 'Unassigned' && m.category !== 'Comando' && m.category !== 'Artilharia' && m.category !== 'Blindados');
-      const promoSoldier = getBest(pool, 'totScoreHr', 1)[0];
-      if (promoSoldier) {
-        promoSoldier.squad = sq;
-        promoSoldier.isOfficer = true;
-      }
-    });
-
-    // 6. Preencher Restante (Flancos e Linhas)
-    ['FE', 'FD'].forEach(sq => {
-      const bestFlex = getBest(newMembers.filter(m => m.squad === 'Unassigned' && !m.isOfficer), 'totScoreHr', 1)[0];
-      if (bestFlex) bestFlex.squad = sq as SquadType;
-    });
-
-    ['L1', 'L5'].forEach(sq => {
-      const sol = getBest(newMembers.filter(m => m.squad === 'Unassigned' && !m.isOfficer), 'totScoreHr', 1)[0];
-      if (sol) sol.squad = sq as SquadType;
-    });
-
-    ['L2', 'L3', 'L4'].forEach(sq => {
-      const sols = getBest(newMembers.filter(m => m.squad === 'Unassigned' && !m.isOfficer), 'totScoreHr', 2);
-      sols.forEach(sol => { sol.squad = sq as SquadType; });
-    });
-
-    setSquadMembers(newMembers);
-    setIsGenerated(true);
   };
 
   const handleDragStart = (e: React.DragEvent, memberId: string) => {
@@ -340,7 +434,7 @@ export function LineupBuilder({ clanId }: LineupBuilderProps) {
     e.dataTransfer.dropEffect = 'move';
   };
 
-  const handleDrop = (e: React.DragEvent, targetSquad: SquadType) => {
+  const handleDrop = (e: React.DragEvent, targetSquad: string) => {
     e.preventDefault();
     if (!draggedMemberId) return;
 
@@ -353,25 +447,39 @@ export function LineupBuilder({ clanId }: LineupBuilderProps) {
     setDraggedMemberId(null);
   };
 
-  const renderSquad = (title: string, squadId: SquadType, maxSlots: number) => {
-    const members = squadMembers.filter(m => m.squad === squadId);
+  const renderSquad = (sq: SquadDefinition) => {
+    const members = squadMembers.filter(m => m.squad === sq.id);
     members.sort((a, b) => (a.isOfficer === b.isOfficer) ? 0 : a.isOfficer ? -1 : 1);
 
+    const totSquadScore = members.reduce((sum, m) => sum + (m.totScore * (m.hoursPlayed || 1)), 0);
+
+    let IntentIcon = Users;
+    if (sq.intent === 'Defesa') IntentIcon = Shield;
+    if (sq.intent === 'Ataque') IntentIcon = Sword;
+    if (sq.intent === 'Flanco') IntentIcon = Crosshair;
+    
     return (
       <Card 
-        className={cn("bg-card/50 transition-colors", draggedMemberId && "border-accent/50 border-dashed")}
+        key={sq.id}
+        className={cn("bg-card/50 transition-colors flex flex-col", draggedMemberId && "border-accent/50 border-dashed")}
         onDragOver={handleDragOver}
-        onDrop={(e) => handleDrop(e, squadId)}
+        onDrop={(e) => handleDrop(e, sq.id)}
       >
         <CardHeader className="py-2 px-3 border-b border-border/50 bg-muted/20">
-          <CardTitle className="text-xs flex justify-between items-center">
-            <span>{title}</span>
-            <span className={cn("text-xs font-mono", members.length > maxSlots ? "text-red-500 font-bold" : "text-muted-foreground")}>
-              {members.length}/{maxSlots}
+          <CardTitle className="text-sm flex justify-between items-center">
+            <div className="flex items-center gap-2">
+              <IntentIcon className={cn("w-4 h-4", sq.intent === 'Defesa' ? "text-yellow-500" : sq.intent === 'Ataque' ? "text-red-500" : "text-blue-500")} />
+              <span>{sq.name}</span>
+            </div>
+            <span className={cn("text-xs font-mono", members.length > sq.maxSlots ? "text-red-500 font-bold" : "text-muted-foreground")}>
+              {members.length}/{sq.maxSlots}
             </span>
           </CardTitle>
+          {sq.intent !== 'Reserva' && (
+             <div className="text-[10px] text-muted-foreground text-right mt-1">Poder Total: {Math.round(totSquadScore).toLocaleString()}</div>
+          )}
         </CardHeader>
-        <CardContent className="p-2 space-y-1 min-h-[60px]">
+        <CardContent className="p-2 space-y-1 min-h-[60px] flex-grow">
           {members.map(m => (
             <div 
               key={m.id} 
@@ -387,6 +495,9 @@ export function LineupBuilder({ clanId }: LineupBuilderProps) {
                 <span className={cn("truncate", m.isOfficer && "font-bold text-accent")}>
                   {m.playerName} {m.isCustom && <span className="text-[10px] text-red-500" title="Sem dados">(?)</span>}
                 </span>
+              </div>
+              <div className="text-[10px] text-muted-foreground font-mono">
+                {Math.round(m.elo)} ELO
               </div>
             </div>
           ))}
@@ -412,121 +523,154 @@ export function LineupBuilder({ clanId }: LineupBuilderProps) {
       <div>
         <h2 className="text-2xl font-bold font-headline flex items-center gap-2">
           <Brain className="text-accent h-6 w-6" />
-          Gerador de Escalação (Lineup Builder)
+          Gerador Inteligente de Escalação
         </h2>
         <p className="text-muted-foreground text-sm">
-          Cole a lista de confirmados. A inteligência artificial usará os dados de combate para montar a escalação sugerida.
+          Configure a partida e cole a lista de presenças. A IA usará ELO, Ataque e Defesa para montar os esquadrões baseados na estratégia.
         </p>
       </div>
 
       {!isGenerated ? (
-        <Card className="bg-card/50">
-          <CardContent className="pt-6 space-y-4">
-            <Textarea 
-              placeholder="Cole a lista de presenças aqui (ex: Soldados: \n OCL - Nome...)" 
-              className="min-h-[300px] font-mono text-sm"
-              value={inputText}
-              onChange={(e) => setInputText(e.target.value)}
-            />
-            <Button onClick={handleParseAndGenerate} className="w-full" size="lg" disabled={!inputText.trim()}>
-              <Brain className="mr-2 h-5 w-5" />
-              Analisar Eficiência e Gerar Escalação
-            </Button>
-          </CardContent>
-        </Card>
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+          <Card className="lg:col-span-1 bg-card/50">
+            <CardHeader className="py-4">
+              <CardTitle className="text-md flex items-center gap-2"><Settings className="w-4 h-4"/> Configurações</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label>Tamanho da Partida</Label>
+                <Select value={String(matchSize)} onValueChange={v => setMatchSize(Number(v))}>
+                  <SelectTrigger><SelectValue/></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="35">35 v 35</SelectItem>
+                    <SelectItem value="40">40 v 40</SelectItem>
+                    <SelectItem value="45">45 v 45</SelectItem>
+                    <SelectItem value="50">50 v 50</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Qtd. de Tanques</Label>
+                <Select value={String(tankSquadsCount)} onValueChange={v => setTankSquadsCount(Number(v))}>
+                  <SelectTrigger><SelectValue/></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="0">Sem Tanques</SelectItem>
+                    <SelectItem value="1">1 Equipe</SelectItem>
+                    <SelectItem value="2">2 Equipes</SelectItem>
+                    <SelectItem value="3">3 Equipes</SelectItem>
+                    <SelectItem value="4">4 Equipes</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Vagas nos Tanques</Label>
+                <Select value={String(tankSquadSize)} onValueChange={v => setTankSquadSize(Number(v))}>
+                  <SelectTrigger><SelectValue/></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="2">2 Jogadores</SelectItem>
+                    <SelectItem value="3">3 Jogadores</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Vagas na Artilharia</Label>
+                <Select value={String(artillerySize)} onValueChange={v => setArtillerySize(Number(v))}>
+                  <SelectTrigger><SelectValue/></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="0">Sem Artilharia</SelectItem>
+                    <SelectItem value="1">1 Jogador</SelectItem>
+                    <SelectItem value="2">2 Jogadores</SelectItem>
+                    <SelectItem value="3">3 Jogadores</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Tamanho do Squad Inf.</Label>
+                <Select value={String(infantrySquadSize)} onValueChange={v => setInfantrySquadSize(Number(v))}>
+                  <SelectTrigger><SelectValue/></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="2">2 Jogadores</SelectItem>
+                    <SelectItem value="3">3 Jogadores</SelectItem>
+                    <SelectItem value="4">4 Jogadores</SelectItem>
+                    <SelectItem value="5">5 Jogadores</SelectItem>
+                    <SelectItem value="6">6 Jogadores</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Estratégia Principal</Label>
+                <Select value={strategy} onValueChange={(v: StrategyType) => setStrategy(v)}>
+                  <SelectTrigger><SelectValue/></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Equilibrado">Equilibrado</SelectItem>
+                    <SelectItem value="Ataque">Foco em Ataque</SelectItem>
+                    <SelectItem value="Defesa">Foco em Defesa</SelectItem>
+                    <SelectItem value="Flancos">Foco em Flancos</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Período de Dados</Label>
+                <Select value={period} onValueChange={(v: 'current'|'3months') => setPeriod(v)}>
+                  <SelectTrigger><SelectValue/></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="current">Somente Mês Atual</SelectItem>
+                    <SelectItem value="3months">Últimos 3 Meses</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="lg:col-span-3 bg-card/50">
+            <CardContent className="pt-6 space-y-4">
+              <Textarea 
+                placeholder="Cole a lista de presenças aqui...&#10;&#10;Comando:&#10;HRB_Fleck&#10;&#10;Oficiais:&#10;HRB_Bradock&#10;&#10;Blindados:&#10;HRB_Jon&#10;&#10;Soldados:&#10;HRB_Saldanha" 
+                className="min-h-[450px] font-mono text-sm"
+                value={inputText}
+                onChange={(e) => setInputText(e.target.value)}
+              />
+              <Button onClick={handleParseAndGenerate} className="w-full" size="lg" disabled={!inputText.trim()}>
+                <Brain className="mr-2 h-5 w-5" />
+                Gerar Escalação Automática
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
       ) : (
         <div className="space-y-6">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-muted/30 p-4 rounded-lg border border-border gap-4">
             <div className="text-sm">
-              <span className="font-bold text-accent">{squadMembers.length}</span> jogadores processados. 
+              <span className="font-bold text-accent">{squadMembers.length}</span> jogadores escalados (Max: {matchSize}). 
               <br className="sm:hidden" />
-              Arraste e solte os cards para ajustar os esquadrões.
+              Arraste e solte os jogadores para ajustar.
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <Button variant="outline" size="sm" onClick={() => setIsGenerated(false)}>Nova Lista</Button>
+              <Button variant="outline" size="sm" onClick={() => setIsGenerated(false)}>Voltar / Reconfigurar</Button>
               <Button variant="secondary" size="sm" onClick={handleCopyToWhatsApp}>
                 <Copy className="h-4 w-4 mr-2" /> WhatsApp
               </Button>
               <Button size="sm" onClick={handleSaveLineup} disabled={isSaving}>
-                {isSaving ? <Activity className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
-                Salvar Escalação
+                <Save className="h-4 w-4 mr-2" /> 
+                {isSaving ? "Salvando..." : "Salvar Link Público"}
               </Button>
             </div>
           </div>
 
           {savedLink && (
-            <div className="bg-green-500/10 border border-green-500/20 p-4 rounded-lg flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="bg-accent/10 border border-accent/20 p-4 rounded-lg flex items-center justify-between">
               <div className="flex flex-col">
-                <span className="text-sm font-bold text-green-500">Escalação Salva com Sucesso!</span>
-                <span className="text-xs text-muted-foreground">Compartilhe este link com seu clã:</span>
-                <a href={savedLink} target="_blank" rel="noreferrer" className="text-sm font-mono text-accent hover:underline flex items-center gap-1 mt-1">
-                  {savedLink} <ExternalLink className="h-3 w-3" />
-                </a>
+                <span className="text-sm font-bold text-accent flex items-center gap-2"><Share2 className="w-4 h-4"/> Escalação Salva!</span>
+                <span className="text-xs text-muted-foreground break-all">{savedLink}</span>
               </div>
-              <Button variant="outline" size="sm" onClick={() => navigator.clipboard.writeText(savedLink)}>
-                <Share2 className="h-4 w-4 mr-2" /> Copiar Link
+              <Button variant="outline" size="sm" asChild>
+                <a href={savedLink} target="_blank" rel="noopener noreferrer">Abrir</a>
               </Button>
             </div>
           )}
 
-          <div className="grid grid-cols-1 xl:grid-cols-4 gap-6 items-start">
-            
-            {/* LEFT PANE: Reservas */}
-            <div className="xl:col-span-1 space-y-4">
-              <h3 className="font-bold text-muted-foreground flex items-center gap-2 uppercase text-sm tracking-wider">
-                <Users className="h-4 w-4" /> Não Alocados
-              </h3>
-              {renderSquad('Disponíveis', 'Unassigned', 50)}
-            </div>
-
-            {/* RIGHT PANE: BOARD */}
-            <div className="xl:col-span-3 space-y-6">
-              
-              {/* Liderança */}
-              <div>
-                <h3 className="font-bold text-accent mb-3 uppercase text-sm tracking-wider">Comando & Suporte</h3>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  {renderSquad('Comandante', 'Comando', 1)}
-                  {renderSquad('Artilharia', 'Artilharia', 1)}
-                  {renderSquad('Tanque 1 (T1)', 'T1', 3)}
-                  {renderSquad('Tanque 2 (T2)', 'T2', 3)}
-                </div>
-              </div>
-
-              {/* Tropa de Choque */}
-              <div>
-                <h3 className="font-bold text-red-500 mb-3 uppercase text-sm tracking-wider">Batedores & Flancos</h3>
-                <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-                  {renderSquad('Batedor 1 (B1)', 'B1', 2)}
-                  {renderSquad('Batedor 2 (B2)', 'B2', 2)}
-                  {renderSquad('Batedor 3 (B3)', 'B3', 2)}
-                  {renderSquad('Flanco Esq (FE)', 'FE', 2)}
-                  {renderSquad('Flanco Dir (FD)', 'FD', 2)}
-                </div>
-              </div>
-
-              {/* Linhas */}
-              <div>
-                <h3 className="font-bold text-blue-400 mb-3 uppercase text-sm tracking-wider">Linhas de Frente</h3>
-                <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-                  {renderSquad('Linha 1 (L1)', 'L1', 2)}
-                  {renderSquad('Linha 2 (L2)', 'L2', 3)}
-                  {renderSquad('Linha 3 (L3)', 'L3', 3)}
-                  {renderSquad('Linha 4 (L4)', 'L4', 3)}
-                  {renderSquad('Linha 5 (L5)', 'L5', 2)}
-                </div>
-              </div>
-
-              {/* Defesa */}
-              <div>
-                <h3 className="font-bold text-yellow-500 mb-3 uppercase text-sm tracking-wider">Defesa de Ponto</h3>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  {renderSquad('Defesa Central (DC)', 'DC', 2)}
-                  {renderSquad('Retaguarda (DR)', 'DR', 2)}
-                </div>
-              </div>
-
-            </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {squads.map(sq => renderSquad(sq))}
           </div>
         </div>
       )}

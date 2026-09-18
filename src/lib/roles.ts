@@ -24,4 +24,7 @@ export const ROLE_MAPPING: Record<number, { name: string, icon: LucideIcon }> = 
   10: { name: 'Sniper', icon: Crosshair },
   11: { name: 'Tank Commander', icon: Truck },
   12: { name: 'Crewman', icon: Truck },
+  13: { name: 'Commander', icon: Star },
+  14: { name: 'Artilharia Móvel', icon: Target },
+  15: { name: 'Artilharia Fixa', icon: Target },
 };

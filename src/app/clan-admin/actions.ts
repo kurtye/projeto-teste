@@ -448,6 +448,23 @@ export async function getClanMemberAggregates(clanId: string): Promise<{ success
             return scoreB - scoreA;
         });
 
+        // 4. Fetch ELO
+        const playerIdsForElo = players.map(p => p.playerId);
+        const eloChunkSize = 30;
+        for (let i = 0; i < playerIdsForElo.length; i += eloChunkSize) {
+            const chunk = playerIdsForElo.slice(i, i + eloChunkSize);
+            if (chunk.length === 0) continue;
+            const playersQuery = query(collection(db, 'players'), where('__name__', 'in', chunk));
+            const playersSnapshot = await getDocs(playersQuery);
+            playersSnapshot.forEach(docSnap => {
+                const data = docSnap.data();
+                const p = players.find(p => p.playerId === docSnap.id);
+                if (p && data.elo !== undefined) {
+                    p.elo = data.elo;
+                }
+            });
+        }
+
         return { success: true, players: JSON.parse(JSON.stringify(players)) };
     } catch (error: any) {
         console.error("Error fetching clan member aggregates:", error);
@@ -547,6 +564,23 @@ export async function getClanMonthlyAggregates(clanId: string, periodIds: string
 
         const players = Array.from(accumulatedMap.values());
         
+        // --- FETCH ELO ---
+        const playerIds = players.map(p => p.playerId);
+        const chunkSize = 30;
+        for (let i = 0; i < playerIds.length; i += chunkSize) {
+            const chunk = playerIds.slice(i, i + chunkSize);
+            if (chunk.length === 0) continue;
+            const playersQuery = query(collection(db, 'players'), where('__name__', 'in', chunk));
+            const playersSnapshot = await getDocs(playersQuery);
+            playersSnapshot.forEach(docSnap => {
+                const data = docSnap.data();
+                const p = players.find(p => p.playerId === docSnap.id);
+                if (p && data.elo !== undefined) {
+                    p.elo = data.elo;
+                }
+            });
+        }
+        
         // Recalculate mainRole for accumulated data
         players.forEach(p => {
              let updatedMainRole = -1;
@@ -606,5 +640,60 @@ export async function getLineup(lineupId: string) {
     } catch (error: any) {
         console.error("Error fetching lineup:", error);
         return { success: false, error: "Falha ao buscar a escalação." };
+    }
+}
+
+export async function syncPlayerElo(playerId: string): Promise<{ success: boolean; elo?: number; error?: string }> {
+    try {
+        const response = await fetch(`https://hllrecords.com/profiles/${playerId}/progression`, {
+            headers: {
+                'accept': '*/*',
+                'accept-language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
+                'cookie': 'progression-chart-metric-v1=kd; bunny_shield_id_87989=39cfc1a1a5404c72913b250f23609b4d; interaction=2',
+                'priority': 'u=1, i',
+                'referer': `https://hllrecords.com/profiles/${playerId}`,
+                'sec-ch-ua': '"Chromium";v="152", "Not?A_Brand";v="24", "Google Chrome";v="152"',
+                'sec-ch-ua-mobile': '?1',
+                'sec-ch-ua-platform': '"Android"',
+                'sec-fetch-dest': 'empty',
+                'sec-fetch-mode': 'cors',
+                'sec-fetch-site': 'same-origin',
+                'user-agent': 'Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36'
+            },
+            next: { revalidate: 3600 } 
+        });
+
+        console.log(`[syncPlayerElo] Fetching ELO for ${playerId}. Status: ${response.status}`);
+
+        if (!response.ok) {
+            console.error(`[syncPlayerElo] Failed to fetch. Status: ${response.status}`);
+            return { success: false, error: 'Failed to fetch from HLL Records' };
+        }
+
+        const data = await response.json();
+        
+        if (!Array.isArray(data) || data.length === 0) {
+             return { success: false, error: 'No progression data found' };
+        }
+        
+        let elo = 0;
+        for (let i = data.length - 1; i >= 0; i--) {
+            if (data[i].elo !== undefined) {
+                elo = data[i].elo;
+                break;
+            }
+        }
+        
+        if (elo === 0) {
+             return { success: false, error: 'Elo not found in progression data' };
+        }
+
+        const playerRef = doc(db, 'players', playerId);
+        await setDoc(playerRef, { elo, lastEloSync: serverTimestamp() }, { merge: true });
+
+        return { success: true, elo };
+
+    } catch (e: any) {
+        return { success: false, error: e.message };
     }
 }

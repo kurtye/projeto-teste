@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Brain, Trophy, Activity, Sword, Shield, HeartPulse, Crosshair, Users, Skull, Flame, Target, Truck, Zap, Star, UserX, Clock, Medal } from 'lucide-react';
-import { getClanMonthlyAggregates } from '../../../actions';
+import { getClanMonthlyAggregates, syncPlayerElo } from '../../../actions';
 import {
   Radar,
   RadarChart,
@@ -88,14 +88,24 @@ export function ClanIntelligenceDashboard({ clanId }: ClanIntelligenceDashboardP
   const [hasFetched, setHasFetched] = useState(false);
   const [minHoursFilter, setMinHoursFilter] = useState<number>(0);
   const [periodFilter, setPeriodFilter] = useState<string>('current');
-  const [sortConfig, setSortConfig] = useState<{ key: 'hoursPlayed' | 'totalKills' | 'totalScore' | 'kdRatio'; direction: 'asc' | 'desc' }>({ key: 'totalScore', direction: 'desc' });
+  const [sortConfig, setSortConfig] = useState<{ key: 'hoursPlayed' | 'totalKills' | 'totalScore' | 'kdRatio' | 'elo'; direction: 'asc' | 'desc' }>({ key: 'totalScore', direction: 'desc' });
+  const [isSyncingElos, setIsSyncingElos] = useState(false);
+  const [hasAttemptedSync, setHasAttemptedSync] = useState(false);
 
   useEffect(() => {
     handleFetch();
   }, [periodFilter]);
 
+  useEffect(() => {
+    if (hasFetched && players.length > 0 && !hasAttemptedSync) {
+        setHasAttemptedSync(true);
+        handleSyncMissingElos();
+    }
+  }, [hasFetched, players, hasAttemptedSync]);
+
   const handleFetch = () => {
     startFetching(async () => {
+      setHasAttemptedSync(false);
       const now = new Date();
       const currentMonthStr = format(now, 'yyyy-MM');
       const lastMonthStr = format(subMonths(now, 1), 'yyyy-MM');
@@ -124,6 +134,33 @@ export function ClanIntelligenceDashboard({ clanId }: ClanIntelligenceDashboardP
     });
   };
 
+  const handleSyncMissingElos = async () => {
+      setIsSyncingElos(true);
+      try {
+          // Find players without elo
+          const missing = players.filter(p => !p.elo);
+          console.log(`Buscando ELO para ${missing.length} jogadores...`);
+          let successCount = 0;
+          for (const p of missing) {
+              const res = await syncPlayerElo(p.playerId);
+              console.log(`Resultado ELO ${p.playerName}:`, res);
+              if (res.success && res.elo) {
+                  setPlayers(prev => prev.map(player => player.playerId === p.playerId ? { ...player, elo: res.elo } : player));
+                  successCount++;
+              }
+              // Small delay to avoid hammering the API
+              await new Promise(r => setTimeout(r, 200));
+          }
+          if (missing.length > 0 && successCount === 0) {
+             console.warn('A sincronização falhou para os jogadores. Possível bloqueio da API.');
+          }
+      } catch (err) {
+          console.error("Error syncing elos", err);
+      } finally {
+          setIsSyncingElos(false);
+      }
+  };
+
   const filteredPlayers = useMemo(() => {
     return players.filter(p => p.hoursPlayed >= minHoursFilter);
   }, [players, minHoursFilter]);
@@ -140,7 +177,7 @@ export function ClanIntelligenceDashboard({ clanId }: ClanIntelligenceDashboardP
     return sorted;
   }, [filteredPlayers, sortConfig]);
 
-  const requestSort = (key: 'hoursPlayed' | 'totalKills' | 'totalScore' | 'kdRatio') => {
+  const requestSort = (key: 'hoursPlayed' | 'totalKills' | 'totalScore' | 'kdRatio' | 'elo') => {
     let direction: 'asc' | 'desc' = 'desc';
     if (sortConfig.key === key && sortConfig.direction === 'desc') {
       direction = 'asc';
@@ -506,10 +543,23 @@ export function ClanIntelligenceDashboard({ clanId }: ClanIntelligenceDashboardP
           {/* Tabela de Membros */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-lg">Relatório de Membros</CardTitle>
-              <CardDescription>
-                Lista completa de atuação dos membros do clã no período.
-              </CardDescription>
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center">
+                <div>
+                  <CardTitle className="text-lg">Relatório de Membros</CardTitle>
+                  <CardDescription>
+                    Lista completa de atuação dos membros do clã no período.
+                  </CardDescription>
+                </div>
+                <Button 
+                  onClick={handleSyncMissingElos} 
+                  disabled={isSyncingElos}
+                  variant="outline"
+                  size="sm"
+                  className="mt-4 sm:mt-0"
+                >
+                  {isSyncingElos ? "Sincronizando..." : "Sincronizar ELOs Faltantes"}
+                </Button>
+              </div>
             </CardHeader>
             <CardContent>
               <div className="flex flex-wrap gap-4 mb-6 p-4 bg-muted/30 rounded-lg border border-accent/10">
@@ -530,6 +580,11 @@ export function ClanIntelligenceDashboard({ clanId }: ClanIntelligenceDashboardP
                       <TableHead>Jogador</TableHead>
                       <TableHead>Classe Principal</TableHead>
                       <TableHead>Divisão</TableHead>
+                      <TableHead className="text-right">
+                        <Button variant="ghost" size="sm" onClick={() => requestSort('elo')} className="-mr-3 hover:bg-transparent font-bold">
+                          ELO {sortConfig.key === 'elo' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                        </Button>
+                      </TableHead>
                       <TableHead className="text-right">
                         <Button variant="ghost" size="sm" onClick={() => requestSort('hoursPlayed')} className="-mr-3 hover:bg-transparent font-bold">
                           Horas {sortConfig.key === 'hoursPlayed' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
@@ -579,6 +634,9 @@ export function ClanIntelligenceDashboard({ clanId }: ClanIntelligenceDashboardP
                               <DivIcon className={cn("h-4 w-4", division.color)} />
                               <span className="text-sm font-semibold">{division.name}</span>
                             </div>
+                          </TableCell>
+                          <TableCell className="text-right font-mono font-bold text-blue-500">
+                             {player.elo ? Math.round(player.elo) : '-'}
                           </TableCell>
                           <TableCell className="text-right text-muted-foreground">
                              {Math.round(player.hoursPlayed)}h

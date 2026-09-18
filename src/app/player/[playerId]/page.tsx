@@ -52,9 +52,10 @@ import { getMonthlyHallOfFame } from '@/app/hall-of-fame/actions';
 import { AdBanner } from '@/components/AdBanner';
 import { getClanFromPlayerName } from '@/lib/clans';
 import Image from 'next/image';
-import { format } from 'date-fns';
+import { format, subMonths } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { TacticalDNABar } from '@/components/TacticalDNA';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 interface PlayerProfilePageProps {
   params: {
@@ -121,14 +122,19 @@ export default function PlayerProfilePage({ params }: PlayerProfilePageProps) {
   const resolvedParams = use(params);
   const playerId = decodeURIComponent(resolvedParams.playerId);
   
-  const currentMonth = format(new Date(), 'yyyy-MM');
-  const monthLabel = format(new Date(), 'MMMM yyyy', { locale: ptBR });
+  const now = new Date();
+  const currentMonthStr = format(now, 'yyyy-MM');
+  const lastMonthStr = format(subMonths(now, 1), 'yyyy-MM');
+  const twoMonthsAgoStr = format(subMonths(now, 2), 'yyyy-MM');
+
+  const [selectedMonth, setSelectedMonth] = useState(currentMonthStr);
+  const monthLabel = format(new Date(selectedMonth + '-01T12:00:00'), 'MMMM yyyy', { locale: ptBR });
 
   // Fetch new monthly player data
   const playerDocRef = useMemoFirebase(() => {
     if (!firestore || !playerId) return null;
-    return doc(firestore, 'monthly_player_stats', `month_${currentMonth}_${playerId}`);
-  }, [firestore, playerId, currentMonth]);
+    return doc(firestore, 'monthly_player_stats', `month_${selectedMonth}_${playerId}`);
+  }, [firestore, playerId, selectedMonth]);
   
   const { data: player, isLoading: isLoadingPlayer, error } = useDoc<MonthlyPlayerStats>(playerDocRef);
 
@@ -140,7 +146,7 @@ export default function PlayerProfilePage({ params }: PlayerProfilePageProps) {
       async function fetchHof() {
           setIsLoadingHof(true);
           try {
-             const stats = await getMonthlyHallOfFame(currentMonth);
+             const stats = await getMonthlyHallOfFame(selectedMonth);
              setHofStats(stats);
           } catch(e) {
              console.error("Error loading HoF stats", e);
@@ -149,7 +155,7 @@ export default function PlayerProfilePage({ params }: PlayerProfilePageProps) {
           }
       }
       fetchHof();
-  }, [currentMonth]);
+  }, [selectedMonth]);
 
   // Derived Interactions Data
   const topWeapons = useMemo(() => {
@@ -252,18 +258,42 @@ export default function PlayerProfilePage({ params }: PlayerProfilePageProps) {
     )
   }
 
+  const MonthSelector = (
+    <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+        <SelectTrigger className="w-[180px] capitalize bg-background">
+            <SelectValue placeholder="Selecione o mês" />
+        </SelectTrigger>
+        <SelectContent>
+            <SelectItem value={currentMonthStr}>{format(new Date(currentMonthStr + '-01T12:00:00'), 'MMMM yyyy', { locale: ptBR })}</SelectItem>
+            <SelectItem value={lastMonthStr}>{format(new Date(lastMonthStr + '-01T12:00:00'), 'MMMM yyyy', { locale: ptBR })}</SelectItem>
+            <SelectItem value={twoMonthsAgoStr}>{format(new Date(twoMonthsAgoStr + '-01T12:00:00'), 'MMMM yyyy', { locale: ptBR })}</SelectItem>
+        </SelectContent>
+    </Select>
+  );
+
   if (!player) {
     return (
-        <div className="container mx-auto px-4 py-8 text-center">
-            <Calendar className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-            <h1 className="text-2xl font-bold text-foreground">Sem Dados Neste Mês</h1>
-            <p className="text-muted-foreground mt-2">O jogador ID <strong>{playerId}</strong> ainda não tem partidas processadas no servidor durante o mês atual ({monthLabel}).</p>
-             <Button asChild variant="outline" className="mt-6">
-                <Link href="/">
-                    <ChevronLeft className="mr-2 h-4 w-4" />
-                    Voltar ao Ranking
-                </Link>
-            </Button>
+        <div className="container mx-auto px-4 py-8">
+            <div className="mb-6 flex justify-between items-center">
+                <Button asChild variant="outline">
+                    <Link href="/">
+                        <ChevronLeft className="mr-2 h-4 w-4" />
+                        Voltar ao Ranking
+                    </Link>
+                </Button>
+                {MonthSelector}
+            </div>
+            <div className="text-center py-12">
+                <Calendar className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+                <h1 className="text-2xl font-bold text-foreground">Sem Dados Neste Mês</h1>
+                <p className="text-muted-foreground mt-2">O jogador ID <strong>{playerId}</strong> ainda não tem partidas processadas no servidor durante o mês selecionado ({monthLabel}).</p>
+                <Button asChild variant="outline" className="mt-6">
+                    <Link href="/">
+                        <ChevronLeft className="mr-2 h-4 w-4" />
+                        Voltar ao Ranking
+                    </Link>
+                </Button>
+            </div>
         </div>
     )
   }
@@ -281,9 +311,7 @@ export default function PlayerProfilePage({ params }: PlayerProfilePageProps) {
                 Voltar ao Ranking
             </Link>
         </Button>
-        <Badge variant="secondary" className="capitalize text-sm px-4 py-1">
-            Mês: {monthLabel}
-        </Badge>
+        {MonthSelector}
       </div>
 
       <div className="flex flex-col lg:flex-row items-center lg:items-start gap-8">

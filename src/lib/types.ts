@@ -20,6 +20,7 @@ export interface PlayerAggregates {
   // Calculated in the frontend
   totalScore?: number;
   kdRatio?: number;
+  elo?: number;
 }
 
 export interface MonthlyPlayerStats {
@@ -42,6 +43,7 @@ export interface MonthlyPlayerStats {
   totalVehiclesDestroyed?: number;
   totalTeamkills?: number;
   deathsByTk?: number; // Mortes por TK
+  elo?: number;
   
   // Máximos
   longestLifeSecs?: number;
