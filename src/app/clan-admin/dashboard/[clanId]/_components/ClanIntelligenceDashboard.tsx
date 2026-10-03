@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Brain, Trophy, Activity, Sword, Shield, HeartPulse, Crosshair, Users, Skull, Flame, Target, Truck, Zap, Star, UserX, Clock, Medal } from 'lucide-react';
-import { getClanMonthlyAggregates, syncPlayerElo } from '../../../actions';
+import { getClanMonthlyAggregates, syncPlayerElo, getPlayerNamesByIds } from '../../../actions';
 import {
   Radar,
   RadarChart,
@@ -36,6 +36,7 @@ import { format, subMonths } from 'date-fns';
 
 interface ClanIntelligenceDashboardProps {
   clanId: string;
+  isPublic?: boolean;
 }
 
 const formatTime = (seconds: number): string => {
@@ -82,19 +83,22 @@ const StatCard = ({ title, value, icon: Icon, subtext, highlightColor }: { title
   </Card>
 );
 
-export function ClanIntelligenceDashboard({ clanId }: ClanIntelligenceDashboardProps) {
-  const [players, setPlayers] = useState<(MonthlyPlayerStats & { totalScore: number; hoursPlayed: number })[]>([]);
+export function ClanIntelligenceDashboard({ clanId, isPublic = false }: ClanIntelligenceDashboardProps) {
+  const [players, setPlayers] = useState<(MonthlyPlayerStats & { totalScore: number; hoursPlayed: number; kdRatio: number; ofcScore: number; tankScore: number; artiScore: number; scorePerHour: number })[]>([]);
   const [isFetching, startFetching] = useTransition();
   const [hasFetched, setHasFetched] = useState(false);
   const [minHoursFilter, setMinHoursFilter] = useState<number>(0);
-  const [periodFilter, setPeriodFilter] = useState<string>('current');
-  const [sortConfig, setSortConfig] = useState<{ key: 'hoursPlayed' | 'totalKills' | 'totalScore' | 'kdRatio' | 'elo'; direction: 'asc' | 'desc' }>({ key: 'totalScore', direction: 'desc' });
+  const [periodFilter, setPeriodFilter] = useState<string>('custom');
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear().toString());
+  const [selectedMonth, setSelectedMonth] = useState((new Date().getMonth() + 1).toString().padStart(2, '0'));
+  const [sortConfig, setSortConfig] = useState<{ key: 'hoursPlayed' | 'totalKills' | 'totalScore' | 'kdRatio' | 'elo' | 'ofcScore' | 'tankScore' | 'artiScore' | 'totalVehiclesDestroyed' | 'scorePerHour'; direction: 'asc' | 'desc' }>({ key: 'totalScore', direction: 'desc' });
   const [isSyncingElos, setIsSyncingElos] = useState(false);
   const [hasAttemptedSync, setHasAttemptedSync] = useState(false);
+  const [nemesisNames, setNemesisNames] = useState<Record<string, string>>({});
 
   useEffect(() => {
     handleFetch();
-  }, [periodFilter]);
+  }, [periodFilter, selectedYear, selectedMonth]);
 
   useEffect(() => {
     if (hasFetched && players.length > 0 && !hasAttemptedSync) {
@@ -114,6 +118,8 @@ export function ClanIntelligenceDashboard({ clanId }: ClanIntelligenceDashboardP
       let periodsToFetch = [`month_${currentMonthStr}`];
       if (periodFilter === '3months') {
         periodsToFetch = [`month_${currentMonthStr}`, `month_${lastMonthStr}`, `month_${twoMonthsAgoStr}`];
+      } else if (periodFilter === 'custom') {
+        periodsToFetch = [`month_${selectedYear}-${selectedMonth}`];
       }
 
       const result = await getClanMonthlyAggregates(clanId, periodsToFetch);
@@ -121,11 +127,22 @@ export function ClanIntelligenceDashboard({ clanId }: ClanIntelligenceDashboardP
         const enhanced = result.players.map(p => {
           const totalScore = (p.totalCombat || 0) + (p.totalOffense || 0) + (p.totalDefense || 0) + (p.totalSupport || 0);
           const kdRatio = p.totalDeaths ? (p.totalKills / p.totalDeaths) : (p.totalKills || 0);
+          const hoursPlayed = (p.totalTimeSeconds || 0) / 3600;
+          
+          const ofcScore = ((p as any).timePlayedByRole?.[0] || 0) + ((p as any).timePlayedByRole?.[13] || 0);
+          const tankScore = ((p as any).timePlayedByRole?.[11] || 0) + ((p as any).timePlayedByRole?.[12] || 0);
+          const artiScore = ((p as any).timePlayedByRole?.[14] || 0) + ((p as any).timePlayedByRole?.[15] || 0);
+          const scorePerHour = hoursPlayed > 0 ? totalScore / hoursPlayed : 0;
+
           return {
             ...p,
             totalScore,
             kdRatio,
-            hoursPlayed: (p.totalTimeSeconds || 0) / 3600,
+            hoursPlayed,
+            ofcScore,
+            tankScore,
+            artiScore,
+            scorePerHour
           };
         });
         setPlayers(enhanced);
@@ -177,7 +194,7 @@ export function ClanIntelligenceDashboard({ clanId }: ClanIntelligenceDashboardP
     return sorted;
   }, [filteredPlayers, sortConfig]);
 
-  const requestSort = (key: 'hoursPlayed' | 'totalKills' | 'totalScore' | 'kdRatio' | 'elo') => {
+  const requestSort = (key: 'hoursPlayed' | 'totalKills' | 'totalScore' | 'kdRatio' | 'elo' | 'ofcScore' | 'tankScore' | 'artiScore' | 'totalVehiclesDestroyed' | 'scorePerHour') => {
     let direction: 'asc' | 'desc' = 'desc';
     if (sortConfig.key === key && sortConfig.direction === 'desc') {
       direction = 'asc';
@@ -307,22 +324,36 @@ export function ClanIntelligenceDashboard({ clanId }: ClanIntelligenceDashboardP
   }, [filteredPlayers]);
 
   const awards = useMemo(() => {
-      if (filteredPlayers.length === 0) return null;
+      // Need at least 1 hour of playtime to be eligible for efficiency awards
+      const eligiblePlayers = filteredPlayers.filter(p => p.hoursPlayed >= 1);
+      if (eligiblePlayers.length === 0) return null;
       
-      const topKills = [...filteredPlayers].sort((a, b) => (b.totalKills || 0) - (a.totalKills || 0))[0];
-      const topVehicles = [...filteredPlayers].sort((a, b) => (b.totalVehiclesDestroyed || 0) - (a.totalVehiclesDestroyed || 0))[0];
-      const topStreak = [...filteredPlayers].sort((a, b) => (b.maxKillsStreak || 0) - (a.maxKillsStreak || 0))[0];
-      const topTK = [...filteredPlayers].sort((a, b) => (b.totalTeamkills || 0) - (a.totalTeamkills || 0))[0];
-      const topLife = [...filteredPlayers].sort((a, b) => (b.longestLifeSecs || 0) - (a.longestLifeSecs || 0))[0];
+      const sortBy = (key: keyof (MonthlyPlayerStats & { totalScore: number; hoursPlayed: number; kdRatio: number; ofcScore: number; tankScore: number; artiScore: number; scorePerHour: number })) => 
+        [...eligiblePlayers].sort((a, b) => (Number(b[key]) || 0) - (Number(a[key]) || 0))[0];
 
       return {
-          exterminador: topKills,
-          cacador: topVehicles,
-          streak: topStreak,
-          tk: topTK,
-          sobrevivente: topLife
+          mvp: sortBy('totalScore'),
+          rendimento: sortBy('scorePerHour'),
+          ceifador: sortBy('totalKills'),
+          eficiente: sortBy('kdRatio'),
+          cacador: sortBy('totalVehiclesDestroyed'),
+          ataque: sortBy('totalOffense'),
+          defesa: sortBy('totalDefense'),
+          suporte: sortBy('totalSupport'),
+          combate: sortBy('totalCombat'),
+          oficial: sortBy('ofcScore'),
+          tanqueiro: sortBy('tankScore'),
+          artilheiro: sortBy('artiScore'),
+          maiorElo: sortBy('elo'),
       };
   }, [filteredPlayers]);
+
+  useEffect(() => {
+      const ids = clanNemesis.map(n => n.name);
+      if (ids.length > 0) {
+          getPlayerNamesByIds(ids).then(names => setNemesisNames(names));
+      }
+  }, [clanNemesis]);
 
   return (
     <div className="space-y-6">
@@ -343,11 +374,41 @@ export function ClanIntelligenceDashboard({ clanId }: ClanIntelligenceDashboardP
                         <SelectValue placeholder="Período" />
                     </SelectTrigger>
                     <SelectContent>
-                        <SelectItem value="current">Mês Atual</SelectItem>
+                        <SelectItem value="custom">Mês Específico</SelectItem>
+                        <SelectItem value="current">Mês Atual Rápido</SelectItem>
                         <SelectItem value="3months">Últimos 3 Meses</SelectItem>
                     </SelectContent>
                 </Select>
             </div>
+            
+            {periodFilter === 'custom' && (
+              <>
+                <div className="flex items-center gap-2">
+                    <Select value={selectedYear} onValueChange={setSelectedYear}>
+                        <SelectTrigger className="w-[100px]"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                            {Array.from({ length: 5 }, (_, i) => (new Date().getFullYear() - i).toString()).map(y => (
+                              <SelectItem key={y} value={y}>{y}</SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                </div>
+                <div className="flex items-center gap-2">
+                    <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+                        <SelectTrigger className="w-[130px]"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                            {Array.from({ length: 12 }, (_, i) => ({
+                                value: (i + 1).toString().padStart(2, '0'),
+                                label: new Date(0, i).toLocaleString('pt-BR', { month: 'long' })
+                            })).map(m => (
+                                <SelectItem key={m.value} value={m.value} className="capitalize">{m.label}</SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                </div>
+              </>
+            )}
+
             <div className="flex items-center gap-2">
                 <Select value={minHoursFilter.toString()} onValueChange={(val) => setMinHoursFilter(Number(val))}>
                     <SelectTrigger className="w-[120px]">
@@ -400,41 +461,84 @@ export function ClanIntelligenceDashboard({ clanId }: ClanIntelligenceDashboardP
           {awards && (
             <div className="pt-4 border-t border-border/50">
                 <h3 className="text-xl font-bold mb-4 flex items-center gap-2"><Medal className="text-accent"/> Condecorações e Destaques</h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-                    <div className="bg-card border border-border p-4 rounded-xl flex flex-col items-center text-center">
-                        <Crosshair className="w-8 h-8 text-red-500 mb-2"/>
-                        <span className="font-bold text-sm">O Exterminador</span>
-                        <span className="text-xs text-muted-foreground">Mais Kills Totais</span>
-                        <div className="mt-3 font-bold text-lg">{awards.exterminador.playerName}</div>
-                        <div className="text-accent text-sm font-mono">{awards.exterminador.totalKills?.toLocaleString()} Kills</div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+                    <div className="bg-card border border-border p-3 rounded-xl flex flex-col items-center text-center">
+                        <Trophy className="w-6 h-6 text-yellow-400 mb-1"/>
+                        <span className="font-bold text-xs uppercase tracking-wider">MVP</span>
+                        <div className="mt-2 font-bold text-sm truncate w-full">{awards.mvp?.playerName}</div>
+                        <div className="text-accent text-xs font-mono">{awards.mvp?.totalScore?.toLocaleString()} Pts</div>
                     </div>
-                    <div className="bg-card border border-border p-4 rounded-xl flex flex-col items-center text-center">
-                        <Truck className="w-8 h-8 text-orange-500 mb-2"/>
-                        <span className="font-bold text-sm">Caçador de Aço</span>
-                        <span className="text-xs text-muted-foreground">Mais Veículos Destruídos</span>
-                        <div className="mt-3 font-bold text-lg">{awards.cacador.playerName}</div>
-                        <div className="text-accent text-sm font-mono">{awards.cacador.totalVehiclesDestroyed?.toLocaleString()} Destruídos</div>
+                    <div className="bg-card border border-border p-3 rounded-xl flex flex-col items-center text-center">
+                        <Trophy className="w-6 h-6 text-blue-500 mb-1"/>
+                        <span className="font-bold text-xs uppercase tracking-wider">Maior ELO</span>
+                        <div className="mt-2 font-bold text-sm truncate w-full">{awards.maiorElo?.playerName}</div>
+                        <div className="text-accent text-xs font-mono">{Math.round(awards.maiorElo?.elo || 0)} ELO</div>
                     </div>
-                    <div className="bg-card border border-border p-4 rounded-xl flex flex-col items-center text-center">
-                        <Flame className="w-8 h-8 text-yellow-500 mb-2"/>
-                        <span className="font-bold text-sm">Perigo Constante</span>
-                        <span className="text-xs text-muted-foreground">Maior Kill Streak</span>
-                        <div className="mt-3 font-bold text-lg">{awards.streak.playerName}</div>
-                        <div className="text-accent text-sm font-mono">{awards.streak.maxKillsStreak?.toLocaleString()} Kills Seguidas</div>
+                    <div className="bg-card border border-border p-3 rounded-xl flex flex-col items-center text-center">
+                        <Zap className="w-6 h-6 text-yellow-500 mb-1"/>
+                        <span className="font-bold text-xs uppercase tracking-wider">Rendimento</span>
+                        <div className="mt-2 font-bold text-sm truncate w-full">{awards.rendimento?.playerName}</div>
+                        <div className="text-accent text-xs font-mono">{Math.round(awards.rendimento?.scorePerHour || 0).toLocaleString()} Pts/h</div>
                     </div>
-                    <div className="bg-card border border-border p-4 rounded-xl flex flex-col items-center text-center">
-                        <UserX className="w-8 h-8 text-red-700 mb-2"/>
-                        <span className="font-bold text-sm">Inimigo do Estado</span>
-                        <span className="text-xs text-muted-foreground">Mais Team Kills</span>
-                        <div className="mt-3 font-bold text-lg">{awards.tk.playerName}</div>
-                        <div className="text-red-500 text-sm font-mono">{awards.tk.totalTeamkills?.toLocaleString()} Aliados Abatidos</div>
+                    <div className="bg-card border border-border p-3 rounded-xl flex flex-col items-center text-center">
+                        <Skull className="w-6 h-6 text-red-500 mb-1"/>
+                        <span className="font-bold text-xs uppercase tracking-wider">Ceifador</span>
+                        <div className="mt-2 font-bold text-sm truncate w-full">{awards.ceifador?.playerName}</div>
+                        <div className="text-accent text-xs font-mono">{awards.ceifador?.totalKills?.toLocaleString()} Kills</div>
                     </div>
-                    <div className="bg-card border border-border p-4 rounded-xl flex flex-col items-center text-center">
-                        <Shield className="w-8 h-8 text-green-500 mb-2"/>
-                        <span className="font-bold text-sm">O Sobrevivente</span>
-                        <span className="text-xs text-muted-foreground">Maior tempo de vida</span>
-                        <div className="mt-3 font-bold text-lg">{awards.sobrevivente.playerName}</div>
-                        <div className="text-accent text-sm font-mono">{formatTime(awards.sobrevivente.longestLifeSecs || 0)}</div>
+                    <div className="bg-card border border-border p-3 rounded-xl flex flex-col items-center text-center">
+                        <Target className="w-6 h-6 text-blue-400 mb-1"/>
+                        <span className="font-bold text-xs uppercase tracking-wider">Eficiente</span>
+                        <div className="mt-2 font-bold text-sm truncate w-full">{awards.eficiente?.playerName}</div>
+                        <div className="text-accent text-xs font-mono">{(awards.eficiente?.kdRatio || 0).toFixed(2)} K/D</div>
+                    </div>
+                    <div className="bg-card border border-border p-3 rounded-xl flex flex-col items-center text-center">
+                        <Truck className="w-6 h-6 text-orange-500 mb-1"/>
+                        <span className="font-bold text-xs uppercase tracking-wider">Destruidor</span>
+                        <div className="mt-2 font-bold text-sm truncate w-full">{awards.cacador?.playerName}</div>
+                        <div className="text-accent text-xs font-mono">{awards.cacador?.totalVehiclesDestroyed?.toLocaleString()} Veículos</div>
+                    </div>
+                    <div className="bg-card border border-border p-3 rounded-xl flex flex-col items-center text-center">
+                        <Sword className="w-6 h-6 text-red-500 mb-1"/>
+                        <span className="font-bold text-xs uppercase tracking-wider">Ponta de Lança</span>
+                        <div className="mt-2 font-bold text-sm truncate w-full">{awards.ataque?.playerName}</div>
+                        <div className="text-accent text-xs font-mono">{awards.ataque?.totalOffense?.toLocaleString()} Ataque</div>
+                    </div>
+                    <div className="bg-card border border-border p-3 rounded-xl flex flex-col items-center text-center">
+                        <Shield className="w-6 h-6 text-yellow-600 mb-1"/>
+                        <span className="font-bold text-xs uppercase tracking-wider">Muralha</span>
+                        <div className="mt-2 font-bold text-sm truncate w-full">{awards.defesa?.playerName}</div>
+                        <div className="text-accent text-xs font-mono">{awards.defesa?.totalDefense?.toLocaleString()} Defesa</div>
+                    </div>
+                    <div className="bg-card border border-border p-3 rounded-xl flex flex-col items-center text-center">
+                        <HeartPulse className="w-6 h-6 text-green-500 mb-1"/>
+                        <span className="font-bold text-xs uppercase tracking-wider">Altruísta</span>
+                        <div className="mt-2 font-bold text-sm truncate w-full">{awards.suporte?.playerName}</div>
+                        <div className="text-accent text-xs font-mono">{awards.suporte?.totalSupport?.toLocaleString()} Suporte</div>
+                    </div>
+                    <div className="bg-card border border-border p-3 rounded-xl flex flex-col items-center text-center">
+                        <Flame className="w-6 h-6 text-red-600 mb-1"/>
+                        <span className="font-bold text-xs uppercase tracking-wider">Combatente</span>
+                        <div className="mt-2 font-bold text-sm truncate w-full">{awards.combate?.playerName}</div>
+                        <div className="text-accent text-xs font-mono">{awards.combate?.totalCombat?.toLocaleString()} Combate</div>
+                    </div>
+                    <div className="bg-card border border-border p-3 rounded-xl flex flex-col items-center text-center">
+                        <Star className="w-6 h-6 text-yellow-500 mb-1"/>
+                        <span className="font-bold text-xs uppercase tracking-wider">Oficial Nato</span>
+                        <div className="mt-2 font-bold text-sm truncate w-full">{awards.oficial?.playerName}</div>
+                        <div className="text-accent text-xs font-mono">{formatTime(awards.oficial?.ofcScore || 0)} Liderança</div>
+                    </div>
+                    <div className="bg-card border border-border p-3 rounded-xl flex flex-col items-center text-center">
+                        <Truck className="w-6 h-6 text-orange-400 mb-1"/>
+                        <span className="font-bold text-xs uppercase tracking-wider">Tanqueiro</span>
+                        <div className="mt-2 font-bold text-sm truncate w-full">{awards.tanqueiro?.playerName}</div>
+                        <div className="text-accent text-xs font-mono">{formatTime(awards.tanqueiro?.tankScore || 0)} Tanque</div>
+                    </div>
+                    <div className="bg-card border border-border p-3 rounded-xl flex flex-col items-center text-center">
+                        <Crosshair className="w-6 h-6 text-purple-500 mb-1"/>
+                        <span className="font-bold text-xs uppercase tracking-wider">Artilheiro</span>
+                        <div className="mt-2 font-bold text-sm truncate w-full">{awards.artilheiro?.playerName}</div>
+                        <div className="text-accent text-xs font-mono">{formatTime(awards.artilheiro?.artiScore || 0)} Artilharia</div>
                     </div>
                 </div>
             </div>
@@ -468,8 +572,8 @@ export function ClanIntelligenceDashboard({ clanId }: ClanIntelligenceDashboardP
                <CardContent>
                   <ul className="space-y-3">
                      {clanNemesis.map((n, i) => (
-                        <li key={i} className="flex justify-between items-center bg-background/50 p-2 rounded border border-red-500/20">
-                           <span className="font-bold text-red-400 truncate pr-4">{n.name}</span>
+                        <li key={n.name} className="flex justify-between items-center bg-background/50 p-2 rounded border border-red-500/20">
+                           <span className="font-bold text-red-400 truncate pr-4">{nemesisNames[n.name] || n.name}</span>
                            <span className="font-mono text-muted-foreground">{n.count.toLocaleString()} Mortes</span>
                         </li>
                      ))}
@@ -550,15 +654,17 @@ export function ClanIntelligenceDashboard({ clanId }: ClanIntelligenceDashboardP
                     Lista completa de atuação dos membros do clã no período.
                   </CardDescription>
                 </div>
-                <Button 
-                  onClick={handleSyncMissingElos} 
-                  disabled={isSyncingElos}
-                  variant="outline"
-                  size="sm"
-                  className="mt-4 sm:mt-0"
-                >
-                  {isSyncingElos ? "Sincronizando..." : "Sincronizar ELOs Faltantes"}
-                </Button>
+                {!isPublic && (
+                  <Button 
+                    onClick={handleSyncMissingElos} 
+                    disabled={isSyncingElos}
+                    variant="outline"
+                    size="sm"
+                    className="mt-4 sm:mt-0"
+                  >
+                    {isSyncingElos ? "Sincronizando..." : "Sincronizar ELOs Faltantes"}
+                  </Button>
+                )}
               </div>
             </CardHeader>
             <CardContent>
@@ -601,7 +707,32 @@ export function ClanIntelligenceDashboard({ clanId }: ClanIntelligenceDashboardP
                         </Button>
                       </TableHead>
                       <TableHead className="text-right">
-                        <Button variant="ghost" size="sm" onClick={() => requestSort('totalScore')} className="-mr-3 hover:bg-transparent font-bold">
+                        <Button variant="ghost" size="sm" onClick={() => requestSort('totalVehiclesDestroyed')} className="-mr-3 hover:bg-transparent font-bold">
+                          Veículos {sortConfig.key === 'totalVehiclesDestroyed' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                        </Button>
+                      </TableHead>
+                      <TableHead className="text-right">
+                        <Button variant="ghost" size="sm" onClick={() => requestSort('ofcScore')} className="-mr-3 hover:bg-transparent font-bold">
+                          Oficial {sortConfig.key === 'ofcScore' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                        </Button>
+                      </TableHead>
+                      <TableHead className="text-right">
+                        <Button variant="ghost" size="sm" onClick={() => requestSort('tankScore')} className="-mr-3 hover:bg-transparent font-bold">
+                          Tanque {sortConfig.key === 'tankScore' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                        </Button>
+                      </TableHead>
+                      <TableHead className="text-right">
+                        <Button variant="ghost" size="sm" onClick={() => requestSort('artiScore')} className="-mr-3 hover:bg-transparent font-bold">
+                          Artilharia {sortConfig.key === 'artiScore' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                        </Button>
+                      </TableHead>
+                      <TableHead className="text-right">
+                        <Button variant="ghost" size="sm" onClick={() => requestSort('scorePerHour')} className="-mr-3 hover:bg-transparent font-bold">
+                          Pts/h {sortConfig.key === 'scorePerHour' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                        </Button>
+                      </TableHead>
+                      <TableHead className="text-right">
+                        <Button variant="ghost" size="sm" onClick={() => requestSort('totalScore')} className="-mr-3 hover:bg-transparent font-bold text-accent">
                           Pontuação {sortConfig.key === 'totalScore' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
                         </Button>
                       </TableHead>
@@ -647,6 +778,21 @@ export function ClanIntelligenceDashboard({ clanId }: ClanIntelligenceDashboardP
                           </TableCell>
                           <TableCell className="text-right text-muted-foreground">
                             {player.totalKills?.toLocaleString()}
+                          </TableCell>
+                          <TableCell className="text-right text-orange-400 font-mono text-sm">
+                            {player.totalVehiclesDestroyed || 0}
+                          </TableCell>
+                          <TableCell className="text-right text-yellow-500 font-mono text-sm">
+                            {Math.round((player.ofcScore || 0) / 3600)}h
+                          </TableCell>
+                          <TableCell className="text-right text-orange-500 font-mono text-sm">
+                            {Math.round((player.tankScore || 0) / 3600)}h
+                          </TableCell>
+                          <TableCell className="text-right text-purple-500 font-mono text-sm">
+                            {Math.round((player.artiScore || 0) / 3600)}h
+                          </TableCell>
+                          <TableCell className="text-right font-mono text-sm">
+                            {Math.round(player.scorePerHour || 0).toLocaleString()}
                           </TableCell>
                           <TableCell className="text-right text-accent font-bold">
                             {player.totalScore.toLocaleString()}

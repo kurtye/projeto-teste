@@ -697,3 +697,24 @@ export async function syncPlayerElo(playerId: string): Promise<{ success: boolea
         return { success: false, error: e.message };
     }
 }
+
+export async function getPlayerNamesByIds(ids: string[]): Promise<Record<string, string>> {
+    const result: Record<string, string> = {};
+    if (!ids || ids.length === 0) return result;
+    try {
+        const chunkSize = 30;
+        for (let i = 0; i < ids.length; i += chunkSize) {
+            const chunk = ids.slice(i, i + chunkSize);
+            if (chunk.length === 0) continue;
+            const playersQuery = query(collection(db, 'players'), where('__name__', 'in', chunk));
+            const playersSnapshot = await getDocs(playersQuery);
+            playersSnapshot.forEach(docSnap => {
+                const data = docSnap.data();
+                result[docSnap.id] = data.latestPlayerName || data.playerName || 'Desconhecido';
+            });
+        }
+    } catch (e) {
+        console.error("Error fetching player names by IDs", e);
+    }
+    return result;
+}
