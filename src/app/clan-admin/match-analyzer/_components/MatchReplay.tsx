@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
-import { Play, Pause, FastForward, SkipBack, ZoomIn, ZoomOut, Maximize, User, Shield, Skull, Crosshair, Truck, Activity, Trophy, Flag, Flame, Target, Rocket, Award, Crown, Wrench, Zap } from 'lucide-react';
+import { Play, Pause, FastForward, SkipBack, ZoomIn, ZoomOut, Maximize, User, Shield, Skull, Crosshair, Truck, Activity, Trophy, Flag, Flame, Target, Rocket, Award, Crown, Wrench } from 'lucide-react';
 import Image from 'next/image';
 import { ROLE_MAPPING } from '@/lib/roles';
 import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
@@ -312,62 +312,123 @@ export function MatchReplay({
     return Object.values(squads).sort((a, b) => a.squadId - b.squadId);
   }, [activePositions]);
 
-  // Compute all historical squads for the sidebars
+  // Compute all historical squads with precise primary squad mapping & true officer recognition
   const allMatchSquads = useMemo(() => {
     if (!playerStats || playerStats.length === 0) return [];
     
+    const maxTs = Math.max(...playerStats.flatMap((p: any) => (p.units || []).map((u: any) => u.ts)), 5400);
+
+    const playerPrimarySquad: Record<string, { team: string; squadId: number; time: number }> = {};
+    const squadOfficerTimes: Record<string, Record<string, number>> = {};
+    const squadRoleSeconds: Record<string, Record<number, number>> = {};
+
+    // 1. Calculate durations per squad, officer time, and role time
+    playerStats.forEach((p: any) => {
+      const team = typeof p.team === 'object' ? p.team?.side : p.team;
+      if (!team || team === 'unknown' || !p.units) return;
+
+      const squadDurations: Record<number, number> = {};
+
+      for (let i = 0; i < p.units.length; i++) {
+        const u = p.units[i];
+        if (u.squad === null || u.squad === undefined || u.squad <= 0) continue;
+
+        const start = u.ts;
+        const end = (i + 1 < p.units.length) ? p.units[i + 1].ts : maxTs;
+        const dur = Math.max(0, end - start);
+
+        squadDurations[u.squad] = (squadDurations[u.squad] || 0) + dur;
+        const key = `${team}-${u.squad}`;
+
+        if (!squadRoleSeconds[key]) squadRoleSeconds[key] = {};
+        squadRoleSeconds[key][u.role] = (squadRoleSeconds[key][u.role] || 0) + dur;
+
+        // Track officer roles (9=Officer, 4=Spotter, 11=Tank Commander)
+        if ([9, 4, 11].includes(u.role)) {
+          if (!squadOfficerTimes[key]) squadOfficerTimes[key] = {};
+          squadOfficerTimes[key][p.player] = (squadOfficerTimes[key][p.player] || 0) + dur;
+        }
+      }
+
+      // Find player's primary squad (longest time spent)
+      let bestSquad: number | null = null;
+      let bestTime = -1;
+      for (const [sq, dur] of Object.entries(squadDurations)) {
+        if (dur > bestTime) {
+          bestTime = dur;
+          bestSquad = parseInt(sq);
+        }
+      }
+
+      if (bestSquad) {
+        playerPrimarySquad[p.player_id] = { team, squadId: bestSquad, time: bestTime };
+      }
+    });
+
+    // 2. Build squads aggregated by primary squad membership
     const squads: Record<string, any> = {};
 
     playerStats.forEach((p: any) => {
-      const team = p.team ? p.team.side : 'unknown'; // 'axis' or 'allies'
-      if (!p.units || team === 'unknown') return;
+      const info = playerPrimarySquad[p.player_id];
+      if (!info) return;
 
-      p.units.forEach((u: any) => {
-        const squadId = u.squad;
-        if (squadId === null || squadId === 0 || squadId === undefined) return;
-        
-        const key = `${team}-${squadId}`;
-        if (!squads[key]) {
-          squads[key] = { 
-            key, 
-            team, 
-            squadId, 
-            officerName: null, 
-            isTank: false, 
-            combatScore: 0, 
-            offenseScore: 0,
-            defenseScore: 0,
-            supportScore: 0,
-            killsScore: 0,
-            deathsScore: 0,
-            vehiclesScore: 0,
-            playersAdded: new Set() 
-          };
+      const key = `${info.team}-${info.squadId}`;
+      if (!squads[key]) {
+        // True officer is the one who spent the longest time as SL in this squad
+        const officers = squadOfficerTimes[key] || {};
+        let topOfficer: string | null = null;
+        let topOffDur = -1;
+        for (const [name, dur] of Object.entries(officers)) {
+          if (!name.toLowerCase().includes('engshijima') && dur > topOffDur) {
+            topOffDur = dur;
+            topOfficer = name;
+          }
         }
 
-        if (!squads[key].playersAdded.has(p.player_id)) {
-          squads[key].playersAdded.add(p.player_id);
-          squads[key].combatScore += (p.combat || 0);
-          squads[key].offenseScore += (p.offense || 0);
-          squads[key].defenseScore += (p.defense || 0);
-          squads[key].supportScore += (p.support || 0);
-          squads[key].killsScore += (p.kills || 0);
-          squads[key].deathsScore += (p.deaths || 0);
-          squads[key].vehiclesScore += (p.vehicles_destroyed || 0);
-        }
+        // True tank squad if >35% of cumulative squad time was spent in tank roles (11, 12)
+        const roles = squadRoleSeconds[key] || {};
+        const tankSec = (roles[11] || 0) + (roles[12] || 0);
+        const totSec = Object.values(roles).reduce((a, b) => a + b, 0);
+        const isTank = totSec > 0 && tankSec / totSec > 0.35;
 
-        const roleId = u.role;
-        // 9=Officer, 4=Spotter, 11=TankCmd
-        if (roleId === 9 || roleId === 4 || roleId === 11) {
-          squads[key].officerName = p.player;
-        }
-        if (roleId === 11 || roleId === 12) {
-          squads[key].isTank = true;
-        }
-      });
+        squads[key] = {
+          key,
+          team: info.team,
+          squadId: info.squadId,
+          officerName: topOfficer,
+          officerDuration: topOffDur,
+          isTank,
+          combatScore: 0,
+          offenseScore: 0,
+          defenseScore: 0,
+          supportScore: 0,
+          killsScore: 0,
+          deathsScore: 0,
+          vehiclesScore: 0,
+          vehiclesList: []
+        };
+      }
+
+      squads[key].combatScore += (p.combat || 0);
+      squads[key].offenseScore += (p.offense || 0);
+      squads[key].defenseScore += (p.defense || 0);
+      squads[key].supportScore += (p.support || 0);
+      squads[key].killsScore += (p.kills || 0);
+      squads[key].deathsScore += (p.deaths || 0);
+      squads[key].vehiclesList.push(p.vehicles_destroyed || 0);
+    });
+
+    // 3. Calculate vehicle score: For tank squads, the crew shares vehicle destroys, so the squad's total destroyed tanks is Math.max (not sum)
+    Object.values(squads).forEach((s: any) => {
+      if (s.isTank) {
+        s.vehiclesScore = Math.max(0, ...s.vehiclesList);
+      } else {
+        s.vehiclesScore = s.vehiclesList.reduce((a: number, b: number) => a + b, 0);
+      }
     });
 
     const result = Object.values(squads).filter((s: any) => 
+      s.squadId > 0 &&
       s.officerName !== null && 
       !s.officerName.toLowerCase().includes('engshijima')
     );
@@ -566,29 +627,33 @@ export function MatchReplay({
     }
     if (validSquads.length === 0) return null;
 
-    // 1. Top Defesa
-    const topDefense = [...validSquads].sort((a: any, b: any) => (b.defenseScore || 0) - (a.defenseScore || 0))[0];
+    // Separate combat infantry and armor squads
+    const infantrySquads = validSquads.filter((s: any) => !s.isTank);
+    const tankSquads = validSquads.filter((s: any) => s.isTank);
 
-    // 2. Top Combate
-    const topCombat = [...validSquads].sort((a: any, b: any) => (b.combatScore || 0) - (a.combatScore || 0))[0];
+    // 1. Top Defesa (Infantaria preferencialmente)
+    const topDefense = [...(infantrySquads.length > 0 ? infantrySquads : validSquads)].sort((a: any, b: any) => (b.defenseScore || 0) - (a.defenseScore || 0))[0];
 
-    // 3. Top Ofensivo
-    const topOffense = [...validSquads].sort((a: any, b: any) => (b.offenseScore || 0) - (a.offenseScore || 0))[0];
+    // 2. Top Combate (Infantaria preferencialmente)
+    const topCombat = [...(infantrySquads.length > 0 ? infantrySquads : validSquads)].sort((a: any, b: any) => (b.combatScore || 0) - (a.combatScore || 0))[0];
+
+    // 3. Top Ofensivo (Infantaria preferencialmente)
+    const topOffense = [...(infantrySquads.length > 0 ? infantrySquads : validSquads)].sort((a: any, b: any) => (b.offenseScore || 0) - (a.offenseScore || 0))[0];
 
     // 4. Top Suporte & Logística (Construção, nós de recursos, suprimentos)
-    const topSupport = [...validSquads].sort((a: any, b: any) => (b.supportScore || 0) - (a.supportScore || 0))[0];
+    const topSupport = [...(infantrySquads.length > 0 ? infantrySquads : validSquads)].sort((a: any, b: any) => (b.supportScore || 0) - (a.supportScore || 0))[0];
 
     // 5. Esquadrão Mais Kills
-    const topKills = [...validSquads].sort((a: any, b: any) => (b.killsScore || 0) - (a.killsScore || 0))[0];
+    const topKills = [...(infantrySquads.length > 0 ? infantrySquads : validSquads)].sort((a: any, b: any) => (b.killsScore || 0) - (a.killsScore || 0))[0];
 
     // 6. Esquadrão com Mais Coesão Total (Infantaria)
-    const infantryWithCohesion = validSquads
-      .filter((s: any) => !s.isTank && totalSquadCohesion[s.key] !== undefined)
+    const infantryWithCohesion = infantrySquads
+      .filter((s: any) => totalSquadCohesion[s.key] !== undefined)
       .map((s: any) => ({ ...s, cohesionPercent: totalSquadCohesion[s.key] }));
     const topCohesion = [...infantryWithCohesion].sort((a: any, b: any) => b.cohesionPercent - a.cohesionPercent)[0];
 
-    // 7. Esquadrão do Oficial com Mais Abate em Tank
-    const topTankSquad = [...validSquads].sort((a: any, b: any) => (b.vehiclesScore || 0) - (a.vehiclesScore || 0))[0];
+    // 7. Esquadrão com Mais Abate em Tank (Prioridade para squads de blindados/tank)
+    const topTankSquad = [...(tankSquads.length > 0 ? tankSquads : validSquads)].sort((a: any, b: any) => (b.vehiclesScore || 0) - (a.vehiclesScore || 0))[0];
 
     return {
       topDefense,
@@ -614,9 +679,26 @@ export function MatchReplay({
     }
     if (nonCasters.length === 0) return null;
 
-    // 1. Oficial com mais support (roles 9, 4, 11)
-    const officers = nonCasters.filter((p: any) => p.units && p.units.some((u: any) => [9, 4, 11].includes(u.role)));
-    const topOfficerSupport = [...officers].sort((a: any, b: any) => (b.support || 0) - (a.support || 0))[0];
+    const maxTs = Math.max(...playerStats.flatMap((p: any) => (p.units || []).map((u: any) => u.ts)), 5400);
+
+    // 1. Oficial com mais support: Deve ter atuado genuinamente como Oficial (SL / Spotter / Tank Commander)
+    // por pelo menos 20 min (1200s) ou >35% da sua partida, evitando quem apenas assumiu o papel por 5 minutos
+    const trueOfficers = nonCasters.filter((p: any) => {
+      if (!p.units || p.units.length === 0) return false;
+      let officerSec = 0;
+      let totSec = 0;
+      for (let i = 0; i < p.units.length; i++) {
+        const u = p.units[i];
+        const start = u.ts;
+        const end = (i + 1 < p.units.length) ? p.units[i + 1].ts : maxTs;
+        const dur = Math.max(0, end - start);
+        totSec += dur;
+        if ([9, 4, 11].includes(u.role)) officerSec += dur;
+      }
+      return officerSec >= 1200 || (totSec > 0 && officerSec / totSec >= 0.35);
+    });
+
+    const topOfficerSupport = [...(trueOfficers.length > 0 ? trueOfficers : nonCasters)].sort((a: any, b: any) => (b.support || 0) - (a.support || 0))[0];
 
     // 2. Jogador com mais kills
     const topPlayerKills = [...nonCasters].sort((a: any, b: any) => (b.kills || 0) - (a.kills || 0))[0];
@@ -625,21 +707,10 @@ export function MatchReplay({
     const pureInfantry = nonCasters.filter((p: any) => !p.units?.some((u: any) => [11, 12].includes(u.role)));
     const topInfantryTankHunter = [...pureInfantry].sort((a: any, b: any) => (b.vehicles_destroyed || 0) - (a.vehicles_destroyed || 0))[0];
 
-    // 4. Maior Sequência de Kills (Killstreak / O Imortal)
-    const topKillstreak = [...nonCasters].sort((a: any, b: any) => (b.kills_streak || 0) - (a.kills_streak || 0))[0];
-
-    // 5. Maior Eficiência Letal (K/D com min. 15 kills)
-    const min15Kills = nonCasters.filter((p: any) => (p.kills || 0) >= 15);
-    const topKD = min15Kills.length > 0 
-      ? [...min15Kills].sort((a: any, b: any) => (b.kill_death_ratio || 0) - (a.kill_death_ratio || 0))[0]
-      : [...nonCasters].sort((a: any, b: any) => (b.kill_death_ratio || 0) - (a.kill_death_ratio || 0))[0];
-
     return {
       topOfficerSupport,
       topPlayerKills,
       topInfantryTankHunter,
-      topKillstreak,
-      topKD,
     };
   }, [playerStats, honorsTeamFilter]);
 
@@ -1696,79 +1767,7 @@ export function MatchReplay({
                       );
                     })()}
 
-                    {/* Maior Sequência de Kills (Killstreak / O Imortal) */}
-                    {individualHonors?.topKillstreak && (() => {
-                      const p = individualHonors.topKillstreak;
-                      const isAxis = (typeof p.team === 'object' ? p.team?.side : p.team) === 'axis';
-                      return (
-                        <div className={`p-3 rounded-xl border flex items-center justify-between gap-4 transition-all ${
-                          isAxis ? 'bg-red-500/5 border-red-500/25' : 'bg-blue-500/5 border-blue-500/25'
-                        }`}>
-                          <div className="flex items-center gap-3 min-w-0">
-                            <div className="w-9 h-9 rounded-xl bg-red-500/10 border border-red-500/30 flex items-center justify-center text-red-500 shrink-0 shadow-sm">
-                              <Flame className="w-4 h-4" />
-                            </div>
-                            <div className="min-w-0">
-                              <div className="flex items-center gap-2">
-                                <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Maior Sequência (Killstreak)</span>
-                                <span className={`text-[9px] uppercase font-bold px-1.5 py-0.2 rounded ${isAxis ? 'bg-red-500/20 text-red-400' : 'bg-blue-500/20 text-blue-400'}`}>
-                                  {isAxis ? 'Eixo' : 'Aliados'}
-                                </span>
-                              </div>
-                              <div className="font-headline font-bold text-sm text-foreground truncate mt-0.5">
-                                {p.player}
-                              </div>
-                              <span className="text-[11px] text-muted-foreground">
-                                O Imortal da Partida • {p.kills_streak} abates consecutivos sem morrer
-                              </span>
-                            </div>
-                          </div>
-                          <div className="text-right shrink-0">
-                            <div className="text-lg font-black font-mono text-red-500">
-                              {p.kills_streak}
-                            </div>
-                            <div className="text-[9px] text-muted-foreground uppercase">Kills Seguidos</div>
-                          </div>
-                        </div>
-                      );
-                    })()}
 
-                    {/* Maior Eficiência Letal (K/D) */}
-                    {individualHonors?.topKD && (() => {
-                      const p = individualHonors.topKD;
-                      const isAxis = (typeof p.team === 'object' ? p.team?.side : p.team) === 'axis';
-                      return (
-                        <div className={`p-3 rounded-xl border flex items-center justify-between gap-4 transition-all ${
-                          isAxis ? 'bg-red-500/5 border-red-500/25' : 'bg-blue-500/5 border-blue-500/25'
-                        }`}>
-                          <div className="flex items-center gap-3 min-w-0">
-                            <div className="w-9 h-9 rounded-xl bg-yellow-500/10 border border-yellow-500/30 flex items-center justify-center text-yellow-500 shrink-0 shadow-sm">
-                              <Zap className="w-4 h-4" />
-                            </div>
-                            <div className="min-w-0">
-                              <div className="flex items-center gap-2">
-                                <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Maior Eficiência Letal (K/D)</span>
-                                <span className={`text-[9px] uppercase font-bold px-1.5 py-0.2 rounded ${isAxis ? 'bg-red-500/20 text-red-400' : 'bg-blue-500/20 text-blue-400'}`}>
-                                  {isAxis ? 'Eixo' : 'Aliados'}
-                                </span>
-                              </div>
-                              <div className="font-headline font-bold text-sm text-foreground truncate mt-0.5">
-                                {p.player}
-                              </div>
-                              <span className="text-[11px] text-muted-foreground">
-                                {p.kills} Kills com apenas {p.deaths || 0} mortes sofridas
-                              </span>
-                            </div>
-                          </div>
-                          <div className="text-right shrink-0">
-                            <div className="text-lg font-black font-mono text-yellow-500">
-                              {p.kill_death_ratio?.toFixed(2)}
-                            </div>
-                            <div className="text-[9px] text-muted-foreground uppercase">Razão K/D</div>
-                          </div>
-                        </div>
-                      );
-                    })()}
                   </div>
                 </div>
               </div>
