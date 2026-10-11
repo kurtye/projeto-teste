@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
-import { Play, Pause, FastForward, SkipBack, ZoomIn, ZoomOut, Maximize, User, Shield, Skull, Crosshair, Truck, Activity, Trophy, Flag, Flame, Target, Rocket, Award, Crown, Wrench } from 'lucide-react';
+import { Play, Pause, FastForward, SkipBack, ZoomIn, ZoomOut, Maximize, User, Shield, Skull, Crosshair, Truck, Activity, Trophy, Flag, Flame, Target, Rocket, Award, Crown, Wrench, Zap } from 'lucide-react';
 import Image from 'next/image';
 import { ROLE_MAPPING } from '@/lib/roles';
 import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
@@ -138,6 +138,7 @@ export function MatchReplay({
   const [showOfficers, setShowOfficers] = useState(true);
   const [showCohesionPercent, setShowCohesionPercent] = useState(false);
   const [smoothMovement, setSmoothMovement] = useState(true);
+  const [honorsTeamFilter, setHonorsTeamFilter] = useState<'all' | 'axis' | 'allies'>('all');
   const [highlightedSquad, setHighlightedSquad] = useState<string | null>(null);
   const animationRef = useRef<number | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -336,6 +337,7 @@ export function MatchReplay({
             combatScore: 0, 
             offenseScore: 0,
             defenseScore: 0,
+            supportScore: 0,
             killsScore: 0,
             deathsScore: 0,
             vehiclesScore: 0,
@@ -348,6 +350,7 @@ export function MatchReplay({
           squads[key].combatScore += (p.combat || 0);
           squads[key].offenseScore += (p.offense || 0);
           squads[key].defenseScore += (p.defense || 0);
+          squads[key].supportScore += (p.support || 0);
           squads[key].killsScore += (p.kills || 0);
           squads[key].deathsScore += (p.deaths || 0);
           squads[key].vehiclesScore += (p.vehicles_destroyed || 0);
@@ -557,7 +560,10 @@ export function MatchReplay({
   const squadHonors = useMemo(() => {
     if (!allMatchSquads || allMatchSquads.length === 0) return null;
 
-    const validSquads = allMatchSquads.filter((s: any) => s.officerName);
+    let validSquads = allMatchSquads.filter((s: any) => s.officerName);
+    if (honorsTeamFilter !== 'all') {
+      validSquads = validSquads.filter((s: any) => s.team === honorsTeamFilter);
+    }
     if (validSquads.length === 0) return null;
 
     // 1. Top Defesa
@@ -569,33 +575,44 @@ export function MatchReplay({
     // 3. Top Ofensivo
     const topOffense = [...validSquads].sort((a: any, b: any) => (b.offenseScore || 0) - (a.offenseScore || 0))[0];
 
-    // 4. Esquadrão Mais Kills
+    // 4. Top Suporte & Logística (Construção, nós de recursos, suprimentos)
+    const topSupport = [...validSquads].sort((a: any, b: any) => (b.supportScore || 0) - (a.supportScore || 0))[0];
+
+    // 5. Esquadrão Mais Kills
     const topKills = [...validSquads].sort((a: any, b: any) => (b.killsScore || 0) - (a.killsScore || 0))[0];
 
-    // 5. Esquadrão com Mais Coesão Total (Infantaria)
+    // 6. Esquadrão com Mais Coesão Total (Infantaria)
     const infantryWithCohesion = validSquads
       .filter((s: any) => !s.isTank && totalSquadCohesion[s.key] !== undefined)
       .map((s: any) => ({ ...s, cohesionPercent: totalSquadCohesion[s.key] }));
     const topCohesion = [...infantryWithCohesion].sort((a: any, b: any) => b.cohesionPercent - a.cohesionPercent)[0];
 
-    // 6. Esquadrão do Oficial com Mais Abate em Tank
+    // 7. Esquadrão do Oficial com Mais Abate em Tank
     const topTankSquad = [...validSquads].sort((a: any, b: any) => (b.vehiclesScore || 0) - (a.vehiclesScore || 0))[0];
 
     return {
       topDefense,
       topCombat,
       topOffense,
+      topSupport,
       topKills,
       topCohesion,
       topTankSquad,
     };
-  }, [allMatchSquads, totalSquadCohesion]);
+  }, [allMatchSquads, totalSquadCohesion, honorsTeamFilter]);
 
   // Individual Honors
   const individualHonors = useMemo(() => {
     if (!playerStats || playerStats.length === 0) return null;
 
-    const nonCasters = playerStats.filter((p: any) => !p.player?.toLowerCase().includes('shijima'));
+    let nonCasters = playerStats.filter((p: any) => !p.player?.toLowerCase().includes('shijima'));
+    if (honorsTeamFilter !== 'all') {
+      nonCasters = nonCasters.filter((p: any) => {
+        const teamSide = typeof p.team === 'object' ? p.team?.side : p.team;
+        return teamSide === honorsTeamFilter;
+      });
+    }
+    if (nonCasters.length === 0) return null;
 
     // 1. Oficial com mais support (roles 9, 4, 11)
     const officers = nonCasters.filter((p: any) => p.units && p.units.some((u: any) => [9, 4, 11].includes(u.role)));
@@ -608,12 +625,23 @@ export function MatchReplay({
     const pureInfantry = nonCasters.filter((p: any) => !p.units?.some((u: any) => [11, 12].includes(u.role)));
     const topInfantryTankHunter = [...pureInfantry].sort((a: any, b: any) => (b.vehicles_destroyed || 0) - (a.vehicles_destroyed || 0))[0];
 
+    // 4. Maior Sequência de Kills (Killstreak / O Imortal)
+    const topKillstreak = [...nonCasters].sort((a: any, b: any) => (b.kills_streak || 0) - (a.kills_streak || 0))[0];
+
+    // 5. Maior Eficiência Letal (K/D com min. 15 kills)
+    const min15Kills = nonCasters.filter((p: any) => (p.kills || 0) >= 15);
+    const topKD = min15Kills.length > 0 
+      ? [...min15Kills].sort((a: any, b: any) => (b.kill_death_ratio || 0) - (a.kill_death_ratio || 0))[0]
+      : [...nonCasters].sort((a: any, b: any) => (b.kill_death_ratio || 0) - (a.kill_death_ratio || 0))[0];
+
     return {
       topOfficerSupport,
       topPlayerKills,
       topInfantryTankHunter,
+      topKillstreak,
+      topKD,
     };
-  }, [playerStats]);
+  }, [playerStats, honorsTeamFilter]);
 
   // Frontline Calculation
   const frontlineData = useMemo(() => {
@@ -1236,346 +1264,512 @@ export function MatchReplay({
             </div>
           )}
 
-          {/* Quadro de Honra: Destaques dos Esquadrões e Individuais */}
+          {/* Quadro de Honra: Destaques dos Esquadrões e Individuais com Filtro de Time */}
           {(squadHonors || individualHonors) && (
-            <div className="mt-8 grid grid-cols-1 xl:grid-cols-2 gap-6">
-              {/* Painel 1: Destaques dos Esquadrões */}
-              <div className="border border-border/50 bg-card rounded-xl overflow-hidden shadow-sm flex flex-col">
-                <div className="bg-muted/40 p-3.5 border-b flex items-center justify-between">
-                  <h3 className="text-sm font-headline font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
-                    <Shield className="w-4 h-4 text-primary" /> Destaques dos Esquadrões
-                  </h3>
-                  <span className="text-[10px] text-muted-foreground uppercase font-mono">Honras Coletivas</span>
+            <div className="mt-8 space-y-4">
+              {/* Header do Quadro de Honra com Filtro de Time */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-muted/20 p-3.5 rounded-xl border border-border/50">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-lg bg-yellow-500/10 border border-yellow-500/30 flex items-center justify-center text-yellow-500 shrink-0">
+                    <Trophy className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-headline font-bold uppercase tracking-wider text-foreground">
+                      Quadro de Honras da Partida
+                    </h3>
+                    <p className="text-xs text-muted-foreground">
+                      Reconhecimento dos melhores esquadrões e combatentes MVPs da partida
+                    </p>
+                  </div>
                 </div>
-                
-                <div className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-3 flex-1">
-                  {/* Top Defesa */}
-                  {squadHonors?.topDefense && (
-                    <div 
-                      onClick={() => setHighlightedSquad(squadHonors.topDefense.key === highlightedSquad ? null : squadHonors.topDefense.key)}
-                      className={`p-3 rounded-xl border flex flex-col justify-between gap-2 cursor-pointer transition-all hover:scale-[1.02] ${
-                        squadHonors.topDefense.team === 'axis' ? 'bg-red-500/5 border-red-500/25 hover:border-red-500/60' : 'bg-blue-500/5 border-blue-500/25 hover:border-blue-500/60'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="text-[11px] font-bold uppercase tracking-wide flex items-center gap-1.5 text-muted-foreground">
-                          <Shield className="w-3.5 h-3.5 text-blue-500" /> Top Defesa
-                        </span>
-                        <span className={`text-[9px] uppercase font-bold px-1.5 py-0.5 rounded ${squadHonors.topDefense.team === 'axis' ? 'bg-red-500/20 text-red-400' : 'bg-blue-500/20 text-blue-400'}`}>
-                          {squadHonors.topDefense.team === 'axis' ? 'Eixo' : 'Aliados'}
-                        </span>
-                      </div>
-                      <div className="flex items-end justify-between gap-2">
-                        <div className="min-w-0">
-                          <div className="font-bold text-sm truncate text-foreground flex items-center gap-1">
-                            {squadHonors.topDefense.isTank ? <Truck className="w-3.5 h-3.5 text-orange-400 shrink-0" /> : <Shield className="w-3.5 h-3.5 text-muted-foreground shrink-0" />}
-                            <span className="truncate">{squadHonors.topDefense.officerName || `Squad ${squadHonors.topDefense.squadId}`}</span>
-                          </div>
-                          <span className="text-[11px] text-muted-foreground truncate block">
-                            Squad {squadHonors.topDefense.squadId}
-                          </span>
-                        </div>
-                        <div className="text-right shrink-0">
-                          <div className="text-base font-black font-mono text-blue-400">{squadHonors.topDefense.defenseScore.toLocaleString()}</div>
-                          <div className="text-[9px] text-muted-foreground uppercase">Pontos Defesa</div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
 
-                  {/* Top Combate */}
-                  {squadHonors?.topCombat && (
-                    <div 
-                      onClick={() => setHighlightedSquad(squadHonors.topCombat.key === highlightedSquad ? null : squadHonors.topCombat.key)}
-                      className={`p-3 rounded-xl border flex flex-col justify-between gap-2 cursor-pointer transition-all hover:scale-[1.02] ${
-                        squadHonors.topCombat.team === 'axis' ? 'bg-red-500/5 border-red-500/25 hover:border-red-500/60' : 'bg-blue-500/5 border-blue-500/25 hover:border-blue-500/60'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="text-[11px] font-bold uppercase tracking-wide flex items-center gap-1.5 text-muted-foreground">
-                          <Flame className="w-3.5 h-3.5 text-yellow-500" /> Top Combate
-                        </span>
-                        <span className={`text-[9px] uppercase font-bold px-1.5 py-0.5 rounded ${squadHonors.topCombat.team === 'axis' ? 'bg-red-500/20 text-red-400' : 'bg-blue-500/20 text-blue-400'}`}>
-                          {squadHonors.topCombat.team === 'axis' ? 'Eixo' : 'Aliados'}
-                        </span>
-                      </div>
-                      <div className="flex items-end justify-between gap-2">
-                        <div className="min-w-0">
-                          <div className="font-bold text-sm truncate text-foreground flex items-center gap-1">
-                            {squadHonors.topCombat.isTank ? <Truck className="w-3.5 h-3.5 text-orange-400 shrink-0" /> : <Shield className="w-3.5 h-3.5 text-muted-foreground shrink-0" />}
-                            <span className="truncate">{squadHonors.topCombat.officerName || `Squad ${squadHonors.topCombat.squadId}`}</span>
-                          </div>
-                          <span className="text-[11px] text-muted-foreground truncate block">
-                            Squad {squadHonors.topCombat.squadId}
-                          </span>
-                        </div>
-                        <div className="text-right shrink-0">
-                          <div className="text-base font-black font-mono text-yellow-500">{squadHonors.topCombat.combatScore.toLocaleString()}</div>
-                          <div className="text-[9px] text-muted-foreground uppercase">Pontos Combate</div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Top Ofensivo */}
-                  {squadHonors?.topOffense && (
-                    <div 
-                      onClick={() => setHighlightedSquad(squadHonors.topOffense.key === highlightedSquad ? null : squadHonors.topOffense.key)}
-                      className={`p-3 rounded-xl border flex flex-col justify-between gap-2 cursor-pointer transition-all hover:scale-[1.02] ${
-                        squadHonors.topOffense.team === 'axis' ? 'bg-red-500/5 border-red-500/25 hover:border-red-500/60' : 'bg-blue-500/5 border-blue-500/25 hover:border-blue-500/60'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="text-[11px] font-bold uppercase tracking-wide flex items-center gap-1.5 text-muted-foreground">
-                          <Flag className="w-3.5 h-3.5 text-red-500" /> Top Ofensivo
-                        </span>
-                        <span className={`text-[9px] uppercase font-bold px-1.5 py-0.5 rounded ${squadHonors.topOffense.team === 'axis' ? 'bg-red-500/20 text-red-400' : 'bg-blue-500/20 text-blue-400'}`}>
-                          {squadHonors.topOffense.team === 'axis' ? 'Eixo' : 'Aliados'}
-                        </span>
-                      </div>
-                      <div className="flex items-end justify-between gap-2">
-                        <div className="min-w-0">
-                          <div className="font-bold text-sm truncate text-foreground flex items-center gap-1">
-                            {squadHonors.topOffense.isTank ? <Truck className="w-3.5 h-3.5 text-orange-400 shrink-0" /> : <Shield className="w-3.5 h-3.5 text-muted-foreground shrink-0" />}
-                            <span className="truncate">{squadHonors.topOffense.officerName || `Squad ${squadHonors.topOffense.squadId}`}</span>
-                          </div>
-                          <span className="text-[11px] text-muted-foreground truncate block">
-                            Squad {squadHonors.topOffense.squadId}
-                          </span>
-                        </div>
-                        <div className="text-right shrink-0">
-                          <div className="text-base font-black font-mono text-red-400">{squadHonors.topOffense.offenseScore.toLocaleString()}</div>
-                          <div className="text-[9px] text-muted-foreground uppercase">Pontos Ataque</div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Esquadrão Mais Kills */}
-                  {squadHonors?.topKills && (
-                    <div 
-                      onClick={() => setHighlightedSquad(squadHonors.topKills.key === highlightedSquad ? null : squadHonors.topKills.key)}
-                      className={`p-3 rounded-xl border flex flex-col justify-between gap-2 cursor-pointer transition-all hover:scale-[1.02] ${
-                        squadHonors.topKills.team === 'axis' ? 'bg-red-500/5 border-red-500/25 hover:border-red-500/60' : 'bg-blue-500/5 border-blue-500/25 hover:border-blue-500/60'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="text-[11px] font-bold uppercase tracking-wide flex items-center gap-1.5 text-muted-foreground">
-                          <Target className="w-3.5 h-3.5 text-green-500" /> Esquadrão Mais Kills
-                        </span>
-                        <span className={`text-[9px] uppercase font-bold px-1.5 py-0.5 rounded ${squadHonors.topKills.team === 'axis' ? 'bg-red-500/20 text-red-400' : 'bg-blue-500/20 text-blue-400'}`}>
-                          {squadHonors.topKills.team === 'axis' ? 'Eixo' : 'Aliados'}
-                        </span>
-                      </div>
-                      <div className="flex items-end justify-between gap-2">
-                        <div className="min-w-0">
-                          <div className="font-bold text-sm truncate text-foreground flex items-center gap-1">
-                            {squadHonors.topKills.isTank ? <Truck className="w-3.5 h-3.5 text-orange-400 shrink-0" /> : <Shield className="w-3.5 h-3.5 text-muted-foreground shrink-0" />}
-                            <span className="truncate">{squadHonors.topKills.officerName || `Squad ${squadHonors.topKills.squadId}`}</span>
-                          </div>
-                          <span className="text-[11px] text-muted-foreground truncate block">
-                            Squad {squadHonors.topKills.squadId}
-                          </span>
-                        </div>
-                        <div className="text-right shrink-0">
-                          <div className="text-base font-black font-mono text-green-400">{squadHonors.topKills.killsScore}</div>
-                          <div className="text-[9px] text-muted-foreground uppercase">Abates Totais</div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Esquadrão Mais Coesão Total */}
-                  {squadHonors?.topCohesion && (
-                    <div 
-                      onClick={() => setHighlightedSquad(squadHonors.topCohesion.key === highlightedSquad ? null : squadHonors.topCohesion.key)}
-                      className={`p-3 rounded-xl border flex flex-col justify-between gap-2 cursor-pointer transition-all hover:scale-[1.02] ${
-                        squadHonors.topCohesion.team === 'axis' ? 'bg-red-500/5 border-red-500/25 hover:border-red-500/60' : 'bg-blue-500/5 border-blue-500/25 hover:border-blue-500/60'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="text-[11px] font-bold uppercase tracking-wide flex items-center gap-1.5 text-muted-foreground">
-                          <Award className="w-3.5 h-3.5 text-purple-400" /> Mais Coesão Total
-                        </span>
-                        <span className={`text-[9px] uppercase font-bold px-1.5 py-0.5 rounded ${squadHonors.topCohesion.team === 'axis' ? 'bg-red-500/20 text-red-400' : 'bg-blue-500/20 text-blue-400'}`}>
-                          {squadHonors.topCohesion.team === 'axis' ? 'Eixo' : 'Aliados'}
-                        </span>
-                      </div>
-                      <div className="flex items-end justify-between gap-2">
-                        <div className="min-w-0">
-                          <div className="font-bold text-sm truncate text-foreground flex items-center gap-1">
-                            <Shield className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-                            <span className="truncate">{squadHonors.topCohesion.officerName || `Squad ${squadHonors.topCohesion.squadId}`}</span>
-                          </div>
-                          <span className="text-[11px] text-muted-foreground truncate block">
-                            Infantaria • Squad {squadHonors.topCohesion.squadId}
-                          </span>
-                        </div>
-                        <div className="text-right shrink-0">
-                          <div className="text-base font-black font-mono text-purple-400">{squadHonors.topCohesion.cohesionPercent}%</div>
-                          <div className="text-[9px] text-muted-foreground uppercase">Índice Médio</div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Esquadrão do Oficial com Mais Abate em Tank */}
-                  {squadHonors?.topTankSquad && (
-                    <div 
-                      onClick={() => setHighlightedSquad(squadHonors.topTankSquad.key === highlightedSquad ? null : squadHonors.topTankSquad.key)}
-                      className={`p-3 rounded-xl border flex flex-col justify-between gap-2 cursor-pointer transition-all hover:scale-[1.02] ${
-                        squadHonors.topTankSquad.team === 'axis' ? 'bg-red-500/5 border-red-500/25 hover:border-red-500/60' : 'bg-blue-500/5 border-blue-500/25 hover:border-blue-500/60'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="text-[11px] font-bold uppercase tracking-wide flex items-center gap-1.5 text-muted-foreground">
-                          <Truck className="w-3.5 h-3.5 text-orange-500" /> Mais Abates em Tank
-                        </span>
-                        <span className={`text-[9px] uppercase font-bold px-1.5 py-0.5 rounded ${squadHonors.topTankSquad.team === 'axis' ? 'bg-red-500/20 text-red-400' : 'bg-blue-500/20 text-blue-400'}`}>
-                          {squadHonors.topTankSquad.team === 'axis' ? 'Eixo' : 'Aliados'}
-                        </span>
-                      </div>
-                      <div className="flex items-end justify-between gap-2">
-                        <div className="min-w-0">
-                          <div className="font-bold text-sm truncate text-foreground flex items-center gap-1">
-                            {squadHonors.topTankSquad.isTank ? <Truck className="w-3.5 h-3.5 text-orange-400 shrink-0" /> : <Shield className="w-3.5 h-3.5 text-muted-foreground shrink-0" />}
-                            <span className="truncate">{squadHonors.topTankSquad.officerName || `Squad ${squadHonors.topTankSquad.squadId}`}</span>
-                          </div>
-                          <span className="text-[11px] text-muted-foreground truncate block">
-                            {squadHonors.topTankSquad.isTank ? 'Blindado' : 'Infantaria'} • Squad {squadHonors.topTankSquad.squadId}
-                          </span>
-                        </div>
-                        <div className="text-right shrink-0">
-                          <div className="text-base font-black font-mono text-orange-400">{squadHonors.topTankSquad.vehiclesScore}</div>
-                          <div className="text-[9px] text-muted-foreground uppercase">Veículos/Tanques</div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
+                {/* Filtro Todos / Aliados / Eixo */}
+                <div className="flex items-center gap-1.5 bg-background border p-1 rounded-lg shadow-inner self-start sm:self-auto">
+                  <span className="text-[10px] uppercase font-bold text-muted-foreground px-2">Filtrar:</span>
+                  <button
+                    onClick={() => setHonorsTeamFilter('all')}
+                    className={`px-3 py-1 rounded text-xs font-bold transition-all ${
+                      honorsTeamFilter === 'all'
+                        ? 'bg-primary text-primary-foreground shadow-sm'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    Todos
+                  </button>
+                  <button
+                    onClick={() => setHonorsTeamFilter('allies')}
+                    className={`px-3 py-1 rounded text-xs font-bold transition-all ${
+                      honorsTeamFilter === 'allies'
+                        ? 'bg-blue-600 text-white shadow-sm'
+                        : 'text-muted-foreground hover:text-blue-400'
+                    }`}
+                  >
+                    Aliados
+                  </button>
+                  <button
+                    onClick={() => setHonorsTeamFilter('axis')}
+                    className={`px-3 py-1 rounded text-xs font-bold transition-all ${
+                      honorsTeamFilter === 'axis'
+                        ? 'bg-red-600 text-white shadow-sm'
+                        : 'text-muted-foreground hover:text-red-400'
+                    }`}
+                  >
+                    Eixo
+                  </button>
                 </div>
               </div>
 
-              {/* Painel 2: Destaques Individuais */}
-              <div className="border border-border/50 bg-card rounded-xl overflow-hidden shadow-sm flex flex-col">
-                <div className="bg-muted/40 p-3.5 border-b flex items-center justify-between">
-                  <h3 className="text-sm font-headline font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
-                    <Trophy className="w-4 h-4 text-yellow-500" /> Destaques Individuais
-                  </h3>
-                  <span className="text-[10px] text-muted-foreground uppercase font-mono">MVPs da Partida</span>
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                {/* Painel 1: Destaques dos Esquadrões */}
+                <div className="border border-border/50 bg-card rounded-xl overflow-hidden shadow-sm flex flex-col">
+                  <div className="bg-muted/40 p-3.5 border-b flex items-center justify-between">
+                    <h3 className="text-sm font-headline font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+                      <Shield className="w-4 h-4 text-primary" /> Destaques dos Esquadrões
+                    </h3>
+                    <span className="text-[10px] text-muted-foreground uppercase font-mono">
+                      {honorsTeamFilter === 'all' ? 'Geral' : honorsTeamFilter === 'allies' ? 'Aliados' : 'Eixo'}
+                    </span>
+                  </div>
+                  
+                  <div className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-3 flex-1">
+                    {/* Top Defesa */}
+                    {squadHonors?.topDefense && (
+                      <div 
+                        onClick={() => setHighlightedSquad(squadHonors.topDefense.key === highlightedSquad ? null : squadHonors.topDefense.key)}
+                        className={`p-3 rounded-xl border flex flex-col justify-between gap-2 cursor-pointer transition-all hover:scale-[1.02] ${
+                          squadHonors.topDefense.team === 'axis' ? 'bg-red-500/5 border-red-500/25 hover:border-red-500/60' : 'bg-blue-500/5 border-blue-500/25 hover:border-blue-500/60'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-bold uppercase tracking-wide flex items-center gap-1.5 text-muted-foreground">
+                            <Shield className="w-3.5 h-3.5 text-blue-500" /> Top Defesa
+                          </span>
+                          <span className={`text-[9px] uppercase font-bold px-1.5 py-0.5 rounded ${squadHonors.topDefense.team === 'axis' ? 'bg-red-500/20 text-red-400' : 'bg-blue-500/20 text-blue-400'}`}>
+                            {squadHonors.topDefense.team === 'axis' ? 'Eixo' : 'Aliados'}
+                          </span>
+                        </div>
+                        <div className="flex items-end justify-between gap-2">
+                          <div className="min-w-0">
+                            <div className="font-bold text-sm truncate text-foreground flex items-center gap-1">
+                              {squadHonors.topDefense.isTank ? <Truck className="w-3.5 h-3.5 text-orange-400 shrink-0" /> : <Shield className="w-3.5 h-3.5 text-muted-foreground shrink-0" />}
+                              <span className="truncate">{squadHonors.topDefense.officerName || `Squad ${squadHonors.topDefense.squadId}`}</span>
+                            </div>
+                            <span className="text-[11px] text-muted-foreground truncate block">
+                              Squad {squadHonors.topDefense.squadId}
+                            </span>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <div className="text-base font-black font-mono text-blue-400">{squadHonors.topDefense.defenseScore.toLocaleString()}</div>
+                            <div className="text-[9px] text-muted-foreground uppercase">Pontos Defesa</div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Top Combate */}
+                    {squadHonors?.topCombat && (
+                      <div 
+                        onClick={() => setHighlightedSquad(squadHonors.topCombat.key === highlightedSquad ? null : squadHonors.topCombat.key)}
+                        className={`p-3 rounded-xl border flex flex-col justify-between gap-2 cursor-pointer transition-all hover:scale-[1.02] ${
+                          squadHonors.topCombat.team === 'axis' ? 'bg-red-500/5 border-red-500/25 hover:border-red-500/60' : 'bg-blue-500/5 border-blue-500/25 hover:border-blue-500/60'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-bold uppercase tracking-wide flex items-center gap-1.5 text-muted-foreground">
+                            <Flame className="w-3.5 h-3.5 text-yellow-500" /> Top Combate
+                          </span>
+                          <span className={`text-[9px] uppercase font-bold px-1.5 py-0.5 rounded ${squadHonors.topCombat.team === 'axis' ? 'bg-red-500/20 text-red-400' : 'bg-blue-500/20 text-blue-400'}`}>
+                            {squadHonors.topCombat.team === 'axis' ? 'Eixo' : 'Aliados'}
+                          </span>
+                        </div>
+                        <div className="flex items-end justify-between gap-2">
+                          <div className="min-w-0">
+                            <div className="font-bold text-sm truncate text-foreground flex items-center gap-1">
+                              {squadHonors.topCombat.isTank ? <Truck className="w-3.5 h-3.5 text-orange-400 shrink-0" /> : <Shield className="w-3.5 h-3.5 text-muted-foreground shrink-0" />}
+                              <span className="truncate">{squadHonors.topCombat.officerName || `Squad ${squadHonors.topCombat.squadId}`}</span>
+                            </div>
+                            <span className="text-[11px] text-muted-foreground truncate block">
+                              Squad {squadHonors.topCombat.squadId}
+                            </span>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <div className="text-base font-black font-mono text-yellow-500">{squadHonors.topCombat.combatScore.toLocaleString()}</div>
+                            <div className="text-[9px] text-muted-foreground uppercase">Pontos Combate</div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Top Ofensivo */}
+                    {squadHonors?.topOffense && (
+                      <div 
+                        onClick={() => setHighlightedSquad(squadHonors.topOffense.key === highlightedSquad ? null : squadHonors.topOffense.key)}
+                        className={`p-3 rounded-xl border flex flex-col justify-between gap-2 cursor-pointer transition-all hover:scale-[1.02] ${
+                          squadHonors.topOffense.team === 'axis' ? 'bg-red-500/5 border-red-500/25 hover:border-red-500/60' : 'bg-blue-500/5 border-blue-500/25 hover:border-blue-500/60'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-bold uppercase tracking-wide flex items-center gap-1.5 text-muted-foreground">
+                            <Flag className="w-3.5 h-3.5 text-red-500" /> Top Ofensivo
+                          </span>
+                          <span className={`text-[9px] uppercase font-bold px-1.5 py-0.5 rounded ${squadHonors.topOffense.team === 'axis' ? 'bg-red-500/20 text-red-400' : 'bg-blue-500/20 text-blue-400'}`}>
+                            {squadHonors.topOffense.team === 'axis' ? 'Eixo' : 'Aliados'}
+                          </span>
+                        </div>
+                        <div className="flex items-end justify-between gap-2">
+                          <div className="min-w-0">
+                            <div className="font-bold text-sm truncate text-foreground flex items-center gap-1">
+                              {squadHonors.topOffense.isTank ? <Truck className="w-3.5 h-3.5 text-orange-400 shrink-0" /> : <Shield className="w-3.5 h-3.5 text-muted-foreground shrink-0" />}
+                              <span className="truncate">{squadHonors.topOffense.officerName || `Squad ${squadHonors.topOffense.squadId}`}</span>
+                            </div>
+                            <span className="text-[11px] text-muted-foreground truncate block">
+                              Squad {squadHonors.topOffense.squadId}
+                            </span>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <div className="text-base font-black font-mono text-red-400">{squadHonors.topOffense.offenseScore.toLocaleString()}</div>
+                            <div className="text-[9px] text-muted-foreground uppercase">Pontos Ataque</div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Top Suporte & Logística */}
+                    {squadHonors?.topSupport && (
+                      <div 
+                        onClick={() => setHighlightedSquad(squadHonors.topSupport.key === highlightedSquad ? null : squadHonors.topSupport.key)}
+                        className={`p-3 rounded-xl border flex flex-col justify-between gap-2 cursor-pointer transition-all hover:scale-[1.02] ${
+                          squadHonors.topSupport.team === 'axis' ? 'bg-red-500/5 border-red-500/25 hover:border-red-500/60' : 'bg-blue-500/5 border-blue-500/25 hover:border-blue-500/60'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-bold uppercase tracking-wide flex items-center gap-1.5 text-muted-foreground">
+                            <Wrench className="w-3.5 h-3.5 text-cyan-400" /> Top Suporte & Nós
+                          </span>
+                          <span className={`text-[9px] uppercase font-bold px-1.5 py-0.5 rounded ${squadHonors.topSupport.team === 'axis' ? 'bg-red-500/20 text-red-400' : 'bg-blue-500/20 text-blue-400'}`}>
+                            {squadHonors.topSupport.team === 'axis' ? 'Eixo' : 'Aliados'}
+                          </span>
+                        </div>
+                        <div className="flex items-end justify-between gap-2">
+                          <div className="min-w-0">
+                            <div className="font-bold text-sm truncate text-foreground flex items-center gap-1">
+                              {squadHonors.topSupport.isTank ? <Truck className="w-3.5 h-3.5 text-orange-400 shrink-0" /> : <Shield className="w-3.5 h-3.5 text-muted-foreground shrink-0" />}
+                              <span className="truncate">{squadHonors.topSupport.officerName || `Squad ${squadHonors.topSupport.squadId}`}</span>
+                            </div>
+                            <span className="text-[11px] text-muted-foreground truncate block">
+                              Construção & Logística • Sq {squadHonors.topSupport.squadId}
+                            </span>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <div className="text-base font-black font-mono text-cyan-400">{squadHonors.topSupport.supportScore.toLocaleString()}</div>
+                            <div className="text-[9px] text-muted-foreground uppercase">Pontos Suporte</div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Esquadrão Mais Kills */}
+                    {squadHonors?.topKills && (
+                      <div 
+                        onClick={() => setHighlightedSquad(squadHonors.topKills.key === highlightedSquad ? null : squadHonors.topKills.key)}
+                        className={`p-3 rounded-xl border flex flex-col justify-between gap-2 cursor-pointer transition-all hover:scale-[1.02] ${
+                          squadHonors.topKills.team === 'axis' ? 'bg-red-500/5 border-red-500/25 hover:border-red-500/60' : 'bg-blue-500/5 border-blue-500/25 hover:border-blue-500/60'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-bold uppercase tracking-wide flex items-center gap-1.5 text-muted-foreground">
+                            <Target className="w-3.5 h-3.5 text-green-500" /> Esquadrão Mais Kills
+                          </span>
+                          <span className={`text-[9px] uppercase font-bold px-1.5 py-0.5 rounded ${squadHonors.topKills.team === 'axis' ? 'bg-red-500/20 text-red-400' : 'bg-blue-500/20 text-blue-400'}`}>
+                            {squadHonors.topKills.team === 'axis' ? 'Eixo' : 'Aliados'}
+                          </span>
+                        </div>
+                        <div className="flex items-end justify-between gap-2">
+                          <div className="min-w-0">
+                            <div className="font-bold text-sm truncate text-foreground flex items-center gap-1">
+                              {squadHonors.topKills.isTank ? <Truck className="w-3.5 h-3.5 text-orange-400 shrink-0" /> : <Shield className="w-3.5 h-3.5 text-muted-foreground shrink-0" />}
+                              <span className="truncate">{squadHonors.topKills.officerName || `Squad ${squadHonors.topKills.squadId}`}</span>
+                            </div>
+                            <span className="text-[11px] text-muted-foreground truncate block">
+                              Squad {squadHonors.topKills.squadId}
+                            </span>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <div className="text-base font-black font-mono text-green-400">{squadHonors.topKills.killsScore}</div>
+                            <div className="text-[9px] text-muted-foreground uppercase">Abates Totais</div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Esquadrão Mais Coesão Total */}
+                    {squadHonors?.topCohesion && (
+                      <div 
+                        onClick={() => setHighlightedSquad(squadHonors.topCohesion.key === highlightedSquad ? null : squadHonors.topCohesion.key)}
+                        className={`p-3 rounded-xl border flex flex-col justify-between gap-2 cursor-pointer transition-all hover:scale-[1.02] ${
+                          squadHonors.topCohesion.team === 'axis' ? 'bg-red-500/5 border-red-500/25 hover:border-red-500/60' : 'bg-blue-500/5 border-blue-500/25 hover:border-blue-500/60'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-bold uppercase tracking-wide flex items-center gap-1.5 text-muted-foreground">
+                            <Award className="w-3.5 h-3.5 text-purple-400" /> Mais Coesão Total
+                          </span>
+                          <span className={`text-[9px] uppercase font-bold px-1.5 py-0.5 rounded ${squadHonors.topCohesion.team === 'axis' ? 'bg-red-500/20 text-red-400' : 'bg-blue-500/20 text-blue-400'}`}>
+                            {squadHonors.topCohesion.team === 'axis' ? 'Eixo' : 'Aliados'}
+                          </span>
+                        </div>
+                        <div className="flex items-end justify-between gap-2">
+                          <div className="min-w-0">
+                            <div className="font-bold text-sm truncate text-foreground flex items-center gap-1">
+                              <Shield className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                              <span className="truncate">{squadHonors.topCohesion.officerName || `Squad ${squadHonors.topCohesion.squadId}`}</span>
+                            </div>
+                            <span className="text-[11px] text-muted-foreground truncate block">
+                              Infantaria • Squad {squadHonors.topCohesion.squadId}
+                            </span>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <div className="text-base font-black font-mono text-purple-400">{squadHonors.topCohesion.cohesionPercent}%</div>
+                            <div className="text-[9px] text-muted-foreground uppercase">Índice Médio</div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Esquadrão do Oficial com Mais Abate em Tank */}
+                    {squadHonors?.topTankSquad && (
+                      <div 
+                        onClick={() => setHighlightedSquad(squadHonors.topTankSquad.key === highlightedSquad ? null : squadHonors.topTankSquad.key)}
+                        className={`p-3 rounded-xl border flex flex-col justify-between gap-2 cursor-pointer transition-all hover:scale-[1.02] ${
+                          squadHonors.topTankSquad.team === 'axis' ? 'bg-red-500/5 border-red-500/25 hover:border-red-500/60' : 'bg-blue-500/5 border-blue-500/25 hover:border-blue-500/60'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-bold uppercase tracking-wide flex items-center gap-1.5 text-muted-foreground">
+                            <Truck className="w-3.5 h-3.5 text-orange-500" /> Mais Abates em Tank
+                          </span>
+                          <span className={`text-[9px] uppercase font-bold px-1.5 py-0.5 rounded ${squadHonors.topTankSquad.team === 'axis' ? 'bg-red-500/20 text-red-400' : 'bg-blue-500/20 text-blue-400'}`}>
+                            {squadHonors.topTankSquad.team === 'axis' ? 'Eixo' : 'Aliados'}
+                          </span>
+                        </div>
+                        <div className="flex items-end justify-between gap-2">
+                          <div className="min-w-0">
+                            <div className="font-bold text-sm truncate text-foreground flex items-center gap-1">
+                              {squadHonors.topTankSquad.isTank ? <Truck className="w-3.5 h-3.5 text-orange-400 shrink-0" /> : <Shield className="w-3.5 h-3.5 text-muted-foreground shrink-0" />}
+                              <span className="truncate">{squadHonors.topTankSquad.officerName || `Squad ${squadHonors.topTankSquad.squadId}`}</span>
+                            </div>
+                            <span className="text-[11px] text-muted-foreground truncate block">
+                              {squadHonors.topTankSquad.isTank ? 'Blindado' : 'Infantaria'} • Squad {squadHonors.topTankSquad.squadId}
+                            </span>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <div className="text-base font-black font-mono text-orange-400">{squadHonors.topTankSquad.vehiclesScore}</div>
+                            <div className="text-[9px] text-muted-foreground uppercase">Veículos/Tanques</div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
-                <div className="p-4 flex flex-col gap-3 flex-1">
-                  {/* Oficial com Mais Support */}
-                  {individualHonors?.topOfficerSupport && (() => {
-                    const o = individualHonors.topOfficerSupport;
-                    const isAxis = o.team?.side === 'axis';
-                    return (
-                      <div className={`p-3.5 rounded-xl border flex items-center justify-between gap-4 transition-all ${
-                        isAxis ? 'bg-red-500/5 border-red-500/25' : 'bg-blue-500/5 border-blue-500/25'
-                      }`}>
-                        <div className="flex items-center gap-3 min-w-0">
-                          <div className="w-10 h-10 rounded-xl bg-purple-500/10 border border-purple-500/30 flex items-center justify-center text-purple-400 shrink-0 shadow-sm">
-                            <Wrench className="w-5 h-5" />
-                          </div>
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Oficial com Mais Support</span>
-                              <span className={`text-[9px] uppercase font-bold px-1.5 py-0.2 rounded ${isAxis ? 'bg-red-500/20 text-red-400' : 'bg-blue-500/20 text-blue-400'}`}>
-                                {isAxis ? 'Eixo' : 'Aliados'}
-                              </span>
-                            </div>
-                            <div className="font-headline font-bold text-base text-foreground truncate mt-0.5">
-                              {o.player}
-                            </div>
-                            <span className="text-xs text-muted-foreground">
-                              Líder de Esquadrão • Construção de defesas, guarnições e suprimentos
-                            </span>
-                          </div>
-                        </div>
-                        <div className="text-right shrink-0">
-                          <div className="text-xl font-black font-mono text-purple-400">
-                            {o.support?.toLocaleString()}
-                          </div>
-                          <div className="text-[10px] text-muted-foreground uppercase">Pontos Suporte</div>
-                        </div>
-                      </div>
-                    );
-                  })()}
+                {/* Painel 2: Destaques Individuais */}
+                <div className="border border-border/50 bg-card rounded-xl overflow-hidden shadow-sm flex flex-col">
+                  <div className="bg-muted/40 p-3.5 border-b flex items-center justify-between">
+                    <h3 className="text-sm font-headline font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+                      <Trophy className="w-4 h-4 text-yellow-500" /> Destaques Individuais
+                    </h3>
+                    <span className="text-[10px] text-muted-foreground uppercase font-mono">
+                      {honorsTeamFilter === 'all' ? 'Geral' : honorsTeamFilter === 'allies' ? 'Aliados' : 'Eixo'}
+                    </span>
+                  </div>
 
-                  {/* Jogador com Mais Kills */}
-                  {individualHonors?.topPlayerKills && (() => {
-                    const p = individualHonors.topPlayerKills;
-                    const isAxis = p.team?.side === 'axis';
-                    return (
-                      <div className={`p-3.5 rounded-xl border flex items-center justify-between gap-4 transition-all ${
-                        isAxis ? 'bg-red-500/5 border-red-500/25' : 'bg-blue-500/5 border-blue-500/25'
-                      }`}>
-                        <div className="flex items-center gap-3 min-w-0">
-                          <div className="w-10 h-10 rounded-xl bg-green-500/10 border border-green-500/30 flex items-center justify-center text-green-400 shrink-0 shadow-sm">
-                            <Crown className="w-5 h-5" />
-                          </div>
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Jogador com Mais Kills</span>
-                              <span className={`text-[9px] uppercase font-bold px-1.5 py-0.2 rounded ${isAxis ? 'bg-red-500/20 text-red-400' : 'bg-blue-500/20 text-blue-400'}`}>
-                                {isAxis ? 'Eixo' : 'Aliados'}
+                  <div className="p-4 flex flex-col gap-3 flex-1">
+                    {/* Oficial com Mais Support */}
+                    {individualHonors?.topOfficerSupport && (() => {
+                      const o = individualHonors.topOfficerSupport;
+                      const isAxis = (typeof o.team === 'object' ? o.team?.side : o.team) === 'axis';
+                      return (
+                        <div className={`p-3 rounded-xl border flex items-center justify-between gap-4 transition-all ${
+                          isAxis ? 'bg-red-500/5 border-red-500/25' : 'bg-blue-500/5 border-blue-500/25'
+                        }`}>
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className="w-9 h-9 rounded-xl bg-purple-500/10 border border-purple-500/30 flex items-center justify-center text-purple-400 shrink-0 shadow-sm">
+                              <Wrench className="w-4 h-4" />
+                            </div>
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Oficial com Mais Support</span>
+                                <span className={`text-[9px] uppercase font-bold px-1.5 py-0.2 rounded ${isAxis ? 'bg-red-500/20 text-red-400' : 'bg-blue-500/20 text-blue-400'}`}>
+                                  {isAxis ? 'Eixo' : 'Aliados'}
+                                </span>
+                              </div>
+                              <div className="font-headline font-bold text-sm text-foreground truncate mt-0.5">
+                                {o.player}
+                              </div>
+                              <span className="text-[11px] text-muted-foreground">
+                                Líder de Esquadrão • Construção de defesas, guarnições e suprimentos
                               </span>
                             </div>
-                            <div className="font-headline font-bold text-base text-foreground truncate mt-0.5">
-                              {p.player}
+                          </div>
+                          <div className="text-right shrink-0">
+                            <div className="text-lg font-black font-mono text-purple-400">
+                              {o.support?.toLocaleString()}
                             </div>
-                            <span className="text-xs text-muted-foreground">
-                              K/D: {p.kill_death_ratio?.toFixed(2) || '0.00'} • {p.deaths || 0} Mortes
-                            </span>
+                            <div className="text-[9px] text-muted-foreground uppercase">Pontos Suporte</div>
                           </div>
                         </div>
-                        <div className="text-right shrink-0">
-                          <div className="text-xl font-black font-mono text-green-400">
-                            {p.kills}
-                          </div>
-                          <div className="text-[10px] text-muted-foreground uppercase">Abates Totais</div>
-                        </div>
-                      </div>
-                    );
-                  })()}
+                      );
+                    })()}
 
-                  {/* Jogador de Infantaria com Mais Abate a Tank */}
-                  {individualHonors?.topInfantryTankHunter && (() => {
-                    const p = individualHonors.topInfantryTankHunter;
-                    const isAxis = p.team?.side === 'axis';
-                    const bazookaKills = p.kills_by_type?.bazooka;
-                    return (
-                      <div className={`p-3.5 rounded-xl border flex items-center justify-between gap-4 transition-all ${
-                        isAxis ? 'bg-red-500/5 border-red-500/25' : 'bg-blue-500/5 border-blue-500/25'
-                      }`}>
-                        <div className="flex items-center gap-3 min-w-0">
-                          <div className="w-10 h-10 rounded-xl bg-orange-500/10 border border-orange-500/30 flex items-center justify-center text-orange-400 shrink-0 shadow-sm">
-                            <Rocket className="w-5 h-5" />
-                          </div>
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Infantaria Caçadora de Tanques</span>
-                              <span className={`text-[9px] uppercase font-bold px-1.5 py-0.2 rounded ${isAxis ? 'bg-red-500/20 text-red-400' : 'bg-blue-500/20 text-blue-400'}`}>
-                                {isAxis ? 'Eixo' : 'Aliados'}
+                    {/* Jogador com Mais Kills */}
+                    {individualHonors?.topPlayerKills && (() => {
+                      const p = individualHonors.topPlayerKills;
+                      const isAxis = (typeof p.team === 'object' ? p.team?.side : p.team) === 'axis';
+                      return (
+                        <div className={`p-3 rounded-xl border flex items-center justify-between gap-4 transition-all ${
+                          isAxis ? 'bg-red-500/5 border-red-500/25' : 'bg-blue-500/5 border-blue-500/25'
+                        }`}>
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className="w-9 h-9 rounded-xl bg-green-500/10 border border-green-500/30 flex items-center justify-center text-green-400 shrink-0 shadow-sm">
+                              <Crown className="w-4 h-4" />
+                            </div>
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Jogador com Mais Kills</span>
+                                <span className={`text-[9px] uppercase font-bold px-1.5 py-0.2 rounded ${isAxis ? 'bg-red-500/20 text-red-400' : 'bg-blue-500/20 text-blue-400'}`}>
+                                  {isAxis ? 'Eixo' : 'Aliados'}
+                                </span>
+                              </div>
+                              <div className="font-headline font-bold text-sm text-foreground truncate mt-0.5">
+                                {p.player}
+                              </div>
+                              <span className="text-[11px] text-muted-foreground">
+                                K/D: {p.kill_death_ratio?.toFixed(2) || '0.00'} • {p.deaths || 0} Mortes
                               </span>
                             </div>
-                            <div className="font-headline font-bold text-base text-foreground truncate mt-0.5">
-                              {p.player}
+                          </div>
+                          <div className="text-right shrink-0">
+                            <div className="text-lg font-black font-mono text-green-400">
+                              {p.kills}
                             </div>
-                            <span className="text-xs text-muted-foreground">
-                              Infantaria Pura (Anti-Tank / Minas / Cargas) {bazookaKills ? `• ${bazookaKills} kills de Bazooka` : ''}
-                            </span>
+                            <div className="text-[9px] text-muted-foreground uppercase">Abates Totais</div>
                           </div>
                         </div>
-                        <div className="text-right shrink-0">
-                          <div className="text-xl font-black font-mono text-orange-400">
-                            {p.vehicles_destroyed || 0}
+                      );
+                    })()}
+
+                    {/* Jogador de Infantaria com Mais Abate a Tank */}
+                    {individualHonors?.topInfantryTankHunter && (() => {
+                      const p = individualHonors.topInfantryTankHunter;
+                      const isAxis = (typeof p.team === 'object' ? p.team?.side : p.team) === 'axis';
+                      const bazookaKills = p.kills_by_type?.bazooka;
+                      return (
+                        <div className={`p-3 rounded-xl border flex items-center justify-between gap-4 transition-all ${
+                          isAxis ? 'bg-red-500/5 border-red-500/25' : 'bg-blue-500/5 border-blue-500/25'
+                        }`}>
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className="w-9 h-9 rounded-xl bg-orange-500/10 border border-orange-500/30 flex items-center justify-center text-orange-400 shrink-0 shadow-sm">
+                              <Rocket className="w-4 h-4" />
+                            </div>
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Infantaria Caçadora de Tanques</span>
+                                <span className={`text-[9px] uppercase font-bold px-1.5 py-0.2 rounded ${isAxis ? 'bg-red-500/20 text-red-400' : 'bg-blue-500/20 text-blue-400'}`}>
+                                  {isAxis ? 'Eixo' : 'Aliados'}
+                                </span>
+                              </div>
+                              <div className="font-headline font-bold text-sm text-foreground truncate mt-0.5">
+                                {p.player}
+                              </div>
+                              <span className="text-[11px] text-muted-foreground">
+                                Anti-Tank (Infantaria pura) {bazookaKills ? `• ${bazookaKills} kills de Bazooka` : ''}
+                              </span>
+                            </div>
                           </div>
-                          <div className="text-[10px] text-muted-foreground uppercase">Tanques Destruídos</div>
+                          <div className="text-right shrink-0">
+                            <div className="text-lg font-black font-mono text-orange-400">
+                              {p.vehicles_destroyed || 0}
+                            </div>
+                            <div className="text-[9px] text-muted-foreground uppercase">Tanques Destruídos</div>
+                          </div>
                         </div>
-                      </div>
-                    );
-                  })()}
+                      );
+                    })()}
+
+                    {/* Maior Sequência de Kills (Killstreak / O Imortal) */}
+                    {individualHonors?.topKillstreak && (() => {
+                      const p = individualHonors.topKillstreak;
+                      const isAxis = (typeof p.team === 'object' ? p.team?.side : p.team) === 'axis';
+                      return (
+                        <div className={`p-3 rounded-xl border flex items-center justify-between gap-4 transition-all ${
+                          isAxis ? 'bg-red-500/5 border-red-500/25' : 'bg-blue-500/5 border-blue-500/25'
+                        }`}>
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className="w-9 h-9 rounded-xl bg-red-500/10 border border-red-500/30 flex items-center justify-center text-red-500 shrink-0 shadow-sm">
+                              <Flame className="w-4 h-4" />
+                            </div>
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Maior Sequência (Killstreak)</span>
+                                <span className={`text-[9px] uppercase font-bold px-1.5 py-0.2 rounded ${isAxis ? 'bg-red-500/20 text-red-400' : 'bg-blue-500/20 text-blue-400'}`}>
+                                  {isAxis ? 'Eixo' : 'Aliados'}
+                                </span>
+                              </div>
+                              <div className="font-headline font-bold text-sm text-foreground truncate mt-0.5">
+                                {p.player}
+                              </div>
+                              <span className="text-[11px] text-muted-foreground">
+                                O Imortal da Partida • {p.kills_streak} abates consecutivos sem morrer
+                              </span>
+                            </div>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <div className="text-lg font-black font-mono text-red-500">
+                              {p.kills_streak}
+                            </div>
+                            <div className="text-[9px] text-muted-foreground uppercase">Kills Seguidos</div>
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    {/* Maior Eficiência Letal (K/D) */}
+                    {individualHonors?.topKD && (() => {
+                      const p = individualHonors.topKD;
+                      const isAxis = (typeof p.team === 'object' ? p.team?.side : p.team) === 'axis';
+                      return (
+                        <div className={`p-3 rounded-xl border flex items-center justify-between gap-4 transition-all ${
+                          isAxis ? 'bg-red-500/5 border-red-500/25' : 'bg-blue-500/5 border-blue-500/25'
+                        }`}>
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className="w-9 h-9 rounded-xl bg-yellow-500/10 border border-yellow-500/30 flex items-center justify-center text-yellow-500 shrink-0 shadow-sm">
+                              <Zap className="w-4 h-4" />
+                            </div>
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Maior Eficiência Letal (K/D)</span>
+                                <span className={`text-[9px] uppercase font-bold px-1.5 py-0.2 rounded ${isAxis ? 'bg-red-500/20 text-red-400' : 'bg-blue-500/20 text-blue-400'}`}>
+                                  {isAxis ? 'Eixo' : 'Aliados'}
+                                </span>
+                              </div>
+                              <div className="font-headline font-bold text-sm text-foreground truncate mt-0.5">
+                                {p.player}
+                              </div>
+                              <span className="text-[11px] text-muted-foreground">
+                                {p.kills} Kills com apenas {p.deaths || 0} mortes sofridas
+                              </span>
+                            </div>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <div className="text-lg font-black font-mono text-yellow-500">
+                              {p.kill_death_ratio?.toFixed(2)}
+                            </div>
+                            <div className="text-[9px] text-muted-foreground uppercase">Razão K/D</div>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
                 </div>
               </div>
             </div>
