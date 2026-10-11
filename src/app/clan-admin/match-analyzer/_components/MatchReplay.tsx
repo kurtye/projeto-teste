@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
-import { Play, Pause, FastForward, SkipBack, ZoomIn, ZoomOut, Maximize, User, Shield, Skull, Crosshair, Truck } from 'lucide-react';
+import { Play, Pause, FastForward, SkipBack, ZoomIn, ZoomOut, Maximize, User, Shield, Skull, Crosshair, Truck, Activity } from 'lucide-react';
 import Image from 'next/image';
 import { ROLE_MAPPING } from '@/lib/roles';
 import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
@@ -54,6 +54,57 @@ export interface MatchReplayProps {
   matchTitle?: string;
 }
 
+// Linear Interpolation (LERP) helper between telemetry positions
+function getInterpolatedPosition(positions: Position[], t: number): Position | null {
+  if (!positions || positions.length === 0) return null;
+  if (t <= positions[0].time) return positions[0];
+  const last = positions[positions.length - 1];
+  if (t >= last.time) return last;
+
+  let low = 0;
+  let high = positions.length - 1;
+
+  while (low <= high) {
+    const mid = (low + high) >> 1;
+    const midTime = positions[mid].time;
+    if (midTime === t) return positions[mid];
+    if (midTime < t) {
+      low = mid + 1;
+    } else {
+      high = mid - 1;
+    }
+  }
+
+  const prev = positions[high];
+  const next = positions[low];
+
+  if (!prev) return next || null;
+  if (!next) return prev;
+
+  // Don't interpolate to or from death state (0, 0)
+  if (prev.x === 0 && prev.y === 0) return prev;
+  if (next.x === 0 && next.y === 0) return prev;
+
+  const dt = next.time - prev.time;
+  if (dt <= 0 || dt > 25) return prev;
+
+  const dx = next.x - prev.x;
+  const dy = next.y - prev.y;
+  const dist = Math.hypot(dx, dy);
+
+  // If player respawned far away across the map (speed > 2500 units/s = 25m/s = 90km/h)
+  if (dist / dt > 2500) {
+    return prev;
+  }
+
+  const factor = (t - prev.time) / dt;
+  return {
+    time: t,
+    x: prev.x + dx * factor,
+    y: prev.y + dy * factor,
+  };
+}
+
 export function MatchReplay({ 
   matchData, 
   capFlips = [], 
@@ -71,6 +122,7 @@ export function MatchReplay({
   const [showDeaths, setShowDeaths] = useState(true);
   const [showOfficers, setShowOfficers] = useState(true);
   const [showCohesionPercent, setShowCohesionPercent] = useState(false);
+  const [smoothMovement, setSmoothMovement] = useState(true);
   const [highlightedSquad, setHighlightedSquad] = useState<string | null>(null);
   const animationRef = useRef<number | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -97,24 +149,44 @@ export function MatchReplay({
     return max;
   }, [matchData]);
 
-  // Player active positions
+  // Player active positions (with continuous LERP interpolation)
   const activePositions = useMemo(() => {
     return matchData.players_list.map(player => {
-      // Find the closest position that is <= currentTime
-      // Since it's sorted by time, we can find the last one that matches
-      let closestPos = player.position[0];
+      let currentPos: Position | null = null;
       const trail: Position[] = [];
       const trailDuration = 60; // 60 seconds of history for trail
-      
-      for (let i = 0; i < player.position.length; i++) {
-        const pos = player.position[i];
-        if (pos.time <= currentTime) {
-          closestPos = pos;
-          if (showTrails && pos.time >= currentTime - trailDuration && pos.x !== 0 && pos.y !== 0) {
-            trail.push(pos);
+
+      if (smoothMovement) {
+        currentPos = getInterpolatedPosition(player.position, currentTime);
+      } else {
+        // Discrete mode: last recorded position <= currentTime
+        for (let i = 0; i < player.position.length; i++) {
+          const pos = player.position[i];
+          if (pos.time <= currentTime) {
+            currentPos = pos;
+          } else {
+            break;
           }
-        } else {
-          break;
+        }
+      }
+
+      if (!currentPos && player.position.length > 0) {
+        currentPos = player.position[0];
+      }
+
+      if (showTrails) {
+        for (let i = 0; i < player.position.length; i++) {
+          const pos = player.position[i];
+          if (pos.time <= currentTime) {
+            if (pos.time >= currentTime - trailDuration && pos.x !== 0 && pos.y !== 0) {
+              trail.push(pos);
+            }
+          } else {
+            break;
+          }
+        }
+        if (currentPos && currentPos.x !== 0 && currentPos.y !== 0) {
+          trail.push(currentPos);
         }
       }
 
@@ -139,7 +211,7 @@ export function MatchReplay({
 
       return {
         ...player,
-        currentPos: closestPos,
+        currentPos: currentPos as Position,
         trail,
         currentRole,
         currentSquad
@@ -148,7 +220,7 @@ export function MatchReplay({
        if (teamFilter !== 'all' && p.team !== teamFilter) return false;
        return p.currentPos && p.currentPos.time > currentTime - 300;
     }); // Disappear if no update for 5 mins
-  }, [matchData, currentTime, teamFilter, showTrails, playerStats]);
+  }, [matchData, currentTime, teamFilter, showTrails, playerStats, smoothMovement]);
 
   // Compute Recent Deaths (last 60 seconds)
   const recentDeaths = useMemo(() => {
@@ -890,7 +962,7 @@ export function MatchReplay({
                          return (
                            <div
                              key={player.id}
-                             className={`absolute w-5 h-5 border-2 rounded-full ${colorClass} ${opacityClass} text-white flex items-center justify-center shadow-[0_0_8px_rgba(0,0,0,0.8)] transition-all duration-300 transform -translate-x-1/2 -translate-y-1/2 cursor-crosshair group`}
+                             className={`absolute w-5 h-5 border-2 rounded-full ${colorClass} ${opacityClass} text-white flex items-center justify-center shadow-[0_0_8px_rgba(0,0,0,0.8)] transition-[opacity,transform] duration-150 transform -translate-x-1/2 -translate-y-1/2 cursor-crosshair group`}
                              style={{ left: `${left}%`, top: `${top}%` }}
                            >
                               {/* Role Icon */}
@@ -938,6 +1010,10 @@ export function MatchReplay({
                   </div>
 
                   <div className="flex items-center gap-2 ml-4">
+                    <Button variant={smoothMovement ? 'default' : 'outline'} size="sm" onClick={() => setSmoothMovement(!smoothMovement)} className={smoothMovement ? "bg-emerald-600 hover:bg-emerald-700 text-white" : ""} title="Interpolação contínua e suave de posições (sem teletransporte)">
+                      <Activity className="w-3.5 h-3.5 mr-1.5" />
+                      {smoothMovement ? 'Movimento Suave' : 'Modo Bruto'}
+                    </Button>
                     <Button variant={showFrontline ? 'default' : 'outline'} size="sm" onClick={() => setShowFrontline(!showFrontline)} className={showFrontline ? "bg-purple-600 hover:bg-purple-700" : ""}>
                       Frontline
                     </Button>
