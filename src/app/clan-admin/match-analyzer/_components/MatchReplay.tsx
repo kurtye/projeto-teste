@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
-import { Play, Pause, FastForward, SkipBack, ZoomIn, ZoomOut, Maximize, User, Shield, Skull, Crosshair, Truck, Activity, Trophy, Flag, Flame, Target, Rocket, Award, Crown, Wrench, Clapperboard, Sparkles, Video, ChevronRight } from 'lucide-react';
+import { Play, Pause, FastForward, SkipBack, ZoomIn, ZoomOut, Maximize, User, Shield, Skull, Crosshair, Truck, Activity, Trophy, Flag, Flame, Target, Rocket, Award, Crown, Wrench, Clapperboard, Sparkles, Video, ChevronRight, X, Swords, Zap, Filter } from 'lucide-react';
 import Image from 'next/image';
 import { ROLE_MAPPING } from '@/lib/roles';
 import { TransformWrapper, TransformComponent, type ReactZoomPanPinchRef } from "react-zoom-pan-pinch";
@@ -41,6 +41,14 @@ interface PlayerStatUnit {
   role: number;
 }
 
+interface Encounter {
+  action: 'KILL' | 'DEATH' | string;
+  player_id?: string;
+  player_name?: string;
+  ts: number;
+  weapon?: string;
+}
+
 interface PlayerStat {
   id?: number;
   player_id: string;
@@ -58,6 +66,7 @@ interface PlayerStat {
   kills_by_type?: Record<string, number>;
   weapons?: Record<string, number>;
   units?: PlayerStatUnit[];
+  encounters?: Encounter[];
   [key: string]: any;
 }
 
@@ -148,11 +157,57 @@ export function MatchReplay({
   const activeCinematicEventRef = useRef<string | null>(null);
   const previousPlaybackSpeedRef = useRef<number>(10);
 
+  // Player Combat Dossier & Timeline State
+  const [selectedPlayerDossier, setSelectedPlayerDossier] = useState<PlayerStat | null>(null);
+  const [timelineFilter, setTimelineFilter] = useState<'all' | 'kills' | 'deaths'>('all');
+  const [showKillfeed, setShowKillfeed] = useState<boolean>(true);
+  const [showShotLines, setShowShotLines] = useState<boolean>(true);
+
+  // Open Dossier for any player by name
+  const openPlayerDossier = (playerName: string) => {
+    if (!playerStats || playerStats.length === 0) return;
+    const cleanTarget = playerName.trim().toLowerCase();
+    const found = playerStats.find(p => (p.player || '').trim().toLowerCase() === cleanTarget)
+      || playerStats.find(p => (p.player || '').toLowerCase().includes(cleanTarget))
+      || null;
+    if (found) {
+      setSelectedPlayerDossier(found);
+      setTimelineFilter('all');
+    }
+  };
+
+  // Jump replay directly to an encounter event
+  const jumpToEncounter = (enc: Encounter) => {
+    setCurrentTime(Math.max(0, enc.ts - 3));
+    setIsPlaying(true);
+    
+    // Smooth scroll to tactical replay map if user is scrolled down
+    if (typeof document !== 'undefined') {
+      const mapElement = document.getElementById('match-replay-map-container');
+      if (mapElement) {
+        mapElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }
+
+    if (selectedPlayerDossier) {
+      const matchPlayer = matchData.players_list.find(p => 
+        p.name.toLowerCase() === (selectedPlayerDossier.player || '').toLowerCase()
+      );
+      if (matchPlayer) {
+        const pos = getInterpolatedPosition(matchPlayer.position, enc.ts);
+        if (pos && (pos.x !== 0 || pos.y !== 0)) {
+          zoomToCoords(pos.x, pos.y, 2.5, 1200);
+        }
+      }
+    }
+  };
+
   // Reset replay on match change
   useEffect(() => {
     setCurrentTime(0);
     setIsPlaying(false);
     setHighlightedSquad(null);
+    setSelectedPlayerDossier(null);
   }, [matchData]);
 
   // Coordinate mapping (assume map bounds are -100k to +100k)
@@ -668,6 +723,104 @@ export function MatchReplay({
       }
     }
   }, [currentHighlight, isCinematicMode, isPlaying]);
+
+  // -------------------------------------------------------------
+  // FEED DE COMBATE GLOBAL & LINHAS DE TIRO (Encounters)
+  // -------------------------------------------------------------
+
+  // Lista ordenada global de todos os abates (encounters) da partida
+  const globalKills = useMemo(() => {
+    if (!playerStats || playerStats.length === 0) return [];
+    const kills: {
+      id: string;
+      ts: number;
+      killerName: string;
+      killerTeam: 'allies' | 'axis';
+      victimName: string;
+      victimTeam: 'allies' | 'axis';
+      weapon: string;
+    }[] = [];
+
+    const playerTeamMap = new Map<string, 'allies' | 'axis'>();
+    playerStats.forEach((p: any) => {
+      const team = (typeof p.team === 'object' ? p.team?.side : p.team) === 'axis' ? 'axis' : 'allies';
+      if (p.player) playerTeamMap.set(p.player.trim().toLowerCase(), team);
+    });
+
+    playerStats.forEach((p: any) => {
+      const killerTeam = (typeof p.team === 'object' ? p.team?.side : p.team) === 'axis' ? 'axis' : 'allies';
+      (p.encounters || []).forEach((enc: any, idx: number) => {
+        if (enc.action === 'KILL') {
+          const victimClean = (enc.player_name || '').trim().toLowerCase();
+          const victimTeam = playerTeamMap.get(victimClean) || (killerTeam === 'allies' ? 'axis' : 'allies');
+          kills.push({
+            id: `${p.player}-${enc.ts}-${idx}`,
+            ts: enc.ts,
+            killerName: p.player || 'Desconhecido',
+            killerTeam,
+            victimName: enc.player_name || 'Inimigo',
+            victimTeam,
+            weapon: enc.weapon || 'Arma Leve',
+          });
+        }
+      });
+    });
+
+    return kills.sort((a, b) => a.ts - b.ts);
+  }, [playerStats]);
+
+  // Feed de abates em tempo real no mapa (últimos 6 segundos)
+  const recentKillsFeed = useMemo(() => {
+    if (!showKillfeed) return [];
+    return globalKills
+      .filter(k => k.ts >= currentTime - 6 && k.ts <= currentTime)
+      .slice(-4);
+  }, [globalKills, currentTime, showKillfeed]);
+
+  // Vetores de tiro e traçantes de combate no mapa (últimos 3 segundos)
+  const activeShotLines = useMemo(() => {
+    if (!showShotLines || heatmapType !== 'none') return [];
+    const recent = globalKills.filter(k => k.ts >= currentTime - 3 && k.ts <= currentTime);
+    if (recent.length === 0) return [];
+
+    const lines: {
+      id: string;
+      killerX: number;
+      killerY: number;
+      victimX: number;
+      victimY: number;
+      team: 'allies' | 'axis';
+      weapon: string;
+      age: number;
+    }[] = [];
+
+    recent.forEach(k => {
+      const killerPlayer = activePositions.find(p => p.name.toLowerCase() === k.killerName.toLowerCase());
+      const victimPlayer = activePositions.find(p => p.name.toLowerCase() === k.victimName.toLowerCase());
+
+      if (
+        killerPlayer?.currentPos &&
+        victimPlayer?.currentPos &&
+        killerPlayer.currentPos.x !== 0 &&
+        killerPlayer.currentPos.y !== 0 &&
+        victimPlayer.currentPos.x !== 0 &&
+        victimPlayer.currentPos.y !== 0
+      ) {
+        lines.push({
+          id: k.id,
+          killerX: killerPlayer.currentPos.x,
+          killerY: killerPlayer.currentPos.y,
+          victimX: victimPlayer.currentPos.x,
+          victimY: victimPlayer.currentPos.y,
+          team: k.killerTeam,
+          weapon: k.weapon,
+          age: currentTime - k.ts,
+        });
+      }
+    });
+
+    return lines;
+  }, [globalKills, currentTime, activePositions, showShotLines, heatmapType]);
 
   // Precompute Cohesion over the entire match at 60-second intervals
   const precomputedCohesion = useMemo(() => {
@@ -1212,7 +1365,7 @@ export function MatchReplay({
           </div>
         </CardHeader>
         <CardContent className="pt-6 relative">
-          <div className="relative w-full h-[70vh] min-h-[500px] bg-black/10 border-2 border-border rounded-xl overflow-hidden shadow-inner flex items-center justify-center bg-stone-900 cursor-grab active:cursor-grabbing">
+          <div id="match-replay-map-container" className="relative w-full h-[70vh] min-h-[500px] bg-black/10 border-2 border-border rounded-xl overflow-hidden shadow-inner flex items-center justify-center bg-stone-900 cursor-grab active:cursor-grabbing">
             <TransformWrapper
                ref={transformComponentRef}
                initialScale={1}
@@ -1288,6 +1441,31 @@ export function MatchReplay({
                     </div>
                   )}
 
+                  {/* Tactical Killfeed Overlay (Top Right of Map) */}
+                  {showKillfeed && recentKillsFeed.length > 0 && (
+                    <div className="absolute top-4 right-16 z-50 flex flex-col gap-1.5 pointer-events-auto max-w-xs sm:max-w-sm">
+                      {recentKillsFeed.map((k) => (
+                        <div
+                          key={k.id}
+                          onClick={() => openPlayerDossier(k.killerName)}
+                          className="bg-stone-950/90 backdrop-blur-md border border-white/10 rounded-lg px-2.5 py-1.5 shadow-2xl flex items-center justify-between gap-2 text-xs transition-all hover:scale-105 cursor-pointer animate-in fade-in slide-in-from-right-3 duration-200"
+                          title="Clique para ver o Dossiê e Linha do Tempo do Atirador"
+                        >
+                          <span className={`font-bold truncate max-w-[100px] ${k.killerTeam === 'axis' ? 'text-red-400' : 'text-blue-400'}`} title={k.killerName}>
+                            {k.killerName}
+                          </span>
+                          <div className="flex items-center gap-1 text-[10px] bg-white/10 px-1.5 py-0.5 rounded font-mono text-stone-300 shrink-0">
+                            <Crosshair className="w-2.5 h-2.5 text-amber-400" />
+                            <span className="truncate max-w-[90px]">{k.weapon}</span>
+                          </div>
+                          <span className={`font-bold truncate max-w-[100px] ${k.victimTeam === 'axis' ? 'text-red-400' : 'text-blue-400'}`} title={k.victimName}>
+                            {k.victimName}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
                   <div className="absolute top-4 right-4 z-50 flex flex-col gap-2 bg-background/80 p-2 rounded-lg border shadow-lg backdrop-blur">
                     <Button variant="secondary" size="icon" onClick={() => zoomIn()}>
                       <ZoomIn className="w-4 h-4" />
@@ -1333,7 +1511,18 @@ export function MatchReplay({
                             >
                                <div className="flex items-center gap-2 truncate">
                                  {sq.isTank ? <Truck className="w-3 h-3 text-orange-400 shrink-0" /> : <Shield className="w-3 h-3 text-red-400 shrink-0" />}
-                                 <span className="truncate">{sq.officerName ? sq.officerName : `Squad ${sq.squadId}`}</span>
+                                 <span 
+                                   className={`truncate ${sq.officerName ? 'hover:underline hover:text-red-300' : ''}`}
+                                   title={sq.officerName ? `Abrir Dossiê de Combate de ${sq.officerName}` : undefined}
+                                   onClick={(e) => {
+                                     if (sq.officerName) {
+                                       e.stopPropagation();
+                                       openPlayerDossier(sq.officerName);
+                                     }
+                                   }}
+                                 >
+                                   {sq.officerName ? sq.officerName : `Squad ${sq.squadId}`}
+                                 </span>
                                </div>
                                {showCohesionPercent && !sq.isTank && (
                                  <div className="flex items-center gap-1 shrink-0">
@@ -1367,7 +1556,18 @@ export function MatchReplay({
                             >
                                <div className="flex items-center gap-2 truncate">
                                  {sq.isTank ? <Truck className="w-3 h-3 text-orange-400 shrink-0" /> : <Shield className="w-3 h-3 text-blue-400 shrink-0" />}
-                                 <span className="truncate">{sq.officerName ? sq.officerName : `Squad ${sq.squadId}`}</span>
+                                 <span 
+                                   className={`truncate ${sq.officerName ? 'hover:underline hover:text-blue-300' : ''}`}
+                                   title={sq.officerName ? `Abrir Dossiê de Combate de ${sq.officerName}` : undefined}
+                                   onClick={(e) => {
+                                     if (sq.officerName) {
+                                       e.stopPropagation();
+                                       openPlayerDossier(sq.officerName);
+                                     }
+                                   }}
+                                 >
+                                   {sq.officerName ? sq.officerName : `Squad ${sq.squadId}`}
+                                 </span>
                                </div>
                                {showCohesionPercent && !sq.isTank && (
                                  <div className="flex items-center gap-1 shrink-0">
@@ -1457,6 +1657,60 @@ export function MatchReplay({
                           </svg>
                        )}
 
+                       {/* Combat Shot Lines Layer (Linhas de Tiro / Traçantes) */}
+                       {showShotLines && heatmapType === 'none' && activeShotLines.length > 0 && (
+                         <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 w-full h-full z-25 pointer-events-none">
+                           <defs>
+                             <linearGradient id="alliedTracer" x1="0%" y1="0%" x2="100%" y2="100%">
+                               <stop offset="0%" stopColor="#38bdf8" stopOpacity="0.9" />
+                               <stop offset="100%" stopColor="#ef4444" stopOpacity="0.4" />
+                             </linearGradient>
+                             <linearGradient id="axisTracer" x1="0%" y1="0%" x2="100%" y2="100%">
+                               <stop offset="0%" stopColor="#ef4444" stopOpacity="0.9" />
+                               <stop offset="100%" stopColor="#38bdf8" stopOpacity="0.4" />
+                             </linearGradient>
+                           </defs>
+                           {activeShotLines.map(line => {
+                             const x1 = mapCoordToPercent(line.killerX);
+                             const y1 = mapCoordToPercent(line.killerY);
+                             const x2 = mapCoordToPercent(line.victimX);
+                             const y2 = mapCoordToPercent(line.victimY);
+                             const isAxis = line.team === 'axis';
+                             const opacity = Math.max(0.15, 1 - (line.age / 3));
+
+                             return (
+                               <g key={`shot-${line.id}`} opacity={opacity}>
+                                 <line
+                                   x1={`${x1}%`}
+                                   y1={`${y1}%`}
+                                   x2={`${x2}%`}
+                                   y2={`${y2}%`}
+                                   stroke={isAxis ? "rgba(239, 68, 68, 0.5)" : "rgba(56, 189, 248, 0.5)"}
+                                   strokeWidth="0.5"
+                                   strokeDasharray="1.5 1"
+                                 />
+                                 <line
+                                   x1={`${x1}%`}
+                                   y1={`${y1}%`}
+                                   x2={`${x2}%`}
+                                   y2={`${y2}%`}
+                                   stroke={isAxis ? "url(#axisTracer)" : "url(#alliedTracer)"}
+                                   strokeWidth="0.25"
+                                   strokeLinecap="round"
+                                 />
+                                 <circle
+                                   cx={`${x2}%`}
+                                   cy={`${y2}%`}
+                                   r="0.5"
+                                   fill={isAxis ? "#ef4444" : "#38bdf8"}
+                                   className="animate-ping"
+                                 />
+                               </g>
+                             );
+                           })}
+                         </svg>
+                       )}
+
                        {/* Death Markers Layer */}
                        {showDeaths && heatmapType === 'none' && recentDeaths.map(death => {
                          const left = mapCoordToPercent(death.x);
@@ -1500,7 +1754,11 @@ export function MatchReplay({
                          return (
                            <div
                              key={player.id}
-                             className={`absolute w-5 h-5 border-2 rounded-full ${colorClass} ${opacityClass} text-white flex items-center justify-center shadow-[0_0_8px_rgba(0,0,0,0.8)] transition-[opacity,transform] duration-150 transform -translate-x-1/2 -translate-y-1/2 cursor-crosshair group`}
+                             onClick={(e) => {
+                               e.stopPropagation();
+                               openPlayerDossier(player.name);
+                             }}
+                             className={`absolute w-5 h-5 border-2 rounded-full ${colorClass} ${opacityClass} text-white flex items-center justify-center shadow-[0_0_8px_rgba(0,0,0,0.8)] transition-[opacity,transform] duration-150 transform -translate-x-1/2 -translate-y-1/2 cursor-pointer hover:scale-125 hover:ring-2 hover:ring-amber-400 group z-30`}
                              style={{ left: `${left}%`, top: `${top}%` }}
                            >
                               {/* Role Icon */}
@@ -1514,6 +1772,9 @@ export function MatchReplay({
                                      Classe: {roleData?.name || player.currentRole} | Squad: {player.currentSquad === 0 ? 'Comandante' : player.currentSquad}
                                    </span>
                                 )}
+                                <span className="text-[9px] text-amber-400 font-bold mt-1">
+                                  👉 Clique para abrir Linha do Tempo
+                                </span>
                               </span>
                            </div>
                          );
@@ -1594,6 +1855,14 @@ export function MatchReplay({
                     </Button>
                     <Button variant={showFrontline ? 'default' : 'outline'} size="sm" onClick={() => setShowFrontline(!showFrontline)} className={showFrontline ? "bg-purple-600 hover:bg-purple-700" : ""}>
                       Frontline
+                    </Button>
+                    <Button variant={showKillfeed ? 'default' : 'outline'} size="sm" onClick={() => setShowKillfeed(!showKillfeed)} className={showKillfeed ? "bg-amber-600 hover:bg-amber-700 text-white font-medium" : ""}>
+                      <Crosshair className="w-3.5 h-3.5 mr-1.5" />
+                      Killfeed
+                    </Button>
+                    <Button variant={showShotLines ? 'default' : 'outline'} size="sm" onClick={() => setShowShotLines(!showShotLines)} className={showShotLines ? "bg-red-600 hover:bg-red-700 text-white font-medium" : ""}>
+                      <Zap className="w-3.5 h-3.5 mr-1.5" />
+                      Traçantes
                     </Button>
                     <Button variant={showTrails ? 'secondary' : 'outline'} size="sm" onClick={() => setShowTrails(!showTrails)} disabled={heatmapType !== 'none'}>
                       Rastros
@@ -1930,7 +2199,18 @@ export function MatchReplay({
                           <div className="min-w-0">
                             <div className="font-bold text-sm truncate text-foreground flex items-center gap-1">
                               {squadHonors.topDefense.isTank ? <Truck className="w-3.5 h-3.5 text-orange-400 shrink-0" /> : <Shield className="w-3.5 h-3.5 text-muted-foreground shrink-0" />}
-                              <span className="truncate">{squadHonors.topDefense.officerName || `Squad ${squadHonors.topDefense.squadId}`}</span>
+                              <span 
+                                className={`truncate ${squadHonors.topDefense.officerName ? 'hover:underline hover:text-blue-300' : ''}`}
+                                title={squadHonors.topDefense.officerName ? `Clique para abrir o Dossiê de Combate de ${squadHonors.topDefense.officerName}` : undefined}
+                                onClick={(e) => {
+                                  if (squadHonors.topDefense.officerName) {
+                                    e.stopPropagation();
+                                    openPlayerDossier(squadHonors.topDefense.officerName);
+                                  }
+                                }}
+                              >
+                                {squadHonors.topDefense.officerName || `Squad ${squadHonors.topDefense.squadId}`}
+                              </span>
                             </div>
                             <span className="text-[10px] text-muted-foreground truncate block">
                               Squad {squadHonors.topDefense.squadId} • {squadHonors.topDefense.membersCount} soldados ({squadHonors.topDefense.avgDefense?.toLocaleString()}/homem)
@@ -1964,7 +2244,18 @@ export function MatchReplay({
                           <div className="min-w-0">
                             <div className="font-bold text-sm truncate text-foreground flex items-center gap-1">
                               {squadHonors.topCombat.isTank ? <Truck className="w-3.5 h-3.5 text-orange-400 shrink-0" /> : <Shield className="w-3.5 h-3.5 text-muted-foreground shrink-0" />}
-                              <span className="truncate">{squadHonors.topCombat.officerName || `Squad ${squadHonors.topCombat.squadId}`}</span>
+                              <span 
+                                className={`truncate ${squadHonors.topCombat.officerName ? 'hover:underline hover:text-yellow-400' : ''}`}
+                                title={squadHonors.topCombat.officerName ? `Clique para abrir o Dossiê de Combate de ${squadHonors.topCombat.officerName}` : undefined}
+                                onClick={(e) => {
+                                  if (squadHonors.topCombat.officerName) {
+                                    e.stopPropagation();
+                                    openPlayerDossier(squadHonors.topCombat.officerName);
+                                  }
+                                }}
+                              >
+                                {squadHonors.topCombat.officerName || `Squad ${squadHonors.topCombat.squadId}`}
+                              </span>
                             </div>
                             <span className="text-[10px] text-muted-foreground truncate block">
                               Squad {squadHonors.topCombat.squadId} • {squadHonors.topCombat.membersCount} soldados ({squadHonors.topCombat.avgCombat?.toLocaleString()}/homem)
@@ -1998,7 +2289,18 @@ export function MatchReplay({
                           <div className="min-w-0">
                             <div className="font-bold text-sm truncate text-foreground flex items-center gap-1">
                               {squadHonors.topOffense.isTank ? <Truck className="w-3.5 h-3.5 text-orange-400 shrink-0" /> : <Shield className="w-3.5 h-3.5 text-muted-foreground shrink-0" />}
-                              <span className="truncate">{squadHonors.topOffense.officerName || `Squad ${squadHonors.topOffense.squadId}`}</span>
+                              <span 
+                                className={`truncate ${squadHonors.topOffense.officerName ? 'hover:underline hover:text-red-300' : ''}`}
+                                title={squadHonors.topOffense.officerName ? `Clique para abrir o Dossiê de Combate de ${squadHonors.topOffense.officerName}` : undefined}
+                                onClick={(e) => {
+                                  if (squadHonors.topOffense.officerName) {
+                                    e.stopPropagation();
+                                    openPlayerDossier(squadHonors.topOffense.officerName);
+                                  }
+                                }}
+                              >
+                                {squadHonors.topOffense.officerName || `Squad ${squadHonors.topOffense.squadId}`}
+                              </span>
                             </div>
                             <span className="text-[10px] text-muted-foreground truncate block">
                               Squad {squadHonors.topOffense.squadId} • {squadHonors.topOffense.membersCount} soldados ({squadHonors.topOffense.avgOffense?.toLocaleString()}/homem)
@@ -2032,7 +2334,18 @@ export function MatchReplay({
                           <div className="min-w-0">
                             <div className="font-bold text-sm truncate text-foreground flex items-center gap-1">
                               {squadHonors.topSupport.isTank ? <Truck className="w-3.5 h-3.5 text-orange-400 shrink-0" /> : <Shield className="w-3.5 h-3.5 text-muted-foreground shrink-0" />}
-                              <span className="truncate">{squadHonors.topSupport.officerName || `Squad ${squadHonors.topSupport.squadId}`}</span>
+                              <span 
+                                className={`truncate ${squadHonors.topSupport.officerName ? 'hover:underline hover:text-cyan-300' : ''}`}
+                                title={squadHonors.topSupport.officerName ? `Clique para abrir o Dossiê de Combate de ${squadHonors.topSupport.officerName}` : undefined}
+                                onClick={(e) => {
+                                  if (squadHonors.topSupport.officerName) {
+                                    e.stopPropagation();
+                                    openPlayerDossier(squadHonors.topSupport.officerName);
+                                  }
+                                }}
+                              >
+                                {squadHonors.topSupport.officerName || `Squad ${squadHonors.topSupport.squadId}`}
+                              </span>
                             </div>
                             <span className="text-[10px] text-muted-foreground truncate block">
                               Squad {squadHonors.topSupport.squadId} • {squadHonors.topSupport.membersCount} soldados ({squadHonors.topSupport.avgSupport?.toLocaleString()}/homem)
@@ -2066,7 +2379,18 @@ export function MatchReplay({
                           <div className="min-w-0">
                             <div className="font-bold text-sm truncate text-foreground flex items-center gap-1">
                               {squadHonors.topKills.isTank ? <Truck className="w-3.5 h-3.5 text-orange-400 shrink-0" /> : <Shield className="w-3.5 h-3.5 text-muted-foreground shrink-0" />}
-                              <span className="truncate">{squadHonors.topKills.officerName || `Squad ${squadHonors.topKills.squadId}`}</span>
+                              <span 
+                                className={`truncate ${squadHonors.topKills.officerName ? 'hover:underline hover:text-green-300' : ''}`}
+                                title={squadHonors.topKills.officerName ? `Clique para abrir o Dossiê de Combate de ${squadHonors.topKills.officerName}` : undefined}
+                                onClick={(e) => {
+                                  if (squadHonors.topKills.officerName) {
+                                    e.stopPropagation();
+                                    openPlayerDossier(squadHonors.topKills.officerName);
+                                  }
+                                }}
+                              >
+                                {squadHonors.topKills.officerName || `Squad ${squadHonors.topKills.squadId}`}
+                              </span>
                             </div>
                             <span className="text-[10px] text-muted-foreground truncate block">
                               Squad {squadHonors.topKills.squadId} • {squadHonors.topKills.membersCount} soldados ({squadHonors.topKills.avgKills}/homem)
@@ -2100,7 +2424,18 @@ export function MatchReplay({
                           <div className="min-w-0">
                             <div className="font-bold text-sm truncate text-foreground flex items-center gap-1">
                               <Shield className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-                              <span className="truncate">{squadHonors.topCohesion.officerName || `Squad ${squadHonors.topCohesion.squadId}`}</span>
+                              <span 
+                                className={`truncate ${squadHonors.topCohesion.officerName ? 'hover:underline hover:text-purple-300' : ''}`}
+                                title={squadHonors.topCohesion.officerName ? `Clique para abrir o Dossiê de Combate de ${squadHonors.topCohesion.officerName}` : undefined}
+                                onClick={(e) => {
+                                  if (squadHonors.topCohesion.officerName) {
+                                    e.stopPropagation();
+                                    openPlayerDossier(squadHonors.topCohesion.officerName);
+                                  }
+                                }}
+                              >
+                                {squadHonors.topCohesion.officerName || `Squad ${squadHonors.topCohesion.squadId}`}
+                              </span>
                             </div>
                             <span className="text-[10px] text-muted-foreground truncate block">
                               Squad {squadHonors.topCohesion.squadId} • {squadHonors.topCohesion.membersCount} soldados operando juntos
@@ -2134,7 +2469,18 @@ export function MatchReplay({
                           <div className="min-w-0">
                             <div className="font-bold text-sm truncate text-foreground flex items-center gap-1">
                               {squadHonors.topTankSquad.isTank ? <Truck className="w-3.5 h-3.5 text-orange-400 shrink-0" /> : <Shield className="w-3.5 h-3.5 text-muted-foreground shrink-0" />}
-                              <span className="truncate">{squadHonors.topTankSquad.officerName || `Squad ${squadHonors.topTankSquad.squadId}`}</span>
+                              <span 
+                                className={`truncate ${squadHonors.topTankSquad.officerName ? 'hover:underline hover:text-orange-300' : ''}`}
+                                title={squadHonors.topTankSquad.officerName ? `Clique para abrir o Dossiê de Combate de ${squadHonors.topTankSquad.officerName}` : undefined}
+                                onClick={(e) => {
+                                  if (squadHonors.topTankSquad.officerName) {
+                                    e.stopPropagation();
+                                    openPlayerDossier(squadHonors.topTankSquad.officerName);
+                                  }
+                                }}
+                              >
+                                {squadHonors.topTankSquad.officerName || `Squad ${squadHonors.topTankSquad.squadId}`}
+                              </span>
                             </div>
                             <span className="text-[10px] text-muted-foreground truncate block">
                               {squadHonors.topTankSquad.isTank ? `Blindado • ${squadHonors.topTankSquad.membersCount} tripulantes` : `Infantaria • ${squadHonors.topTankSquad.membersCount} soldados`}
@@ -2167,8 +2513,11 @@ export function MatchReplay({
                       const p = individualHonors.topTankGunner;
                       const isAxis = (typeof p.team === 'object' ? p.team?.side : p.team) === 'axis';
                       return (
-                        <div className={`p-3 rounded-xl border flex items-center justify-between gap-4 transition-all hover:scale-[1.01] ${
-                          isAxis ? 'bg-red-500/5 border-red-500/25' : 'bg-blue-500/5 border-blue-500/25'
+                        <div 
+                          onClick={() => openPlayerDossier(p.player)}
+                          title={`Clique para abrir o Dossiê de Combate de ${p.player}`}
+                          className={`p-3 rounded-xl border flex items-center justify-between gap-4 transition-all hover:scale-[1.01] cursor-pointer hover:shadow-md ${
+                          isAxis ? 'bg-red-500/5 border-red-500/25 hover:border-red-500/50' : 'bg-blue-500/5 border-blue-500/25 hover:border-blue-500/50'
                         }`}>
                           <div className="flex items-center gap-3 min-w-0">
                             <div className="w-9 h-9 rounded-xl bg-orange-500/10 border border-orange-500/30 flex items-center justify-center text-orange-400 shrink-0 shadow-sm">
@@ -2181,7 +2530,7 @@ export function MatchReplay({
                                   {isAxis ? 'Eixo' : 'Aliados'}
                                 </span>
                               </div>
-                              <div className="font-headline font-bold text-sm text-foreground truncate mt-0.5">
+                              <div className="font-headline font-bold text-sm text-foreground truncate mt-0.5 hover:underline">
                                 {p.player}
                               </div>
                               <span className="text-[10px] text-muted-foreground">
@@ -2204,8 +2553,11 @@ export function MatchReplay({
                       const p = individualHonors.topOfficerKills;
                       const isAxis = (typeof p.team === 'object' ? p.team?.side : p.team) === 'axis';
                       return (
-                        <div className={`p-3 rounded-xl border flex items-center justify-between gap-4 transition-all hover:scale-[1.01] ${
-                          isAxis ? 'bg-red-500/5 border-red-500/25' : 'bg-blue-500/5 border-blue-500/25'
+                        <div 
+                          onClick={() => openPlayerDossier(p.player)}
+                          title={`Clique para abrir o Dossiê de Combate de ${p.player}`}
+                          className={`p-3 rounded-xl border flex items-center justify-between gap-4 transition-all hover:scale-[1.01] cursor-pointer hover:shadow-md ${
+                          isAxis ? 'bg-red-500/5 border-red-500/25 hover:border-red-500/50' : 'bg-blue-500/5 border-blue-500/25 hover:border-blue-500/50'
                         }`}>
                           <div className="flex items-center gap-3 min-w-0">
                             <div className="w-9 h-9 rounded-xl bg-green-500/10 border border-green-500/30 flex items-center justify-center text-green-400 shrink-0 shadow-sm">
@@ -2218,7 +2570,7 @@ export function MatchReplay({
                                   {isAxis ? 'Eixo' : 'Aliados'}
                                 </span>
                               </div>
-                              <div className="font-headline font-bold text-sm text-foreground truncate mt-0.5">
+                              <div className="font-headline font-bold text-sm text-foreground truncate mt-0.5 hover:underline">
                                 {p.player}
                               </div>
                               <span className="text-[10px] text-muted-foreground">
@@ -2241,8 +2593,11 @@ export function MatchReplay({
                       const p = individualHonors.topOfficerDefense;
                       const isAxis = (typeof p.team === 'object' ? p.team?.side : p.team) === 'axis';
                       return (
-                        <div className={`p-3 rounded-xl border flex items-center justify-between gap-4 transition-all hover:scale-[1.01] ${
-                          isAxis ? 'bg-red-500/5 border-red-500/25' : 'bg-blue-500/5 border-blue-500/25'
+                        <div 
+                          onClick={() => openPlayerDossier(p.player)}
+                          title={`Clique para abrir o Dossiê de Combate de ${p.player}`}
+                          className={`p-3 rounded-xl border flex items-center justify-between gap-4 transition-all hover:scale-[1.01] cursor-pointer hover:shadow-md ${
+                          isAxis ? 'bg-red-500/5 border-red-500/25 hover:border-red-500/50' : 'bg-blue-500/5 border-blue-500/25 hover:border-blue-500/50'
                         }`}>
                           <div className="flex items-center gap-3 min-w-0">
                             <div className="w-9 h-9 rounded-xl bg-blue-500/10 border border-blue-500/30 flex items-center justify-center text-blue-400 shrink-0 shadow-sm">
@@ -2255,7 +2610,7 @@ export function MatchReplay({
                                   {isAxis ? 'Eixo' : 'Aliados'}
                                 </span>
                               </div>
-                              <div className="font-headline font-bold text-sm text-foreground truncate mt-0.5">
+                              <div className="font-headline font-bold text-sm text-foreground truncate mt-0.5 hover:underline">
                                 {p.player}
                               </div>
                               <span className="text-[10px] text-muted-foreground">
@@ -2278,8 +2633,11 @@ export function MatchReplay({
                       const p = individualHonors.topOfficerSupport;
                       const isAxis = (typeof p.team === 'object' ? p.team?.side : p.team) === 'axis';
                       return (
-                        <div className={`p-3 rounded-xl border flex items-center justify-between gap-4 transition-all hover:scale-[1.01] ${
-                          isAxis ? 'bg-red-500/5 border-red-500/25' : 'bg-blue-500/5 border-blue-500/25'
+                        <div 
+                          onClick={() => openPlayerDossier(p.player)}
+                          title={`Clique para abrir o Dossiê de Combate de ${p.player}`}
+                          className={`p-3 rounded-xl border flex items-center justify-between gap-4 transition-all hover:scale-[1.01] cursor-pointer hover:shadow-md ${
+                          isAxis ? 'bg-red-500/5 border-red-500/25 hover:border-red-500/50' : 'bg-blue-500/5 border-blue-500/25 hover:border-blue-500/50'
                         }`}>
                           <div className="flex items-center gap-3 min-w-0">
                             <div className="w-9 h-9 rounded-xl bg-purple-500/10 border border-purple-500/30 flex items-center justify-center text-purple-400 shrink-0 shadow-sm">
@@ -2292,7 +2650,7 @@ export function MatchReplay({
                                   {isAxis ? 'Eixo' : 'Aliados'}
                                 </span>
                               </div>
-                              <div className="font-headline font-bold text-sm text-foreground truncate mt-0.5">
+                              <div className="font-headline font-bold text-sm text-foreground truncate mt-0.5 hover:underline">
                                 {p.player}
                               </div>
                               <span className="text-[10px] text-muted-foreground">
@@ -2315,8 +2673,11 @@ export function MatchReplay({
                       const p = individualHonors.topOfficerCombat;
                       const isAxis = (typeof p.team === 'object' ? p.team?.side : p.team) === 'axis';
                       return (
-                        <div className={`p-3 rounded-xl border flex items-center justify-between gap-4 transition-all hover:scale-[1.01] ${
-                          isAxis ? 'bg-red-500/5 border-red-500/25' : 'bg-blue-500/5 border-blue-500/25'
+                        <div 
+                          onClick={() => openPlayerDossier(p.player)}
+                          title={`Clique para abrir o Dossiê de Combate de ${p.player}`}
+                          className={`p-3 rounded-xl border flex items-center justify-between gap-4 transition-all hover:scale-[1.01] cursor-pointer hover:shadow-md ${
+                          isAxis ? 'bg-red-500/5 border-red-500/25 hover:border-red-500/50' : 'bg-blue-500/5 border-blue-500/25 hover:border-blue-500/50'
                         }`}>
                           <div className="flex items-center gap-3 min-w-0">
                             <div className="w-9 h-9 rounded-xl bg-yellow-500/10 border border-yellow-500/30 flex items-center justify-center text-yellow-500 shrink-0 shadow-sm">
@@ -2329,7 +2690,7 @@ export function MatchReplay({
                                   {isAxis ? 'Eixo' : 'Aliados'}
                                 </span>
                               </div>
-                              <div className="font-headline font-bold text-sm text-foreground truncate mt-0.5">
+                              <div className="font-headline font-bold text-sm text-foreground truncate mt-0.5 hover:underline">
                                 {p.player}
                               </div>
                               <span className="text-[10px] text-muted-foreground">
@@ -2352,8 +2713,11 @@ export function MatchReplay({
                       const p = individualHonors.topOfficerOffense;
                       const isAxis = (typeof p.team === 'object' ? p.team?.side : p.team) === 'axis';
                       return (
-                        <div className={`p-3 rounded-xl border flex items-center justify-between gap-4 transition-all hover:scale-[1.01] ${
-                          isAxis ? 'bg-red-500/5 border-red-500/25' : 'bg-blue-500/5 border-blue-500/25'
+                        <div 
+                          onClick={() => openPlayerDossier(p.player)}
+                          title={`Clique para abrir o Dossiê de Combate de ${p.player}`}
+                          className={`p-3 rounded-xl border flex items-center justify-between gap-4 transition-all hover:scale-[1.01] cursor-pointer hover:shadow-md ${
+                          isAxis ? 'bg-red-500/5 border-red-500/25 hover:border-red-500/50' : 'bg-blue-500/5 border-blue-500/25 hover:border-blue-500/50'
                         }`}>
                           <div className="flex items-center gap-3 min-w-0">
                             <div className="w-9 h-9 rounded-xl bg-red-500/10 border border-red-500/30 flex items-center justify-center text-red-500 shrink-0 shadow-sm">
@@ -2366,7 +2730,7 @@ export function MatchReplay({
                                   {isAxis ? 'Eixo' : 'Aliados'}
                                 </span>
                               </div>
-                              <div className="font-headline font-bold text-sm text-foreground truncate mt-0.5">
+                              <div className="font-headline font-bold text-sm text-foreground truncate mt-0.5 hover:underline">
                                 {p.player}
                               </div>
                               <span className="text-[10px] text-muted-foreground">
@@ -2404,8 +2768,11 @@ export function MatchReplay({
                       const isAxis = (typeof p.team === 'object' ? p.team?.side : p.team) === 'axis';
                       const bazookaKills = p.kills_by_type?.bazooka;
                       return (
-                        <div className={`p-3 rounded-xl border flex items-center justify-between gap-4 transition-all hover:scale-[1.01] ${
-                          isAxis ? 'bg-red-500/5 border-red-500/25' : 'bg-blue-500/5 border-blue-500/25'
+                        <div 
+                          onClick={() => openPlayerDossier(p.player)}
+                          title={`Clique para abrir o Dossiê de Combate de ${p.player}`}
+                          className={`p-3 rounded-xl border flex items-center justify-between gap-4 transition-all hover:scale-[1.01] cursor-pointer hover:shadow-md ${
+                          isAxis ? 'bg-red-500/5 border-red-500/25 hover:border-red-500/50' : 'bg-blue-500/5 border-blue-500/25 hover:border-blue-500/50'
                         }`}>
                           <div className="flex items-center gap-3 min-w-0">
                             <div className="w-9 h-9 rounded-xl bg-orange-500/10 border border-orange-500/30 flex items-center justify-center text-orange-400 shrink-0 shadow-sm">
@@ -2418,7 +2785,7 @@ export function MatchReplay({
                                   {isAxis ? 'Eixo' : 'Aliados'}
                                 </span>
                               </div>
-                              <div className="font-headline font-bold text-sm text-foreground truncate mt-0.5">
+                              <div className="font-headline font-bold text-sm text-foreground truncate mt-0.5 hover:underline">
                                 {p.player}
                               </div>
                               <span className="text-[10px] text-muted-foreground">
@@ -2441,8 +2808,11 @@ export function MatchReplay({
                       const p = individualHonors.topSoldierKills;
                       const isAxis = (typeof p.team === 'object' ? p.team?.side : p.team) === 'axis';
                       return (
-                        <div className={`p-3 rounded-xl border flex items-center justify-between gap-4 transition-all hover:scale-[1.01] ${
-                          isAxis ? 'bg-red-500/5 border-red-500/25' : 'bg-blue-500/5 border-blue-500/25'
+                        <div 
+                          onClick={() => openPlayerDossier(p.player)}
+                          title={`Clique para abrir o Dossiê de Combate de ${p.player}`}
+                          className={`p-3 rounded-xl border flex items-center justify-between gap-4 transition-all hover:scale-[1.01] cursor-pointer hover:shadow-md ${
+                          isAxis ? 'bg-red-500/5 border-red-500/25 hover:border-red-500/50' : 'bg-blue-500/5 border-blue-500/25 hover:border-blue-500/50'
                         }`}>
                           <div className="flex items-center gap-3 min-w-0">
                             <div className="w-9 h-9 rounded-xl bg-green-500/10 border border-green-500/30 flex items-center justify-center text-green-400 shrink-0 shadow-sm">
@@ -2455,7 +2825,7 @@ export function MatchReplay({
                                   {isAxis ? 'Eixo' : 'Aliados'}
                                 </span>
                               </div>
-                              <div className="font-headline font-bold text-sm text-foreground truncate mt-0.5">
+                              <div className="font-headline font-bold text-sm text-foreground truncate mt-0.5 hover:underline">
                                 {p.player}
                               </div>
                               <span className="text-[10px] text-muted-foreground">
@@ -2478,8 +2848,11 @@ export function MatchReplay({
                       const p = individualHonors.topSoldierDefense;
                       const isAxis = (typeof p.team === 'object' ? p.team?.side : p.team) === 'axis';
                       return (
-                        <div className={`p-3 rounded-xl border flex items-center justify-between gap-4 transition-all hover:scale-[1.01] ${
-                          isAxis ? 'bg-red-500/5 border-red-500/25' : 'bg-blue-500/5 border-blue-500/25'
+                        <div 
+                          onClick={() => openPlayerDossier(p.player)}
+                          title={`Clique para abrir o Dossiê de Combate de ${p.player}`}
+                          className={`p-3 rounded-xl border flex items-center justify-between gap-4 transition-all hover:scale-[1.01] cursor-pointer hover:shadow-md ${
+                          isAxis ? 'bg-red-500/5 border-red-500/25 hover:border-red-500/50' : 'bg-blue-500/5 border-blue-500/25 hover:border-blue-500/50'
                         }`}>
                           <div className="flex items-center gap-3 min-w-0">
                             <div className="w-9 h-9 rounded-xl bg-blue-500/10 border border-blue-500/30 flex items-center justify-center text-blue-400 shrink-0 shadow-sm">
@@ -2492,7 +2865,7 @@ export function MatchReplay({
                                   {isAxis ? 'Eixo' : 'Aliados'}
                                 </span>
                               </div>
-                              <div className="font-headline font-bold text-sm text-foreground truncate mt-0.5">
+                              <div className="font-headline font-bold text-sm text-foreground truncate mt-0.5 hover:underline">
                                 {p.player}
                               </div>
                               <span className="text-[10px] text-muted-foreground">
@@ -2515,8 +2888,11 @@ export function MatchReplay({
                       const p = individualHonors.topSoldierSupport;
                       const isAxis = (typeof p.team === 'object' ? p.team?.side : p.team) === 'axis';
                       return (
-                        <div className={`p-3 rounded-xl border flex items-center justify-between gap-4 transition-all hover:scale-[1.01] ${
-                          isAxis ? 'bg-red-500/5 border-red-500/25' : 'bg-blue-500/5 border-blue-500/25'
+                        <div 
+                          onClick={() => openPlayerDossier(p.player)}
+                          title={`Clique para abrir o Dossiê de Combate de ${p.player}`}
+                          className={`p-3 rounded-xl border flex items-center justify-between gap-4 transition-all hover:scale-[1.01] cursor-pointer hover:shadow-md ${
+                          isAxis ? 'bg-red-500/5 border-red-500/25 hover:border-red-500/50' : 'bg-blue-500/5 border-blue-500/25 hover:border-blue-500/50'
                         }`}>
                           <div className="flex items-center gap-3 min-w-0">
                             <div className="w-9 h-9 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 shrink-0 shadow-sm">
@@ -2529,7 +2905,7 @@ export function MatchReplay({
                                   {isAxis ? 'Eixo' : 'Aliados'}
                                 </span>
                               </div>
-                              <div className="font-headline font-bold text-sm text-foreground truncate mt-0.5">
+                              <div className="font-headline font-bold text-sm text-foreground truncate mt-0.5 hover:underline">
                                 {p.player}
                               </div>
                               <span className="text-[10px] text-muted-foreground">
@@ -2552,8 +2928,11 @@ export function MatchReplay({
                       const p = individualHonors.topSoldierCombat;
                       const isAxis = (typeof p.team === 'object' ? p.team?.side : p.team) === 'axis';
                       return (
-                        <div className={`p-3 rounded-xl border flex items-center justify-between gap-4 transition-all hover:scale-[1.01] ${
-                          isAxis ? 'bg-red-500/5 border-red-500/25' : 'bg-blue-500/5 border-blue-500/25'
+                        <div 
+                          onClick={() => openPlayerDossier(p.player)}
+                          title={`Clique para abrir o Dossiê de Combate de ${p.player}`}
+                          className={`p-3 rounded-xl border flex items-center justify-between gap-4 transition-all hover:scale-[1.01] cursor-pointer hover:shadow-md ${
+                          isAxis ? 'bg-red-500/5 border-red-500/25 hover:border-red-500/50' : 'bg-blue-500/5 border-blue-500/25 hover:border-blue-500/50'
                         }`}>
                           <div className="flex items-center gap-3 min-w-0">
                             <div className="w-9 h-9 rounded-xl bg-yellow-500/10 border border-yellow-500/30 flex items-center justify-center text-yellow-500 shrink-0 shadow-sm">
@@ -2566,7 +2945,7 @@ export function MatchReplay({
                                   {isAxis ? 'Eixo' : 'Aliados'}
                                 </span>
                               </div>
-                              <div className="font-headline font-bold text-sm text-foreground truncate mt-0.5">
+                              <div className="font-headline font-bold text-sm text-foreground truncate mt-0.5 hover:underline">
                                 {p.player}
                               </div>
                               <span className="text-[10px] text-muted-foreground">
@@ -2589,8 +2968,11 @@ export function MatchReplay({
                       const p = individualHonors.topSoldierOffense;
                       const isAxis = (typeof p.team === 'object' ? p.team?.side : p.team) === 'axis';
                       return (
-                        <div className={`p-3 rounded-xl border flex items-center justify-between gap-4 transition-all hover:scale-[1.01] ${
-                          isAxis ? 'bg-red-500/5 border-red-500/25' : 'bg-blue-500/5 border-blue-500/25'
+                        <div 
+                          onClick={() => openPlayerDossier(p.player)}
+                          title={`Clique para abrir o Dossiê de Combate de ${p.player}`}
+                          className={`p-3 rounded-xl border flex items-center justify-between gap-4 transition-all hover:scale-[1.01] cursor-pointer hover:shadow-md ${
+                          isAxis ? 'bg-red-500/5 border-red-500/25 hover:border-red-500/50' : 'bg-blue-500/5 border-blue-500/25 hover:border-blue-500/50'
                         }`}>
                           <div className="flex items-center gap-3 min-w-0">
                             <div className="w-9 h-9 rounded-xl bg-red-500/10 border border-red-500/30 flex items-center justify-center text-red-500 shrink-0 shadow-sm">
@@ -2603,7 +2985,7 @@ export function MatchReplay({
                                   {isAxis ? 'Eixo' : 'Aliados'}
                                 </span>
                               </div>
-                              <div className="font-headline font-bold text-sm text-foreground truncate mt-0.5">
+                              <div className="font-headline font-bold text-sm text-foreground truncate mt-0.5 hover:underline">
                                 {p.player}
                               </div>
                               <span className="text-[10px] text-muted-foreground">
@@ -2627,6 +3009,273 @@ export function MatchReplay({
           )}
         </CardContent>
       </Card>
+
+      {/* Slide-over Drawer: Dossiê e Linha do Tempo Individual de Combate */}
+      {selectedPlayerDossier && (() => {
+        const p = selectedPlayerDossier;
+        const isAxis = (typeof p.team === 'object' ? p.team?.side : p.team) === 'axis';
+        const encounters = p.encounters || [];
+        const killsCount = encounters.filter(e => e.action === 'KILL').length;
+        const deathsCount = encounters.filter(e => e.action === 'DEATH').length;
+
+        // Contabilizar armas mais letais
+        const weaponCounts: Record<string, number> = {};
+        encounters.forEach(e => {
+          if (e.action === 'KILL' && e.weapon) {
+            weaponCounts[e.weapon] = (weaponCounts[e.weapon] || 0) + 1;
+          }
+        });
+        const topWeapons = Object.entries(weaponCounts).sort((a, b) => b[1] - a[1]);
+
+        // Filtrar encontros conforme a aba selecionada
+        const filteredEncounters = encounters.filter(e => {
+          if (timelineFilter === 'kills') return e.action === 'KILL';
+          if (timelineFilter === 'deaths') return e.action === 'DEATH';
+          return true;
+        });
+
+        const kd = p.deaths && p.deaths > 0 
+          ? ((p.kills || 0) / p.deaths).toFixed(2) 
+          : (p.kills || 0).toString();
+
+        return (
+          <div className="fixed inset-0 z-50 flex justify-end">
+            {/* Backdrop */}
+            <div 
+              className="fixed inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
+              onClick={() => setSelectedPlayerDossier(null)}
+            />
+
+            {/* Slide-over Drawer lateral */}
+            <div className="relative w-full max-w-xl md:w-[560px] h-full bg-card/95 border-l border-border/80 shadow-[0_0_50px_rgba(0,0,0,0.8)] backdrop-blur-2xl z-10 flex flex-col overflow-hidden animate-in slide-in-from-right duration-300">
+              
+              {/* Header do Dossiê */}
+              <div className={`p-5 border-b flex items-start justify-between gap-4 ${
+                isAxis 
+                  ? 'bg-gradient-to-r from-red-950/40 via-red-900/15 to-transparent border-red-500/30' 
+                  : 'bg-gradient-to-r from-blue-950/40 via-blue-900/15 to-transparent border-blue-500/30'
+              }`}>
+                <div className="flex items-center gap-3.5 min-w-0">
+                  <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-bold text-lg border shadow-lg shrink-0 ${
+                    isAxis 
+                      ? 'bg-red-500/20 border-red-500/40 text-red-400' 
+                      : 'bg-blue-500/20 border-blue-500/40 text-blue-400'
+                  }`}>
+                    {isAxis ? <Skull className="w-6 h-6" /> : <Shield className="w-6 h-6" />}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border ${
+                        isAxis 
+                          ? 'bg-red-500/20 text-red-300 border-red-500/40' 
+                          : 'bg-blue-500/20 text-blue-300 border-blue-500/40'
+                      }`}>
+                        {isAxis ? 'Eixo (Alemanha)' : 'Aliados'}
+                      </span>
+                      <span className="text-[10px] text-muted-foreground font-mono">
+                        ID: {p.player_id.slice(-6)}
+                      </span>
+                    </div>
+                    <h2 className="text-xl font-headline font-black text-foreground truncate mt-0.5 tracking-tight">
+                      {p.player}
+                    </h2>
+                    <p className="text-xs text-muted-foreground flex items-center gap-1.5 mt-0.5">
+                      <Swords className="w-3.5 h-3.5 text-amber-400" />
+                      Dossiê Tático & Linha do Tempo de Combate
+                    </p>
+                  </div>
+                </div>
+
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  onClick={() => setSelectedPlayerDossier(null)}
+                  className="rounded-full hover:bg-muted/50 text-muted-foreground hover:text-foreground shrink-0"
+                >
+                  <X className="w-5 h-5" />
+                </Button>
+              </div>
+
+              {/* Estatísticas Rápidas de Combate */}
+              <div className="p-4 bg-muted/20 border-b border-border/40 grid grid-cols-4 gap-2 text-center">
+                <div className="bg-background/60 p-2.5 rounded-xl border border-border/40 shadow-sm">
+                  <div className="text-[10px] uppercase font-bold text-muted-foreground">Abates</div>
+                  <div className="text-lg font-black font-mono text-emerald-400">{p.kills || 0}</div>
+                </div>
+                <div className="bg-background/60 p-2.5 rounded-xl border border-border/40 shadow-sm">
+                  <div className="text-[10px] uppercase font-bold text-muted-foreground">Mortes</div>
+                  <div className="text-lg font-black font-mono text-rose-400">{p.deaths || 0}</div>
+                </div>
+                <div className="bg-background/60 p-2.5 rounded-xl border border-border/40 shadow-sm">
+                  <div className="text-[10px] uppercase font-bold text-muted-foreground">K/D Ratio</div>
+                  <div className="text-lg font-black font-mono text-amber-400">{kd}</div>
+                </div>
+                <div className="bg-background/60 p-2.5 rounded-xl border border-border/40 shadow-sm">
+                  <div className="text-[10px] uppercase font-bold text-muted-foreground">Combate</div>
+                  <div className="text-lg font-black font-mono text-yellow-500">{p.combat?.toLocaleString() || 0}</div>
+                </div>
+              </div>
+
+              {/* Pontuações de Apoio (Defesa, Suporte, Ofensiva, Veículos) */}
+              <div className="px-4 py-2.5 bg-muted/10 border-b border-border/40 flex items-center justify-between text-xs text-muted-foreground">
+                <div className="flex items-center gap-1.5">
+                  <Shield className="w-3.5 h-3.5 text-blue-400" />
+                  <span>Defesa: <strong className="text-foreground font-mono">{p.defense?.toLocaleString() || 0}</strong></span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <Wrench className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>Suporte: <strong className="text-foreground font-mono">{p.support?.toLocaleString() || 0}</strong></span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <Flag className="w-3.5 h-3.5 text-red-400" />
+                  <span>Ataque: <strong className="text-foreground font-mono">{p.offense?.toLocaleString() || 0}</strong></span>
+                </div>
+                {(p.vehicles_destroyed || 0) > 0 && (
+                  <div className="flex items-center gap-1.5">
+                    <Truck className="w-3.5 h-3.5 text-orange-400" />
+                    <span>Veículos: <strong className="text-orange-400 font-mono">{p.vehicles_destroyed}</strong></span>
+                  </div>
+                )}
+              </div>
+
+              {/* Arsenal e Armas Mais Letais */}
+              {topWeapons.length > 0 && (
+                <div className="p-4 border-b border-border/40 bg-muted/10">
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-1.5">
+                    <Target className="w-3.5 h-3.5 text-amber-400" />
+                    Arsenal Empregado ({topWeapons.length} {topWeapons.length === 1 ? 'arma' : 'armas'})
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
+                    {topWeapons.map(([weaponName, count]) => (
+                      <span 
+                        key={weaponName} 
+                        className="text-[11px] font-mono px-2 py-0.5 rounded-lg bg-background/80 border border-border/60 text-foreground flex items-center gap-1.5 shadow-sm"
+                      >
+                        <span className="truncate max-w-[160px]">{weaponName}</span>
+                        <span className="bg-emerald-500/20 text-emerald-400 px-1 py-0.2 rounded font-bold text-[10px]">
+                          {count}
+                        </span>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Controles de Filtro da Linha do Tempo */}
+              <div className="p-3 bg-muted/30 border-b border-border/60 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1 bg-background/70 p-1 rounded-lg border border-border/50">
+                  <Button 
+                    variant={timelineFilter === 'all' ? 'default' : 'ghost'} 
+                    size="sm" 
+                    onClick={() => setTimelineFilter('all')}
+                    className="h-7 text-xs px-2.5 font-bold"
+                  >
+                    Todos ({encounters.length})
+                  </Button>
+                  <Button 
+                    variant={timelineFilter === 'kills' ? 'default' : 'ghost'} 
+                    size="sm" 
+                    onClick={() => setTimelineFilter('kills')}
+                    className={`h-7 text-xs px-2.5 font-bold ${timelineFilter === 'kills' ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : 'text-emerald-400'}`}
+                  >
+                    Abates ({killsCount})
+                  </Button>
+                  <Button 
+                    variant={timelineFilter === 'deaths' ? 'default' : 'ghost'} 
+                    size="sm" 
+                    onClick={() => setTimelineFilter('deaths')}
+                    className={`h-7 text-xs px-2.5 font-bold ${timelineFilter === 'deaths' ? 'bg-rose-600 hover:bg-rose-700 text-white' : 'text-rose-400'}`}
+                  >
+                    Mortes ({deathsCount})
+                  </Button>
+                </div>
+
+                <span className="text-[10px] text-muted-foreground italic hidden sm:inline">
+                  Clique em ▶ para saltar no Replay
+                </span>
+              </div>
+
+              {/* Lista Cronológica de Confrontos (Timeline) */}
+              <div className="flex-1 overflow-y-auto p-4 space-y-2.5">
+                {filteredEncounters.length === 0 ? (
+                  <div className="text-center py-12 text-muted-foreground flex flex-col items-center gap-2">
+                    <Crosshair className="w-8 h-8 opacity-30 text-amber-400" />
+                    <p className="text-sm font-medium">Nenhum evento registrado para este filtro.</p>
+                  </div>
+                ) : (
+                  filteredEncounters.map((enc, idx) => {
+                    const isKill = enc.action === 'KILL';
+                    const isCurrent = Math.abs(currentTime - enc.ts) <= 2;
+                    return (
+                      <div 
+                        key={`${enc.ts}-${idx}`}
+                        className={`p-3 rounded-xl border transition-all flex items-center justify-between gap-3 ${
+                          isCurrent 
+                            ? 'ring-2 ring-amber-400 bg-amber-500/10 border-amber-500/60 shadow-[0_0_15px_rgba(251,191,36,0.25)]' 
+                            : isKill
+                              ? 'bg-emerald-950/15 border-emerald-500/25 hover:border-emerald-500/50 hover:bg-emerald-950/25'
+                              : 'bg-rose-950/15 border-rose-500/25 hover:border-rose-500/50 hover:bg-rose-950/25'
+                        }`}
+                      >
+                        {/* Indicador de Tempo e Tipo */}
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="flex flex-col items-center">
+                            <span className="font-mono text-xs font-bold text-muted-foreground px-1.5 py-0.5 rounded bg-background/80 border border-border/50">
+                              {formatTime(enc.ts)}
+                            </span>
+                            {isCurrent && (
+                              <span className="text-[8px] font-bold text-amber-400 animate-pulse mt-0.5">
+                                NO AR
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className={`text-[10px] font-black uppercase px-1.5 py-0.2 rounded border ${
+                                isKill 
+                                  ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' 
+                                  : 'bg-rose-500/20 text-rose-400 border-rose-500/30'
+                              }`}>
+                                {isKill ? 'Abate' : 'Morte'}
+                              </span>
+                              <span className="font-bold text-sm text-foreground truncate">
+                                {isKill ? `vs ${enc.player_name || 'Inimigo'}` : `por ${enc.player_name || 'Inimigo'}`}
+                              </span>
+                            </div>
+                            <div className="text-[11px] text-muted-foreground font-mono truncate mt-0.5 flex items-center gap-1.5">
+                              <Crosshair className="w-3 h-3 text-amber-400 shrink-0" />
+                              <span className="truncate">{enc.weapon || 'Arma Desconhecida'}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Botão Ver no Replay */}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => jumpToEncounter(enc)}
+                          className="h-8 px-2.5 text-xs bg-amber-500/10 hover:bg-amber-500/25 text-amber-400 border-amber-500/40 hover:border-amber-500 font-mono flex items-center gap-1.5 shrink-0 shadow-sm"
+                          title={`Saltar o replay para ${formatTime(enc.ts)} e focar no combate`}
+                        >
+                          <Play className="w-3 h-3 fill-amber-400" />
+                          <span className="hidden sm:inline">Ver no Replay</span>
+                        </Button>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              {/* Rodapé Informativo */}
+              <div className="p-3 bg-muted/40 border-t border-border/60 text-center text-[11px] text-muted-foreground flex items-center justify-center gap-2">
+                <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                <span>Dados extraídos do log de combate CRCON com sincronização precisa no replay.</span>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
