@@ -682,7 +682,7 @@ export function MatchReplay({
     };
   }, [allMatchSquads, totalSquadCohesion, honorsTeamFilter]);
 
-  // Individual Honors
+  // Individual Honors (Oficiais, Soldados e Especialistas)
   const individualHonors = useMemo(() => {
     if (!playerStats || playerStats.length === 0) return null;
 
@@ -697,35 +697,83 @@ export function MatchReplay({
 
     const maxTs = Math.max(...playerStats.flatMap((p: any) => (p.units || []).map((u: any) => u.ts)), 5400);
 
-    // 1. Oficial com mais support: Deve ter atuado genuinamente como Oficial (SL / Spotter / Tank Commander)
-    // por pelo menos 20 min (1200s) ou >35% da sua partida, evitando quem apenas assumiu o papel por 5 minutos
-    const trueOfficers = nonCasters.filter((p: any) => {
-      if (!p.units || p.units.length === 0) return false;
-      let officerSec = 0;
+    const tankGunners: any[] = [];
+    const officers: any[] = [];
+    const soldiers: any[] = [];
+    const pureInfantry: any[] = [];
+
+    nonCasters.forEach((p: any) => {
+      const units = p.units || [];
+      let offSec = 0;
+      let tankSec = 0;
+      let cmdSec = 0;
       let totSec = 0;
-      for (let i = 0; i < p.units.length; i++) {
-        const u = p.units[i];
+
+      for (let i = 0; i < units.length; i++) {
+        const u = units[i];
         const start = u.ts;
-        const end = (i + 1 < p.units.length) ? p.units[i + 1].ts : maxTs;
+        const end = (i + 1 < units.length) ? units[i + 1].ts : maxTs;
         const dur = Math.max(0, end - start);
         totSec += dur;
-        if ([9, 4, 11].includes(u.role)) officerSec += dur;
+        if ([9, 4].includes(u.role)) offSec += dur;
+        if ([11, 12].includes(u.role)) tankSec += dur;
+        if (u.role === 13) cmdSec += dur;
       }
-      return officerSec >= 1200 || (totSec > 0 && officerSec / totSec >= 0.35);
+
+      const isOfficer = offSec >= 1200 || (totSec > 0 && offSec / totSec >= 0.35);
+      const isTank = tankSec >= 600 || (totSec > 0 && tankSec / totSec >= 0.35);
+      const isCmd = cmdSec >= 600 || (totSec > 0 && cmdSec / totSec >= 0.35);
+
+      if (isTank) tankGunners.push(p);
+      if (!isTank) pureInfantry.push(p);
+
+      if (isOfficer) {
+        officers.push(p);
+      } else if (!isTank && !isCmd) {
+        soldiers.push(p);
+      }
     });
 
-    const topOfficerSupport = [...(trueOfficers.length > 0 ? trueOfficers : nonCasters)].sort((a: any, b: any) => (b.support || 0) - (a.support || 0))[0];
+    // 1. Atirador de Tanque (Blindados): tripulante de blindado com mais veículos destruídos
+    const topTankGunner = [...tankGunners].sort((a: any, b: any) => 
+      (b.vehicles_destroyed || 0) - (a.vehicles_destroyed || 0) || (b.kills || 0) - (a.kills || 0)
+    )[0];
 
-    // 2. Jogador com mais kills
-    const topPlayerKills = [...nonCasters].sort((a: any, b: any) => (b.kills || 0) - (a.kills || 0))[0];
+    // 2. Oficiais (SLs)
+    const validOfficers = officers.length > 0 ? officers : nonCasters;
+    const topOfficerKills = [...validOfficers].sort((a: any, b: any) => (b.kills || 0) - (a.kills || 0))[0];
+    const topOfficerDefense = [...validOfficers].sort((a: any, b: any) => (b.defense || 0) - (a.defense || 0))[0];
+    const topOfficerSupport = [...validOfficers].sort((a: any, b: any) => (b.support || 0) - (a.support || 0))[0];
+    const topOfficerCombat = [...validOfficers].sort((a: any, b: any) => (b.combat || 0) - (a.combat || 0))[0];
+    const topOfficerOffense = [...validOfficers].sort((a: any, b: any) => (b.offense || 0) - (a.offense || 0))[0];
 
-    // 3. Jogador de infantaria com mais abate a tank (não tank commander ou crewman: 11, 12)
-    const pureInfantry = nonCasters.filter((p: any) => !p.units?.some((u: any) => [11, 12].includes(u.role)));
-    const topInfantryTankHunter = [...pureInfantry].sort((a: any, b: any) => (b.vehicles_destroyed || 0) - (a.vehicles_destroyed || 0))[0];
+    // 3. Soldados (Não-Oficiais)
+    const validSoldiers = soldiers.length > 0 ? soldiers : nonCasters;
+    const topSoldierKills = [...validSoldiers].sort((a: any, b: any) => (b.kills || 0) - (a.kills || 0))[0];
+    const topSoldierDefense = [...validSoldiers].sort((a: any, b: any) => (b.defense || 0) - (a.defense || 0))[0];
+    const topSoldierSupport = [...validSoldiers].sort((a: any, b: any) => (b.support || 0) - (a.support || 0))[0];
+    const topSoldierCombat = [...validSoldiers].sort((a: any, b: any) => (b.combat || 0) - (a.combat || 0))[0];
+    const topSoldierOffense = [...validSoldiers].sort((a: any, b: any) => (b.offense || 0) - (a.offense || 0))[0];
+
+    // 4. Infantaria Caçadora de Tanques
+    const topInfantryTankHunter = [...pureInfantry].sort((a: any, b: any) => 
+      (b.vehicles_destroyed || 0) - (a.vehicles_destroyed || 0) || (b.kills || 0) - (a.kills || 0)
+    )[0];
 
     return {
+      topTankGunner,
+      // Oficiais
+      topOfficerKills,
+      topOfficerDefense,
       topOfficerSupport,
-      topPlayerKills,
+      topOfficerCombat,
+      topOfficerOffense,
+      // Soldados
+      topSoldierKills,
+      topSoldierDefense,
+      topSoldierSupport,
+      topSoldierCombat,
+      topSoldierOffense,
       topInfantryTankHunter,
     };
   }, [playerStats, honorsTeamFilter]);
@@ -1406,7 +1454,7 @@ export function MatchReplay({
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
                 {/* Painel 1: Destaques dos Esquadrões */}
                 <div className="border border-border/50 bg-card rounded-xl overflow-hidden shadow-sm flex flex-col">
                   <div className="bg-muted/40 p-3.5 border-b flex items-center justify-between">
@@ -1418,7 +1466,7 @@ export function MatchReplay({
                     </span>
                   </div>
                   
-                  <div className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-3 flex-1">
+                  <div className="p-4 flex flex-col gap-3 flex-1">
                     {/* Top Defesa */}
                     {squadHonors?.topDefense && (
                       <div 
@@ -1659,11 +1707,11 @@ export function MatchReplay({
                   </div>
                 </div>
 
-                {/* Painel 2: Destaques Individuais */}
+                {/* Painel 2: Destaques dos Oficiais */}
                 <div className="border border-border/50 bg-card rounded-xl overflow-hidden shadow-sm flex flex-col">
                   <div className="bg-muted/40 p-3.5 border-b flex items-center justify-between">
                     <h3 className="text-sm font-headline font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
-                      <Trophy className="w-4 h-4 text-yellow-500" /> Destaques Individuais
+                      <Crown className="w-4 h-4 text-purple-400" /> Destaques dos Oficiais
                     </h3>
                     <span className="text-[10px] text-muted-foreground uppercase font-mono">
                       {honorsTeamFilter === 'all' ? 'Geral' : honorsTeamFilter === 'allies' ? 'Aliados' : 'Eixo'}
@@ -1671,49 +1719,49 @@ export function MatchReplay({
                   </div>
 
                   <div className="p-4 flex flex-col gap-3 flex-1">
-                    {/* Oficial com Mais Support */}
-                    {individualHonors?.topOfficerSupport && (() => {
-                      const o = individualHonors.topOfficerSupport;
-                      const isAxis = (typeof o.team === 'object' ? o.team?.side : o.team) === 'axis';
+                    {/* Atirador de Tanque com Mais Abates de Veículo */}
+                    {individualHonors?.topTankGunner && (() => {
+                      const p = individualHonors.topTankGunner;
+                      const isAxis = (typeof p.team === 'object' ? p.team?.side : p.team) === 'axis';
                       return (
-                        <div className={`p-3 rounded-xl border flex items-center justify-between gap-4 transition-all ${
+                        <div className={`p-3 rounded-xl border flex items-center justify-between gap-4 transition-all hover:scale-[1.01] ${
                           isAxis ? 'bg-red-500/5 border-red-500/25' : 'bg-blue-500/5 border-blue-500/25'
                         }`}>
                           <div className="flex items-center gap-3 min-w-0">
-                            <div className="w-9 h-9 rounded-xl bg-purple-500/10 border border-purple-500/30 flex items-center justify-center text-purple-400 shrink-0 shadow-sm">
-                              <Wrench className="w-4 h-4" />
+                            <div className="w-9 h-9 rounded-xl bg-orange-500/10 border border-orange-500/30 flex items-center justify-center text-orange-400 shrink-0 shadow-sm">
+                              <Truck className="w-4 h-4" />
                             </div>
                             <div className="min-w-0">
                               <div className="flex items-center gap-2">
-                                <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Oficial com Mais Support</span>
+                                <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Atirador de Tanque</span>
                                 <span className={`text-[9px] uppercase font-bold px-1.5 py-0.2 rounded ${isAxis ? 'bg-red-500/20 text-red-400' : 'bg-blue-500/20 text-blue-400'}`}>
                                   {isAxis ? 'Eixo' : 'Aliados'}
                                 </span>
                               </div>
                               <div className="font-headline font-bold text-sm text-foreground truncate mt-0.5">
-                                {o.player}
+                                {p.player}
                               </div>
-                              <span className="text-[11px] text-muted-foreground">
-                                Líder de Esquadrão • Construção de defesas, guarnições e suprimentos
+                              <span className="text-[10px] text-muted-foreground">
+                                Blindados • {p.kills || 0} Abates • Canhão & Metralhadora
                               </span>
                             </div>
                           </div>
                           <div className="text-right shrink-0">
-                            <div className="text-lg font-black font-mono text-purple-400">
-                              {o.support?.toLocaleString()}
+                            <div className="text-base font-black font-mono text-orange-400">
+                              {p.vehicles_destroyed || 0}
                             </div>
-                            <div className="text-[9px] text-muted-foreground uppercase">Pontos Suporte</div>
+                            <div className="text-[9px] text-muted-foreground uppercase">Tanques Destruídos</div>
                           </div>
                         </div>
                       );
                     })()}
 
-                    {/* Jogador com Mais Kills */}
-                    {individualHonors?.topPlayerKills && (() => {
-                      const p = individualHonors.topPlayerKills;
+                    {/* Oficial com Mais Kills */}
+                    {individualHonors?.topOfficerKills && (() => {
+                      const p = individualHonors.topOfficerKills;
                       const isAxis = (typeof p.team === 'object' ? p.team?.side : p.team) === 'axis';
                       return (
-                        <div className={`p-3 rounded-xl border flex items-center justify-between gap-4 transition-all ${
+                        <div className={`p-3 rounded-xl border flex items-center justify-between gap-4 transition-all hover:scale-[1.01] ${
                           isAxis ? 'bg-red-500/5 border-red-500/25' : 'bg-blue-500/5 border-blue-500/25'
                         }`}>
                           <div className="flex items-center gap-3 min-w-0">
@@ -1722,7 +1770,7 @@ export function MatchReplay({
                             </div>
                             <div className="min-w-0">
                               <div className="flex items-center gap-2">
-                                <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Jogador com Mais Kills</span>
+                                <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Oficial com Mais Kills</span>
                                 <span className={`text-[9px] uppercase font-bold px-1.5 py-0.2 rounded ${isAxis ? 'bg-red-500/20 text-red-400' : 'bg-blue-500/20 text-blue-400'}`}>
                                   {isAxis ? 'Eixo' : 'Aliados'}
                                 </span>
@@ -1730,13 +1778,13 @@ export function MatchReplay({
                               <div className="font-headline font-bold text-sm text-foreground truncate mt-0.5">
                                 {p.player}
                               </div>
-                              <span className="text-[11px] text-muted-foreground">
-                                K/D: {p.kill_death_ratio?.toFixed(2) || '0.00'} • {p.deaths || 0} Mortes
+                              <span className="text-[10px] text-muted-foreground">
+                                Líder Letal • K/D: {p.kill_death_ratio?.toFixed(2) || '0.00'} • {p.deaths || 0} Mortes
                               </span>
                             </div>
                           </div>
                           <div className="text-right shrink-0">
-                            <div className="text-lg font-black font-mono text-green-400">
+                            <div className="text-base font-black font-mono text-green-400">
                               {p.kills}
                             </div>
                             <div className="text-[9px] text-muted-foreground uppercase">Abates Totais</div>
@@ -1745,13 +1793,175 @@ export function MatchReplay({
                       );
                     })()}
 
-                    {/* Jogador de Infantaria com Mais Abate a Tank */}
+                    {/* Oficial com Mais Defesa */}
+                    {individualHonors?.topOfficerDefense && (() => {
+                      const p = individualHonors.topOfficerDefense;
+                      const isAxis = (typeof p.team === 'object' ? p.team?.side : p.team) === 'axis';
+                      return (
+                        <div className={`p-3 rounded-xl border flex items-center justify-between gap-4 transition-all hover:scale-[1.01] ${
+                          isAxis ? 'bg-red-500/5 border-red-500/25' : 'bg-blue-500/5 border-blue-500/25'
+                        }`}>
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className="w-9 h-9 rounded-xl bg-blue-500/10 border border-blue-500/30 flex items-center justify-center text-blue-400 shrink-0 shadow-sm">
+                              <Shield className="w-4 h-4" />
+                            </div>
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Oficial com Mais Defesa</span>
+                                <span className={`text-[9px] uppercase font-bold px-1.5 py-0.2 rounded ${isAxis ? 'bg-red-500/20 text-red-400' : 'bg-blue-500/20 text-blue-400'}`}>
+                                  {isAxis ? 'Eixo' : 'Aliados'}
+                                </span>
+                              </div>
+                              <div className="font-headline font-bold text-sm text-foreground truncate mt-0.5">
+                                {p.player}
+                              </div>
+                              <span className="text-[10px] text-muted-foreground">
+                                Líder Guardião • Sustentação de setor defendido
+                              </span>
+                            </div>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <div className="text-base font-black font-mono text-blue-400">
+                              {p.defense?.toLocaleString()}
+                            </div>
+                            <div className="text-[9px] text-muted-foreground uppercase">Pontos Defesa</div>
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    {/* Oficial com Mais Suporte */}
+                    {individualHonors?.topOfficerSupport && (() => {
+                      const p = individualHonors.topOfficerSupport;
+                      const isAxis = (typeof p.team === 'object' ? p.team?.side : p.team) === 'axis';
+                      return (
+                        <div className={`p-3 rounded-xl border flex items-center justify-between gap-4 transition-all hover:scale-[1.01] ${
+                          isAxis ? 'bg-red-500/5 border-red-500/25' : 'bg-blue-500/5 border-blue-500/25'
+                        }`}>
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className="w-9 h-9 rounded-xl bg-purple-500/10 border border-purple-500/30 flex items-center justify-center text-purple-400 shrink-0 shadow-sm">
+                              <Wrench className="w-4 h-4" />
+                            </div>
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Oficial com Mais Suporte</span>
+                                <span className={`text-[9px] uppercase font-bold px-1.5 py-0.2 rounded ${isAxis ? 'bg-red-500/20 text-red-400' : 'bg-blue-500/20 text-blue-400'}`}>
+                                  {isAxis ? 'Eixo' : 'Aliados'}
+                                </span>
+                              </div>
+                              <div className="font-headline font-bold text-sm text-foreground truncate mt-0.5">
+                                {p.player}
+                              </div>
+                              <span className="text-[10px] text-muted-foreground">
+                                Líder Construtor • Guarnições e suprimentos colocados
+                              </span>
+                            </div>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <div className="text-base font-black font-mono text-purple-400">
+                              {p.support?.toLocaleString()}
+                            </div>
+                            <div className="text-[9px] text-muted-foreground uppercase">Pontos Suporte</div>
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    {/* Oficial com Mais Combate */}
+                    {individualHonors?.topOfficerCombat && (() => {
+                      const p = individualHonors.topOfficerCombat;
+                      const isAxis = (typeof p.team === 'object' ? p.team?.side : p.team) === 'axis';
+                      return (
+                        <div className={`p-3 rounded-xl border flex items-center justify-between gap-4 transition-all hover:scale-[1.01] ${
+                          isAxis ? 'bg-red-500/5 border-red-500/25' : 'bg-blue-500/5 border-blue-500/25'
+                        }`}>
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className="w-9 h-9 rounded-xl bg-yellow-500/10 border border-yellow-500/30 flex items-center justify-center text-yellow-500 shrink-0 shadow-sm">
+                              <Flame className="w-4 h-4" />
+                            </div>
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Oficial com Mais Combate</span>
+                                <span className={`text-[9px] uppercase font-bold px-1.5 py-0.2 rounded ${isAxis ? 'bg-red-500/20 text-red-400' : 'bg-blue-500/20 text-blue-400'}`}>
+                                  {isAxis ? 'Eixo' : 'Aliados'}
+                                </span>
+                              </div>
+                              <div className="font-headline font-bold text-sm text-foreground truncate mt-0.5">
+                                {p.player}
+                              </div>
+                              <span className="text-[10px] text-muted-foreground">
+                                Linha de Frente • Trocação de tiros ativa
+                              </span>
+                            </div>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <div className="text-base font-black font-mono text-yellow-500">
+                              {p.combat?.toLocaleString()}
+                            </div>
+                            <div className="text-[9px] text-muted-foreground uppercase">Pontos Combate</div>
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    {/* Oficial com Mais Ofensiva */}
+                    {individualHonors?.topOfficerOffense && (() => {
+                      const p = individualHonors.topOfficerOffense;
+                      const isAxis = (typeof p.team === 'object' ? p.team?.side : p.team) === 'axis';
+                      return (
+                        <div className={`p-3 rounded-xl border flex items-center justify-between gap-4 transition-all hover:scale-[1.01] ${
+                          isAxis ? 'bg-red-500/5 border-red-500/25' : 'bg-blue-500/5 border-blue-500/25'
+                        }`}>
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className="w-9 h-9 rounded-xl bg-red-500/10 border border-red-500/30 flex items-center justify-center text-red-500 shrink-0 shadow-sm">
+                              <Flag className="w-4 h-4" />
+                            </div>
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Oficial com Mais Ofensiva</span>
+                                <span className={`text-[9px] uppercase font-bold px-1.5 py-0.2 rounded ${isAxis ? 'bg-red-500/20 text-red-400' : 'bg-blue-500/20 text-blue-400'}`}>
+                                  {isAxis ? 'Eixo' : 'Aliados'}
+                                </span>
+                              </div>
+                              <div className="font-headline font-bold text-sm text-foreground truncate mt-0.5">
+                                {p.player}
+                              </div>
+                              <span className="text-[10px] text-muted-foreground">
+                                Assalto • Invasão e captura de pontos inimigos
+                              </span>
+                            </div>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <div className="text-base font-black font-mono text-red-400">
+                              {p.offense?.toLocaleString()}
+                            </div>
+                            <div className="text-[9px] text-muted-foreground uppercase">Pontos Ataque</div>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                </div>
+
+                {/* Painel 3: Destaques dos Soldados (Não-Oficiais) */}
+                <div className="border border-border/50 bg-card rounded-xl overflow-hidden shadow-sm flex flex-col">
+                  <div className="bg-muted/40 p-3.5 border-b flex items-center justify-between">
+                    <h3 className="text-sm font-headline font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+                      <User className="w-4 h-4 text-emerald-400" /> Destaques dos Soldados
+                    </h3>
+                    <span className="text-[10px] text-muted-foreground uppercase font-mono">
+                      {honorsTeamFilter === 'all' ? 'Geral' : honorsTeamFilter === 'allies' ? 'Aliados' : 'Eixo'}
+                    </span>
+                  </div>
+
+                  <div className="p-4 flex flex-col gap-3 flex-1">
+                    {/* Infantaria Caçadora de Tanques */}
                     {individualHonors?.topInfantryTankHunter && (() => {
                       const p = individualHonors.topInfantryTankHunter;
                       const isAxis = (typeof p.team === 'object' ? p.team?.side : p.team) === 'axis';
                       const bazookaKills = p.kills_by_type?.bazooka;
                       return (
-                        <div className={`p-3 rounded-xl border flex items-center justify-between gap-4 transition-all ${
+                        <div className={`p-3 rounded-xl border flex items-center justify-between gap-4 transition-all hover:scale-[1.01] ${
                           isAxis ? 'bg-red-500/5 border-red-500/25' : 'bg-blue-500/5 border-blue-500/25'
                         }`}>
                           <div className="flex items-center gap-3 min-w-0">
@@ -1768,13 +1978,13 @@ export function MatchReplay({
                               <div className="font-headline font-bold text-sm text-foreground truncate mt-0.5">
                                 {p.player}
                               </div>
-                              <span className="text-[11px] text-muted-foreground">
-                                Anti-Tank (Infantaria pura) {bazookaKills ? `• ${bazookaKills} kills de Bazooka` : ''}
+                              <span className="text-[10px] text-muted-foreground">
+                                Anti-Tank a pé {bazookaKills ? `• ${bazookaKills} kills de Bazooka` : '• Minas & Cargas'}
                               </span>
                             </div>
                           </div>
                           <div className="text-right shrink-0">
-                            <div className="text-lg font-black font-mono text-orange-400">
+                            <div className="text-base font-black font-mono text-orange-400">
                               {p.vehicles_destroyed || 0}
                             </div>
                             <div className="text-[9px] text-muted-foreground uppercase">Tanques Destruídos</div>
@@ -1783,7 +1993,190 @@ export function MatchReplay({
                       );
                     })()}
 
+                    {/* Soldado com Mais Kills */}
+                    {individualHonors?.topSoldierKills && (() => {
+                      const p = individualHonors.topSoldierKills;
+                      const isAxis = (typeof p.team === 'object' ? p.team?.side : p.team) === 'axis';
+                      return (
+                        <div className={`p-3 rounded-xl border flex items-center justify-between gap-4 transition-all hover:scale-[1.01] ${
+                          isAxis ? 'bg-red-500/5 border-red-500/25' : 'bg-blue-500/5 border-blue-500/25'
+                        }`}>
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className="w-9 h-9 rounded-xl bg-green-500/10 border border-green-500/30 flex items-center justify-center text-green-400 shrink-0 shadow-sm">
+                              <Crown className="w-4 h-4" />
+                            </div>
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Soldado com Mais Kills</span>
+                                <span className={`text-[9px] uppercase font-bold px-1.5 py-0.2 rounded ${isAxis ? 'bg-red-500/20 text-red-400' : 'bg-blue-500/20 text-blue-400'}`}>
+                                  {isAxis ? 'Eixo' : 'Aliados'}
+                                </span>
+                              </div>
+                              <div className="font-headline font-bold text-sm text-foreground truncate mt-0.5">
+                                {p.player}
+                              </div>
+                              <span className="text-[10px] text-muted-foreground">
+                                Soldado de Linha • K/D: {p.kill_death_ratio?.toFixed(2) || '0.00'} • {p.deaths || 0} Mortes
+                              </span>
+                            </div>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <div className="text-base font-black font-mono text-green-400">
+                              {p.kills}
+                            </div>
+                            <div className="text-[9px] text-muted-foreground uppercase">Abates Totais</div>
+                          </div>
+                        </div>
+                      );
+                    })()}
 
+                    {/* Soldado com Mais Defesa */}
+                    {individualHonors?.topSoldierDefense && (() => {
+                      const p = individualHonors.topSoldierDefense;
+                      const isAxis = (typeof p.team === 'object' ? p.team?.side : p.team) === 'axis';
+                      return (
+                        <div className={`p-3 rounded-xl border flex items-center justify-between gap-4 transition-all hover:scale-[1.01] ${
+                          isAxis ? 'bg-red-500/5 border-red-500/25' : 'bg-blue-500/5 border-blue-500/25'
+                        }`}>
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className="w-9 h-9 rounded-xl bg-blue-500/10 border border-blue-500/30 flex items-center justify-center text-blue-400 shrink-0 shadow-sm">
+                              <Shield className="w-4 h-4" />
+                            </div>
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Soldado com Mais Defesa</span>
+                                <span className={`text-[9px] uppercase font-bold px-1.5 py-0.2 rounded ${isAxis ? 'bg-red-500/20 text-red-400' : 'bg-blue-500/20 text-blue-400'}`}>
+                                  {isAxis ? 'Eixo' : 'Aliados'}
+                                </span>
+                              </div>
+                              <div className="font-headline font-bold text-sm text-foreground truncate mt-0.5">
+                                {p.player}
+                              </div>
+                              <span className="text-[10px] text-muted-foreground">
+                                Soldado Guardião • Sustentação no ponto de defesa
+                              </span>
+                            </div>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <div className="text-base font-black font-mono text-blue-400">
+                              {p.defense?.toLocaleString()}
+                            </div>
+                            <div className="text-[9px] text-muted-foreground uppercase">Pontos Defesa</div>
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    {/* Soldado com Mais Suporte */}
+                    {individualHonors?.topSoldierSupport && (() => {
+                      const p = individualHonors.topSoldierSupport;
+                      const isAxis = (typeof p.team === 'object' ? p.team?.side : p.team) === 'axis';
+                      return (
+                        <div className={`p-3 rounded-xl border flex items-center justify-between gap-4 transition-all hover:scale-[1.01] ${
+                          isAxis ? 'bg-red-500/5 border-red-500/25' : 'bg-blue-500/5 border-blue-500/25'
+                        }`}>
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className="w-9 h-9 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 shrink-0 shadow-sm">
+                              <Wrench className="w-4 h-4" />
+                            </div>
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Soldado com Mais Suporte</span>
+                                <span className={`text-[9px] uppercase font-bold px-1.5 py-0.2 rounded ${isAxis ? 'bg-red-500/20 text-red-400' : 'bg-blue-500/20 text-blue-400'}`}>
+                                  {isAxis ? 'Eixo' : 'Aliados'}
+                                </span>
+                              </div>
+                              <div className="font-headline font-bold text-sm text-foreground truncate mt-0.5">
+                                {p.player}
+                              </div>
+                              <span className="text-[10px] text-muted-foreground">
+                                Engenheiro / Suporte • Construção de nós e defesas
+                              </span>
+                            </div>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <div className="text-base font-black font-mono text-cyan-400">
+                              {p.support?.toLocaleString()}
+                            </div>
+                            <div className="text-[9px] text-muted-foreground uppercase">Pontos Suporte</div>
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    {/* Soldado com Mais Combate */}
+                    {individualHonors?.topSoldierCombat && (() => {
+                      const p = individualHonors.topSoldierCombat;
+                      const isAxis = (typeof p.team === 'object' ? p.team?.side : p.team) === 'axis';
+                      return (
+                        <div className={`p-3 rounded-xl border flex items-center justify-between gap-4 transition-all hover:scale-[1.01] ${
+                          isAxis ? 'bg-red-500/5 border-red-500/25' : 'bg-blue-500/5 border-blue-500/25'
+                        }`}>
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className="w-9 h-9 rounded-xl bg-yellow-500/10 border border-yellow-500/30 flex items-center justify-center text-yellow-500 shrink-0 shadow-sm">
+                              <Flame className="w-4 h-4" />
+                            </div>
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Soldado com Mais Combate</span>
+                                <span className={`text-[9px] uppercase font-bold px-1.5 py-0.2 rounded ${isAxis ? 'bg-red-500/20 text-red-400' : 'bg-blue-500/20 text-blue-400'}`}>
+                                  {isAxis ? 'Eixo' : 'Aliados'}
+                                </span>
+                              </div>
+                              <div className="font-headline font-bold text-sm text-foreground truncate mt-0.5">
+                                {p.player}
+                              </div>
+                              <span className="text-[10px] text-muted-foreground">
+                                Soldado Combatente • Fogo cruzado e engajamento
+                              </span>
+                            </div>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <div className="text-base font-black font-mono text-yellow-500">
+                              {p.combat?.toLocaleString()}
+                            </div>
+                            <div className="text-[9px] text-muted-foreground uppercase">Pontos Combate</div>
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    {/* Soldado com Mais Ofensiva */}
+                    {individualHonors?.topSoldierOffense && (() => {
+                      const p = individualHonors.topSoldierOffense;
+                      const isAxis = (typeof p.team === 'object' ? p.team?.side : p.team) === 'axis';
+                      return (
+                        <div className={`p-3 rounded-xl border flex items-center justify-between gap-4 transition-all hover:scale-[1.01] ${
+                          isAxis ? 'bg-red-500/5 border-red-500/25' : 'bg-blue-500/5 border-blue-500/25'
+                        }`}>
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className="w-9 h-9 rounded-xl bg-red-500/10 border border-red-500/30 flex items-center justify-center text-red-500 shrink-0 shadow-sm">
+                              <Flag className="w-4 h-4" />
+                            </div>
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Soldado com Mais Ofensiva</span>
+                                <span className={`text-[9px] uppercase font-bold px-1.5 py-0.2 rounded ${isAxis ? 'bg-red-500/20 text-red-400' : 'bg-blue-500/20 text-blue-400'}`}>
+                                  {isAxis ? 'Eixo' : 'Aliados'}
+                                </span>
+                              </div>
+                              <div className="font-headline font-bold text-sm text-foreground truncate mt-0.5">
+                                {p.player}
+                              </div>
+                              <span className="text-[10px] text-muted-foreground">
+                                Soldado de Assalto • Pressão e avanço em setor inimigo
+                              </span>
+                            </div>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <div className="text-base font-black font-mono text-red-400">
+                              {p.offense?.toLocaleString()}
+                            </div>
+                            <div className="text-[9px] text-muted-foreground uppercase">Pontos Ataque</div>
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
               </div>
