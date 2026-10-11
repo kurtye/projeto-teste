@@ -398,6 +398,8 @@ export function MatchReplay({
           officerName: topOfficer,
           officerDuration: topOffDur,
           isTank,
+          members: [],
+          membersCount: 0,
           combatScore: 0,
           offenseScore: 0,
           defenseScore: 0,
@@ -409,6 +411,7 @@ export function MatchReplay({
         };
       }
 
+      squads[key].members.push(p.player);
       squads[key].combatScore += (p.combat || 0);
       squads[key].offenseScore += (p.offense || 0);
       squads[key].defenseScore += (p.defense || 0);
@@ -418,13 +421,19 @@ export function MatchReplay({
       squads[key].vehiclesList.push(p.vehicles_destroyed || 0);
     });
 
-    // 3. Calculate vehicle score: For tank squads, the crew shares vehicle destroys, so the squad's total destroyed tanks is Math.max (not sum)
+    // 3. Calculate vehicle score and per-soldier averages
     Object.values(squads).forEach((s: any) => {
+      s.membersCount = s.members?.length || 1;
       if (s.isTank) {
         s.vehiclesScore = Math.max(0, ...s.vehiclesList);
       } else {
         s.vehiclesScore = s.vehiclesList.reduce((a: number, b: number) => a + b, 0);
       }
+      s.avgCombat = Math.round(s.combatScore / Math.max(1, s.membersCount));
+      s.avgDefense = Math.round(s.defenseScore / Math.max(1, s.membersCount));
+      s.avgOffense = Math.round(s.offenseScore / Math.max(1, s.membersCount));
+      s.avgSupport = Math.round(s.supportScore / Math.max(1, s.membersCount));
+      s.avgKills = Math.round(s.killsScore / Math.max(1, s.membersCount));
     });
 
     const result = Object.values(squads).filter((s: any) => 
@@ -627,33 +636,40 @@ export function MatchReplay({
     }
     if (validSquads.length === 0) return null;
 
-    // Separate combat infantry and armor squads
-    const infantrySquads = validSquads.filter((s: any) => !s.isTank);
-    const tankSquads = validSquads.filter((s: any) => s.isTank);
+    // Separate combat infantry and armor squads with quorum filter (>= 3 for infantry, >= 2 for armor)
+    const qualifiedInfantry = validSquads.filter((s: any) => !s.isTank && s.membersCount >= 3);
+    const finalInfantry = qualifiedInfantry.length > 0 
+      ? qualifiedInfantry 
+      : validSquads.filter((s: any) => !s.isTank);
 
-    // 1. Top Defesa (Infantaria preferencialmente)
-    const topDefense = [...(infantrySquads.length > 0 ? infantrySquads : validSquads)].sort((a: any, b: any) => (b.defenseScore || 0) - (a.defenseScore || 0))[0];
+    const qualifiedTanks = validSquads.filter((s: any) => s.isTank && s.membersCount >= 2);
+    const finalTanks = qualifiedTanks.length > 0 
+      ? qualifiedTanks 
+      : validSquads.filter((s: any) => s.isTank);
 
-    // 2. Top Combate (Infantaria preferencialmente)
-    const topCombat = [...(infantrySquads.length > 0 ? infantrySquads : validSquads)].sort((a: any, b: any) => (b.combatScore || 0) - (a.combatScore || 0))[0];
+    // 1. Top Defesa (Infantaria qualificada >= 3 membros)
+    const topDefense = [...finalInfantry].sort((a: any, b: any) => (b.defenseScore || 0) - (a.defenseScore || 0))[0];
 
-    // 3. Top Ofensivo (Infantaria preferencialmente)
-    const topOffense = [...(infantrySquads.length > 0 ? infantrySquads : validSquads)].sort((a: any, b: any) => (b.offenseScore || 0) - (a.offenseScore || 0))[0];
+    // 2. Top Combate (Infantaria qualificada >= 3 membros)
+    const topCombat = [...finalInfantry].sort((a: any, b: any) => (b.combatScore || 0) - (a.combatScore || 0))[0];
 
-    // 4. Top Suporte & Logística (Construção, nós de recursos, suprimentos)
-    const topSupport = [...(infantrySquads.length > 0 ? infantrySquads : validSquads)].sort((a: any, b: any) => (b.supportScore || 0) - (a.supportScore || 0))[0];
+    // 3. Top Ofensivo (Infantaria qualificada >= 3 membros)
+    const topOffense = [...finalInfantry].sort((a: any, b: any) => (b.offenseScore || 0) - (a.offenseScore || 0))[0];
 
-    // 5. Esquadrão Mais Kills
-    const topKills = [...(infantrySquads.length > 0 ? infantrySquads : validSquads)].sort((a: any, b: any) => (b.killsScore || 0) - (a.killsScore || 0))[0];
+    // 4. Top Suporte & Logística (Construção, nós de recursos, suprimentos - qualificada >= 3 membros)
+    const topSupport = [...finalInfantry].sort((a: any, b: any) => (b.supportScore || 0) - (a.supportScore || 0))[0];
 
-    // 6. Esquadrão com Mais Coesão Total (Infantaria)
-    const infantryWithCohesion = infantrySquads
+    // 5. Esquadrão Mais Kills (Infantaria qualificada >= 3 membros)
+    const topKills = [...finalInfantry].sort((a: any, b: any) => (b.killsScore || 0) - (a.killsScore || 0))[0];
+
+    // 6. Esquadrão com Mais Coesão Total (Infantaria qualificada >= 3 membros)
+    const infantryWithCohesion = finalInfantry
       .filter((s: any) => totalSquadCohesion[s.key] !== undefined)
       .map((s: any) => ({ ...s, cohesionPercent: totalSquadCohesion[s.key] }));
     const topCohesion = [...infantryWithCohesion].sort((a: any, b: any) => b.cohesionPercent - a.cohesionPercent)[0];
 
     // 7. Esquadrão com Mais Abate em Tank (Prioridade para squads de blindados/tank)
-    const topTankSquad = [...(tankSquads.length > 0 ? tankSquads : validSquads)].sort((a: any, b: any) => (b.vehiclesScore || 0) - (a.vehiclesScore || 0))[0];
+    const topTankSquad = [...(finalTanks.length > 0 ? finalTanks : validSquads)].sort((a: any, b: any) => (b.vehiclesScore || 0) - (a.vehiclesScore || 0))[0];
 
     return {
       topDefense,
@@ -1425,8 +1441,8 @@ export function MatchReplay({
                               {squadHonors.topDefense.isTank ? <Truck className="w-3.5 h-3.5 text-orange-400 shrink-0" /> : <Shield className="w-3.5 h-3.5 text-muted-foreground shrink-0" />}
                               <span className="truncate">{squadHonors.topDefense.officerName || `Squad ${squadHonors.topDefense.squadId}`}</span>
                             </div>
-                            <span className="text-[11px] text-muted-foreground truncate block">
-                              Squad {squadHonors.topDefense.squadId}
+                            <span className="text-[10px] text-muted-foreground truncate block">
+                              Squad {squadHonors.topDefense.squadId} • {squadHonors.topDefense.membersCount} soldados ({squadHonors.topDefense.avgDefense?.toLocaleString()}/homem)
                             </span>
                           </div>
                           <div className="text-right shrink-0">
@@ -1459,8 +1475,8 @@ export function MatchReplay({
                               {squadHonors.topCombat.isTank ? <Truck className="w-3.5 h-3.5 text-orange-400 shrink-0" /> : <Shield className="w-3.5 h-3.5 text-muted-foreground shrink-0" />}
                               <span className="truncate">{squadHonors.topCombat.officerName || `Squad ${squadHonors.topCombat.squadId}`}</span>
                             </div>
-                            <span className="text-[11px] text-muted-foreground truncate block">
-                              Squad {squadHonors.topCombat.squadId}
+                            <span className="text-[10px] text-muted-foreground truncate block">
+                              Squad {squadHonors.topCombat.squadId} • {squadHonors.topCombat.membersCount} soldados ({squadHonors.topCombat.avgCombat?.toLocaleString()}/homem)
                             </span>
                           </div>
                           <div className="text-right shrink-0">
@@ -1493,8 +1509,8 @@ export function MatchReplay({
                               {squadHonors.topOffense.isTank ? <Truck className="w-3.5 h-3.5 text-orange-400 shrink-0" /> : <Shield className="w-3.5 h-3.5 text-muted-foreground shrink-0" />}
                               <span className="truncate">{squadHonors.topOffense.officerName || `Squad ${squadHonors.topOffense.squadId}`}</span>
                             </div>
-                            <span className="text-[11px] text-muted-foreground truncate block">
-                              Squad {squadHonors.topOffense.squadId}
+                            <span className="text-[10px] text-muted-foreground truncate block">
+                              Squad {squadHonors.topOffense.squadId} • {squadHonors.topOffense.membersCount} soldados ({squadHonors.topOffense.avgOffense?.toLocaleString()}/homem)
                             </span>
                           </div>
                           <div className="text-right shrink-0">
@@ -1527,8 +1543,8 @@ export function MatchReplay({
                               {squadHonors.topSupport.isTank ? <Truck className="w-3.5 h-3.5 text-orange-400 shrink-0" /> : <Shield className="w-3.5 h-3.5 text-muted-foreground shrink-0" />}
                               <span className="truncate">{squadHonors.topSupport.officerName || `Squad ${squadHonors.topSupport.squadId}`}</span>
                             </div>
-                            <span className="text-[11px] text-muted-foreground truncate block">
-                              Construção & Logística • Sq {squadHonors.topSupport.squadId}
+                            <span className="text-[10px] text-muted-foreground truncate block">
+                              Squad {squadHonors.topSupport.squadId} • {squadHonors.topSupport.membersCount} soldados ({squadHonors.topSupport.avgSupport?.toLocaleString()}/homem)
                             </span>
                           </div>
                           <div className="text-right shrink-0">
@@ -1561,8 +1577,8 @@ export function MatchReplay({
                               {squadHonors.topKills.isTank ? <Truck className="w-3.5 h-3.5 text-orange-400 shrink-0" /> : <Shield className="w-3.5 h-3.5 text-muted-foreground shrink-0" />}
                               <span className="truncate">{squadHonors.topKills.officerName || `Squad ${squadHonors.topKills.squadId}`}</span>
                             </div>
-                            <span className="text-[11px] text-muted-foreground truncate block">
-                              Squad {squadHonors.topKills.squadId}
+                            <span className="text-[10px] text-muted-foreground truncate block">
+                              Squad {squadHonors.topKills.squadId} • {squadHonors.topKills.membersCount} soldados ({squadHonors.topKills.avgKills}/homem)
                             </span>
                           </div>
                           <div className="text-right shrink-0">
@@ -1595,8 +1611,8 @@ export function MatchReplay({
                               <Shield className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                               <span className="truncate">{squadHonors.topCohesion.officerName || `Squad ${squadHonors.topCohesion.squadId}`}</span>
                             </div>
-                            <span className="text-[11px] text-muted-foreground truncate block">
-                              Infantaria • Squad {squadHonors.topCohesion.squadId}
+                            <span className="text-[10px] text-muted-foreground truncate block">
+                              Squad {squadHonors.topCohesion.squadId} • {squadHonors.topCohesion.membersCount} soldados operando juntos
                             </span>
                           </div>
                           <div className="text-right shrink-0">
@@ -1629,8 +1645,8 @@ export function MatchReplay({
                               {squadHonors.topTankSquad.isTank ? <Truck className="w-3.5 h-3.5 text-orange-400 shrink-0" /> : <Shield className="w-3.5 h-3.5 text-muted-foreground shrink-0" />}
                               <span className="truncate">{squadHonors.topTankSquad.officerName || `Squad ${squadHonors.topTankSquad.squadId}`}</span>
                             </div>
-                            <span className="text-[11px] text-muted-foreground truncate block">
-                              {squadHonors.topTankSquad.isTank ? 'Blindado' : 'Infantaria'} • Squad {squadHonors.topTankSquad.squadId}
+                            <span className="text-[10px] text-muted-foreground truncate block">
+                              {squadHonors.topTankSquad.isTank ? `Blindado • ${squadHonors.topTankSquad.membersCount} tripulantes` : `Infantaria • ${squadHonors.topTankSquad.membersCount} soldados`}
                             </span>
                           </div>
                           <div className="text-right shrink-0">
