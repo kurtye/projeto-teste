@@ -4,10 +4,10 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
-import { Play, Pause, FastForward, SkipBack, ZoomIn, ZoomOut, Maximize, User, Shield, Skull, Crosshair, Truck, Activity, Trophy, Flag, Flame, Target, Rocket, Award, Crown, Wrench } from 'lucide-react';
+import { Play, Pause, FastForward, SkipBack, ZoomIn, ZoomOut, Maximize, User, Shield, Skull, Crosshair, Truck, Activity, Trophy, Flag, Flame, Target, Rocket, Award, Crown, Wrench, Clapperboard, Sparkles, Video, ChevronRight } from 'lucide-react';
 import Image from 'next/image';
 import { ROLE_MAPPING } from '@/lib/roles';
-import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
+import { TransformWrapper, TransformComponent, type ReactZoomPanPinchRef } from "react-zoom-pan-pinch";
 
 interface Position {
   time: number;
@@ -142,6 +142,11 @@ export function MatchReplay({
   const [highlightedSquad, setHighlightedSquad] = useState<string | null>(null);
   const animationRef = useRef<number | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const transformComponentRef = useRef<ReactZoomPanPinchRef | null>(null);
+  const [isCinematicMode, setIsCinematicMode] = useState<boolean>(false);
+  const [showStoryDrawer, setShowStoryDrawer] = useState<boolean>(true);
+  const activeCinematicEventRef = useRef<string | null>(null);
+  const previousPlaybackSpeedRef = useRef<number>(10);
 
   // Reset replay on match change
   useEffect(() => {
@@ -461,6 +466,208 @@ export function MatchReplay({
        return a.squadId - b.squadId;
     });
   }, [playerStats]);
+
+  // -------------------------------------------------------------
+  // MODO CINEMATOGRÁFICO / DIRETOR TÁTICO (Clímax e Capítulos)
+  // -------------------------------------------------------------
+
+  // Zoom trigonométrico suave centralizado na coordenada do evento
+  const zoomToCoords = (worldX: number, worldY: number, targetScale = 2.4, durationMs = 1200) => {
+    if (!transformComponentRef.current) return;
+    const wrapper = transformComponentRef.current.instance.wrapperComponent;
+    const width = wrapper?.clientWidth || 1000;
+    const height = wrapper?.clientHeight || 600;
+
+    const pixelX = ((worldX + 100000) / 200000) * 2000;
+    const pixelY = ((worldY + 100000) / 200000) * 2000;
+
+    const newX = (width / 2) - (pixelX * targetScale);
+    const newY = (height / 2) - (pixelY * targetScale);
+
+    transformComponentRef.current.setTransform(newX, newY, targetScale, durationMs, "easeOut");
+  };
+
+  const resetCamera = (durationMs = 1000) => {
+    transformComponentRef.current?.resetTransform(durationMs, "easeOut");
+  };
+
+  // Destaques e Momentos Épicos da Partida (Memoized)
+  const cinematicHighlights = useMemo(() => {
+    const allDeaths: { id: string; player: string; team: string; time: number; x: number; y: number }[] = [];
+    matchData.players_list.forEach(p => {
+      for (let i = 1; i < p.position.length; i++) {
+        const curr = p.position[i];
+        const prev = p.position[i - 1];
+        if (curr.x === 0 && curr.y === 0 && (prev.x !== 0 || prev.y !== 0)) {
+          allDeaths.push({
+            id: `${p.id}-${curr.time}`,
+            player: p.name,
+            team: p.team,
+            time: curr.time,
+            x: prev.x,
+            y: prev.y,
+          });
+        }
+      }
+    });
+
+    if (allDeaths.length === 0) return [];
+
+    const duration = maxTime;
+    const candidates: {
+      startTime: number;
+      peakTime: number;
+      endTime: number;
+      coords: { x: number; y: number };
+      alliesDeaths: number;
+      axisDeaths: number;
+      totalDeaths: number;
+      score: number;
+      nearbySquads: { team: string; squadId: number; officerName?: string }[];
+    }[] = [];
+
+    // Janela deslizante de 60s em passos de 15s
+    for (let t = 0; t <= duration - 60; t += 15) {
+      const windowDeaths = allDeaths.filter(d => d.time >= t && d.time <= t + 60);
+      if (windowDeaths.length >= 12) {
+        const avgX = windowDeaths.reduce((acc, d) => acc + d.x, 0) / windowDeaths.length;
+        const avgY = windowDeaths.reduce((acc, d) => acc + d.y, 0) / windowDeaths.length;
+
+        // Cluster check (raio de 600m)
+        const inCluster = windowDeaths.filter(d => Math.hypot(d.x - avgX, d.y - avgY) <= 60000);
+        if (inCluster.length >= 10) {
+          const allies = inCluster.filter(d => d.team === 'allies').length;
+          const axis = inCluster.filter(d => d.team === 'axis').length;
+
+          // Esquadrões na zona de conflito
+          const squadsInArea: Record<string, { team: string; squadId: number; officerName?: string }> = {};
+          if (allMatchSquads && allMatchSquads.length > 0) {
+            allMatchSquads.forEach((sq: any) => {
+              squadsInArea[`${sq.team}-${sq.squadId}`] = {
+                team: sq.team,
+                squadId: sq.squadId,
+                officerName: sq.officerName || undefined,
+              };
+            });
+          }
+
+          candidates.push({
+            startTime: Math.max(0, t - 10),
+            peakTime: t + 30,
+            endTime: t + 70,
+            coords: { x: Math.round(avgX), y: Math.round(avgY) },
+            alliesDeaths: allies,
+            axisDeaths: axis,
+            totalDeaths: inCluster.length,
+            score: inCluster.length * 2 + Math.min(allies, axis) * 3,
+            nearbySquads: Object.values(squadsInArea).slice(0, 4),
+          });
+        }
+      }
+    }
+
+    // Seleciona os melhores eventos espaçados por ao menos 180s (3 minutos)
+    candidates.sort((a, b) => b.score - a.score);
+    const selected: typeof candidates = [];
+    for (const cand of candidates) {
+      const overlap = selected.some(s => Math.abs(s.peakTime - cand.peakTime) < 180);
+      if (!overlap) {
+        selected.push(cand);
+        if (selected.length >= 7) break;
+      }
+    }
+
+    // Ordenação cronológica para criar uma narrativa cinematográfica completa
+    selected.sort((a, b) => a.peakTime - b.peakTime);
+
+    return selected.map((ev, index) => {
+      let title = `Capítulo ${index + 1}: `;
+      let subtitle = '';
+      let description = '';
+      let eventType: 'massacre' | 'breakthrough' | 'defense' | 'clash' = 'clash';
+
+      if (ev.totalDeaths >= 35) {
+        title += 'O Grande Massacre';
+        subtitle = `${ev.totalDeaths} Baixas • Batalha Decisiva`;
+        description = `O clímax mais violento da partida: ${ev.alliesDeaths} Aliados e ${ev.axisDeaths} combatentes do Eixo caíram no epicentro em 60 segundos.`;
+        eventType = 'massacre';
+      } else if (ev.axisDeaths > ev.alliesDeaths * 1.3) {
+        title += 'Ruptura da Linha do Eixo';
+        subtitle = `Pressão e Avanço Aliado • ${ev.axisDeaths} Mortes do Eixo`;
+        description = `As forças aliadas romperam o bloqueio, empurrando as posições inimigas com forte suporte e fogo concentrado.`;
+        eventType = 'breakthrough';
+      } else if (ev.alliesDeaths > ev.axisDeaths * 1.3) {
+        title += 'Emboscada e Queda Aliada';
+        subtitle = `Contra-Ataque do Eixo • ${ev.alliesDeaths} Baixas Aliadas`;
+        description = `O Eixo realizou um cerco mortal em fogo cruzado, contendo a investida aliada e infligindo duras baixas.`;
+        eventType = 'defense';
+      } else {
+        title += 'Choque de Trincheiras';
+        subtitle = `Fogo Cruzado • ${ev.totalDeaths} Baixas Registradas`;
+        description = `Confronto encarniçado com pesada troca de supressão e artilharia entre ambas as facções.`;
+        eventType = 'clash';
+      }
+
+      return {
+        id: `highlight-${index + 1}`,
+        chapterIndex: index + 1,
+        type: eventType,
+        startTime: ev.startTime,
+        peakTime: ev.peakTime,
+        endTime: ev.endTime,
+        coords: ev.coords,
+        title,
+        subtitle,
+        description,
+        alliesDeaths: ev.alliesDeaths,
+        axisDeaths: ev.axisDeaths,
+        totalDeaths: ev.totalDeaths,
+        nearbySquads: ev.nearbySquads,
+      };
+    });
+  }, [matchData, maxTime, allMatchSquads]);
+
+  // Clímax atual que intercepta o tempo de reprodução
+  const currentHighlight = useMemo(() => {
+    return cinematicHighlights.find(ev => currentTime >= ev.startTime && currentTime <= ev.endTime) || null;
+  }, [cinematicHighlights, currentTime]);
+
+  // Iniciar reprodução focada no capítulo selecionado
+  const playHighlight = (highlight: (typeof cinematicHighlights)[0]) => {
+    setCurrentTime(Math.max(0, highlight.startTime));
+    setIsPlaying(true);
+    setIsCinematicMode(true);
+    activeCinematicEventRef.current = highlight.id;
+    zoomToCoords(highlight.coords.x, highlight.coords.y, 2.4, 1200);
+    if (playbackSpeed > 3) {
+      previousPlaybackSpeedRef.current = playbackSpeed;
+      setPlaybackSpeed(2);
+    }
+  };
+
+  // Efeito do Diretor Cinematográfico durante o Play
+  useEffect(() => {
+    if (!isCinematicMode || !isPlaying) return;
+
+    if (currentHighlight) {
+      if (activeCinematicEventRef.current !== currentHighlight.id) {
+        activeCinematicEventRef.current = currentHighlight.id;
+        zoomToCoords(currentHighlight.coords.x, currentHighlight.coords.y, 2.4, 1400);
+        if (playbackSpeed > 3) {
+          previousPlaybackSpeedRef.current = playbackSpeed;
+          setPlaybackSpeed(2);
+        }
+      }
+    } else {
+      if (activeCinematicEventRef.current !== null) {
+        activeCinematicEventRef.current = null;
+        resetCamera(1200);
+        if (previousPlaybackSpeedRef.current && previousPlaybackSpeedRef.current !== playbackSpeed) {
+          setPlaybackSpeed(previousPlaybackSpeedRef.current);
+        }
+      }
+    }
+  }, [currentHighlight, isCinematicMode, isPlaying]);
 
   // Precompute Cohesion over the entire match at 60-second intervals
   const precomputedCohesion = useMemo(() => {
@@ -1007,6 +1214,7 @@ export function MatchReplay({
         <CardContent className="pt-6 relative">
           <div className="relative w-full h-[70vh] min-h-[500px] bg-black/10 border-2 border-border rounded-xl overflow-hidden shadow-inner flex items-center justify-center bg-stone-900 cursor-grab active:cursor-grabbing">
             <TransformWrapper
+               ref={transformComponentRef}
                initialScale={1}
                minScale={0.5}
                maxScale={4}
@@ -1014,6 +1222,72 @@ export function MatchReplay({
             >
               {({ zoomIn, zoomOut, resetTransform, ...rest }) => (
                 <>
+                  {/* Director Camera Active Badge */}
+                  {isCinematicMode && (
+                    <div className="absolute top-4 left-4 z-50 flex items-center gap-2 bg-stone-950/85 border border-amber-500/50 text-amber-300 px-3 py-1.5 rounded-xl shadow-xl backdrop-blur-md">
+                      <Clapperboard className="w-4 h-4 text-amber-400 animate-pulse" />
+                      <span className="text-xs font-mono font-bold tracking-wider uppercase">Câmera Diretor Ativa</span>
+                    </div>
+                  )}
+
+                  {/* Cinematic Broadcast HUD on Map */}
+                  {currentHighlight && (
+                    <div className="absolute bottom-5 left-1/2 -translate-x-1/2 z-50 pointer-events-auto max-w-xl w-[92%] transition-all animate-in fade-in slide-in-from-bottom-5 duration-500">
+                      <div className="bg-stone-950/90 border border-amber-500/60 backdrop-blur-md rounded-2xl p-4 shadow-[0_10px_40px_rgba(0,0,0,0.85)] text-white">
+                        <div className="flex items-center justify-between gap-3 mb-2 border-b border-white/10 pb-2">
+                          <div className="flex items-center gap-2">
+                            <span className="relative flex h-3 w-3">
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                              <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
+                            </span>
+                            <span className="text-xs font-mono font-bold tracking-widest uppercase text-amber-400 flex items-center gap-1.5">
+                              <Video className="w-3.5 h-3.5" /> Transmissão Tática • {currentHighlight.title}
+                            </span>
+                          </div>
+                          <span className="text-[10px] font-mono bg-black/40 border border-white/10 px-2 py-0.5 rounded text-muted-foreground">
+                            {formatTime(currentTime)} / {formatTime(currentHighlight.endTime)}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center justify-between gap-4">
+                          <div className="min-w-0">
+                            <div className="font-headline font-black text-sm sm:text-base text-foreground truncate">
+                              {currentHighlight.subtitle}
+                            </div>
+                            <p className="text-xs text-stone-300 mt-0.5 line-clamp-1">
+                              {currentHighlight.description}
+                            </p>
+                          </div>
+
+                          <div className="flex items-center gap-2 shrink-0 bg-black/60 border border-white/10 px-3 py-1.5 rounded-xl font-mono text-xs">
+                            <div className="text-blue-400 font-bold flex items-center gap-1">
+                              <span className="w-2 h-2 rounded-full bg-blue-500 inline-block" />
+                              {currentHighlight.alliesDeaths}
+                            </div>
+                            <span className="text-stone-500">vs</span>
+                            <div className="text-red-400 font-bold flex items-center gap-1">
+                              <span className="w-2 h-2 rounded-full bg-red-500 inline-block" />
+                              {currentHighlight.axisDeaths}
+                            </div>
+                          </div>
+                        </div>
+
+                        {currentHighlight.nearbySquads.length > 0 && (
+                          <div className="mt-2.5 pt-2 border-t border-white/5 flex flex-wrap items-center gap-1.5 text-[10px] text-muted-foreground">
+                            <span className="font-bold uppercase tracking-wider text-stone-400">Esquadrões na Ação:</span>
+                            {currentHighlight.nearbySquads.map((sq, i) => (
+                              <span key={i} className={`px-1.5 py-0.5 rounded border ${
+                                sq.team === 'allies' ? 'bg-blue-500/10 border-blue-500/30 text-blue-300' : 'bg-red-500/10 border-red-500/30 text-red-300'
+                              }`}>
+                                {sq.officerName ? `${sq.officerName} (Sq ${sq.squadId})` : `Squad ${sq.squadId}`}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
                   <div className="absolute top-4 right-4 z-50 flex flex-col gap-2 bg-background/80 p-2 rounded-lg border shadow-lg backdrop-blur">
                     <Button variant="secondary" size="icon" onClick={() => zoomIn()}>
                       <ZoomIn className="w-4 h-4" />
@@ -1290,6 +1564,30 @@ export function MatchReplay({
                   </div>
 
                   <div className="flex items-center gap-2 ml-4">
+                    <Button 
+                      variant={isCinematicMode ? 'default' : 'outline'} 
+                      size="sm" 
+                      onClick={() => {
+                        const next = !isCinematicMode;
+                        setIsCinematicMode(next);
+                        if (!next) resetCamera(1000);
+                      }}
+                      className={isCinematicMode ? "bg-amber-600 hover:bg-amber-700 text-white shadow-[0_0_15px_rgba(217,119,6,0.4)] border-amber-500 font-bold" : "border-amber-500/30 text-amber-400 hover:bg-amber-500/10"}
+                      title="Câmera autônoma com zoom dinâmico nos clímax e desaceleração tática dramática"
+                    >
+                      <Clapperboard className="w-3.5 h-3.5 mr-1.5" />
+                      {isCinematicMode ? 'Diretor: Ativo' : 'Modo Cinematográfico'}
+                    </Button>
+                    <Button 
+                      variant={showStoryDrawer ? 'secondary' : 'outline'} 
+                      size="sm" 
+                      onClick={() => setShowStoryDrawer(!showStoryDrawer)}
+                      className={showStoryDrawer ? "bg-amber-500/20 text-amber-300 border-amber-500/40" : "text-muted-foreground"}
+                      title="Ver e navegar pelos capítulos decisivos da partida"
+                    >
+                      <Sparkles className="w-3.5 h-3.5 mr-1.5 text-amber-400" />
+                      Capítulos ({cinematicHighlights.length})
+                    </Button>
                     <Button variant={smoothMovement ? 'default' : 'outline'} size="sm" onClick={() => setSmoothMovement(!smoothMovement)} className={smoothMovement ? "bg-emerald-600 hover:bg-emerald-700 text-white" : ""} title="Interpolação contínua e suave de posições (sem teletransporte)">
                       <Activity className="w-3.5 h-3.5 mr-1.5" />
                       {smoothMovement ? 'Movimento Suave' : 'Modo Bruto'}
@@ -1336,10 +1634,43 @@ export function MatchReplay({
                         className="relative z-10"
                     />
                     
+                    {/* Chapter & Climax Markers on Timeline */}
+                    <div className="absolute inset-0 top-1/2 -translate-y-1/2 pointer-events-none z-20 px-2">
+                       {cinematicHighlights.map((hl) => {
+                          if (maxTime === 0) return null;
+                          const percent = (hl.peakTime / maxTime) * 100;
+                          const isActive = currentHighlight?.id === hl.id;
+                          return (
+                             <button
+                               key={hl.id}
+                               type="button"
+                               onClick={(e) => {
+                                 e.stopPropagation();
+                                 playHighlight(hl);
+                               }}
+                               className="absolute top-1/2 -translate-y-1/2 transform -translate-x-1/2 pointer-events-auto cursor-pointer group/pin focus:outline-none"
+                               style={{ left: `${percent}%` }}
+                             >
+                                <div className={`w-3.5 h-3.5 rounded-full border border-black/80 flex items-center justify-center transition-transform shadow-md ${
+                                  isActive 
+                                    ? 'bg-amber-400 scale-150 ring-2 ring-amber-300 shadow-[0_0_10px_rgba(251,191,36,0.8)]' 
+                                    : 'bg-red-500 group-hover/pin:scale-125 group-hover/pin:bg-amber-400'
+                                }`}>
+                                   <Flame className="w-2 h-2 text-white fill-white" />
+                                </div>
+                                
+                                <div className="opacity-0 group-hover/pin:opacity-100 pointer-events-none transition-all duration-200 absolute bottom-6 left-1/2 -translate-x-1/2 bg-stone-950/95 border border-amber-500/40 px-3 py-1.5 rounded-xl shadow-2xl text-left whitespace-nowrap z-50 scale-95 origin-bottom">
+                                   <div className="text-[10px] font-mono font-bold text-amber-400">{formatTime(hl.peakTime)} • {hl.title}</div>
+                                   <div className="text-[9px] text-stone-300">{hl.totalDeaths} baixas ({hl.alliesDeaths}A vs {hl.axisDeaths}E)</div>
+                                </div>
+                             </button>
+                          );
+                       })}
+                    </div>
+
                     {/* Cap Flip Markers */}
                     <div className="absolute inset-0 top-1/2 -translate-y-1/2 pointer-events-none z-0 px-2">
                        {capFlips.map((flip, i) => {
-                          // Prevent division by zero if maxTime is 0, though highly unlikely
                           if (maxTime === 0) return null;
                           const percent = (flip.ts / maxTime) * 100;
                           return (
@@ -1357,6 +1688,102 @@ export function MatchReplay({
                 <span className="text-xs font-mono text-muted-foreground">{formatTime(maxTime)}</span>
              </div>
           </div>
+
+          {/* Seção Cinematográfica: Capítulos e Momentos Épicos da Partida */}
+          {cinematicHighlights.length > 0 && showStoryDrawer && (
+            <div className="mt-8 border border-amber-500/30 bg-gradient-to-b from-card to-card/70 rounded-2xl overflow-hidden shadow-xl">
+              <div className="bg-gradient-to-r from-amber-500/10 via-muted/30 to-transparent p-4 border-b border-amber-500/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0 shadow-sm">
+                    <Clapperboard className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-headline font-bold uppercase tracking-wider text-foreground flex items-center gap-2">
+                      História da Partida: Momentos Decisivos Detectados pela IA
+                      <span className="text-[10px] bg-amber-500/20 text-amber-400 border border-amber-500/30 px-2 py-0.5 rounded-full font-mono">
+                        {cinematicHighlights.length} Capítulos
+                      </span>
+                    </h3>
+                    <p className="text-xs text-muted-foreground">
+                      Clique em qualquer capítulo para saltar no tempo, posicionar a câmera automaticamente e reviver o clímax em velocidade dramática.
+                    </p>
+                  </div>
+                </div>
+
+                <Button
+                  variant={isCinematicMode ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => {
+                    const next = !isCinematicMode;
+                    setIsCinematicMode(next);
+                    if (next && cinematicHighlights.length > 0) {
+                      playHighlight(cinematicHighlights[0]);
+                    } else {
+                      resetCamera(1000);
+                    }
+                  }}
+                  className={isCinematicMode ? "bg-amber-600 hover:bg-amber-700 text-white font-bold" : "border-amber-500/40 text-amber-400"}
+                >
+                  <Video className="w-4 h-4 mr-2" />
+                  {isCinematicMode ? 'Reproduzindo Diretor' : 'Assistir do Início ao Fim'}
+                </Button>
+              </div>
+
+              <div className="p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                {cinematicHighlights.map((hl) => {
+                  const isCurrent = currentHighlight?.id === hl.id;
+                  return (
+                    <div
+                      key={hl.id}
+                      onClick={() => playHighlight(hl)}
+                      className={`p-4 rounded-xl border transition-all cursor-pointer flex flex-col justify-between gap-3 group hover:scale-[1.02] ${
+                        isCurrent
+                          ? 'bg-amber-500/10 border-amber-500/60 shadow-[0_0_20px_rgba(217,119,6,0.25)] ring-1 ring-amber-500'
+                          : 'bg-muted/10 border-border/60 hover:border-amber-500/40 hover:bg-muted/30'
+                      }`}
+                    >
+                      <div>
+                        <div className="flex items-center justify-between gap-2 mb-2">
+                          <span className="text-[11px] font-mono font-bold px-2 py-0.5 rounded bg-background border text-amber-400 flex items-center gap-1.5 shadow-sm">
+                            <Flame className="w-3 h-3 text-red-500" />
+                            {formatTime(hl.peakTime)}
+                          </span>
+                          <span className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">
+                            Capítulo {hl.chapterIndex}
+                          </span>
+                        </div>
+
+                        <div className="font-headline font-bold text-sm text-foreground group-hover:text-amber-400 transition-colors">
+                          {hl.title.replace(/^Capítulo \d+: /, '')}
+                        </div>
+
+                        <div className="text-xs font-semibold text-muted-foreground mt-0.5">
+                          {hl.subtitle}
+                        </div>
+
+                        <p className="text-[11px] text-muted-foreground mt-2 line-clamp-2 leading-relaxed">
+                          {hl.description}
+                        </p>
+                      </div>
+
+                      <div className="pt-3 border-t border-border/40 flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-1.5 font-mono text-[11px]">
+                          <span className="text-blue-400 font-bold">{hl.alliesDeaths}A</span>
+                          <span className="text-muted-foreground text-[9px]">vs</span>
+                          <span className="text-red-400 font-bold">{hl.axisDeaths}E</span>
+                          <span className="text-[9px] text-muted-foreground ml-1">({hl.totalDeaths} mortes)</span>
+                        </div>
+
+                        <span className="text-xs font-bold text-amber-400 flex items-center gap-1 group-hover:translate-x-1 transition-transform">
+                          Assistir <ChevronRight className="w-3.5 h-3.5" />
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* Squad Cohesion Panel */}
           {squadCohesion.length > 0 && (
