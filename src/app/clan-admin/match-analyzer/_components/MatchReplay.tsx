@@ -46,7 +46,21 @@ interface PlayerStat {
   units: PlayerStatUnit[];
 }
 
-export function MatchReplay({ matchData, capFlips = [], playerStats = [] }: { matchData: MatchData, capFlips?: CapFlip[], playerStats?: PlayerStat[] }) {
+export interface MatchReplayProps {
+  matchData: MatchData;
+  capFlips?: CapFlip[];
+  playerStats?: PlayerStat[];
+  mapImageUrl?: string;
+  matchTitle?: string;
+}
+
+export function MatchReplay({ 
+  matchData, 
+  capFlips = [], 
+  playerStats = [],
+  mapImageUrl = '/maps/utah.jpg',
+  matchTitle,
+}: MatchReplayProps) {
   const [currentTime, setCurrentTime] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
@@ -60,6 +74,13 @@ export function MatchReplay({ matchData, capFlips = [], playerStats = [] }: { ma
   const [highlightedSquad, setHighlightedSquad] = useState<string | null>(null);
   const animationRef = useRef<number | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  // Reset replay on match change
+  useEffect(() => {
+    setCurrentTime(0);
+    setIsPlaying(false);
+    setHighlightedSquad(null);
+  }, [matchData]);
 
   // Coordinate mapping (assume map bounds are -100k to +100k)
   const mapCoordToPercent = (coord: number) => {
@@ -279,7 +300,7 @@ export function MatchReplay({ matchData, capFlips = [], playerStats = [] }: { ma
 
     for (let t = 0; t <= maxTime; t += 60) {
       const positionsAtT = matchData.players_list.map(p => {
-         let currentPos = null;
+         let currentPos: Position | null = null;
          let minDiff = Infinity;
          p.position.forEach(pos => {
             const diff = Math.abs(pos.time - t);
@@ -303,7 +324,7 @@ export function MatchReplay({ matchData, capFlips = [], playerStats = [] }: { ma
       });
       
       const squadsMap: Record<string, any> = {};
-      positionsAtT.forEach(p => {
+      positionsAtT.forEach((p: any) => {
         if (!p.currentPos || p.currentSquad === null || p.currentSquad === 0 || (p.currentPos.x === 0 && p.currentPos.y === 0)) return;
         const teamSide = typeof p.team === 'object' ? (p.team as any).side : p.team;
         const key = `${teamSide}-${p.currentSquad}`;
@@ -630,7 +651,7 @@ export function MatchReplay({ matchData, capFlips = [], playerStats = [] }: { ma
         <CardHeader className="border-b bg-muted/20 flex flex-row items-center justify-between">
           <div>
             <CardTitle className="text-2xl font-headline flex items-center gap-2">
-              Replay Interativo: {matchData.map}
+              Replay Interativo: {matchTitle || matchData.map}
             </CardTitle>
             <CardDescription>Análise tática de movimentação da partida</CardDescription>
           </div>
@@ -761,8 +782,8 @@ export function MatchReplay({ matchData, capFlips = [], playerStats = [] }: { ma
                     <div className="relative w-[2000px] h-[2000px] origin-center">
                        {/* Map Background */}
                        <Image 
-                          src="/maps/utah.jpg" 
-                          alt="Utah Beach" 
+                          src={mapImageUrl || "/maps/utah.jpg"} 
+                          alt="Tactical Map" 
                           fill 
                           className="object-cover"
                           priority
