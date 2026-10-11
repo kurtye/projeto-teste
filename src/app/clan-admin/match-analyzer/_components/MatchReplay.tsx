@@ -1262,10 +1262,26 @@ export function MatchReplay({
                     {isPlaying ? <Pause className="w-5 h-5 mr-2" /> : <Play className="w-5 h-5 mr-2" />}
                     {isPlaying ? "Pausar" : "Reproduzir"}
                   </Button>
-                  <Button variant="outline" onClick={() => setPlaybackSpeed(s => s === 1 ? 5 : s === 5 ? 20 : s === 20 ? 50 : 1)}>
-                    <FastForward className="w-4 h-4 mr-2" />
-                    {playbackSpeed}x
-                  </Button>
+                  {/* Seletor de Velocidade com opção 10x */}
+                  <div className="flex items-center bg-background border rounded-lg p-0.5 shadow-sm">
+                    <span className="text-[11px] font-bold text-muted-foreground px-2 flex items-center gap-1">
+                      <FastForward className="w-3.5 h-3.5" /> Vel:
+                    </span>
+                    {[1, 2, 5, 10, 20, 50].map((spd) => (
+                      <button
+                        key={spd}
+                        type="button"
+                        onClick={() => setPlaybackSpeed(spd)}
+                        className={`px-2.5 py-1 text-xs font-mono font-bold rounded-md transition-all ${
+                          playbackSpeed === spd
+                            ? 'bg-accent text-accent-foreground shadow-sm scale-105'
+                            : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                        }`}
+                      >
+                        {spd}x
+                      </button>
+                    ))}
+                  </div>
 
                   <div className="flex bg-background border rounded-md ml-2">
                     <Button variant={teamFilter === 'all' ? 'default' : 'ghost'} size="sm" onClick={() => setTeamFilter('all')} className="rounded-none rounded-l-md">Ambos</Button>
