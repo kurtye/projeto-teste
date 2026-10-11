@@ -549,9 +549,34 @@ export function MatchReplay({
     transformComponentRef.current.setTransform(newX, newY, targetScale, durationMs, "easeOut");
   };
 
-  const resetCamera = (durationMs = 1000) => {
-    transformComponentRef.current?.resetTransform(durationMs, "easeOut");
+  // Ajustar o mapa perfeitamente à tela sem cortes
+  const fitMapToContainer = (durationMs = 0) => {
+    if (!transformComponentRef.current) return;
+    const wrapper = transformComponentRef.current.instance.wrapperComponent;
+    if (!wrapper) return;
+    const width = wrapper.clientWidth || 1200;
+    const height = wrapper.clientHeight || 700;
+
+    // A dimensão interna do mapa é 2000x2000px
+    // Ajusta a escala para que todo o mapa caiba visível no container
+    const fitScale = Math.min(width / 2000, height / 2000) * 0.98;
+    const newX = (width - 2000 * fitScale) / 2;
+    const newY = (height - 2000 * fitScale) / 2;
+
+    transformComponentRef.current.setTransform(newX, newY, fitScale, durationMs, "easeOut");
   };
+
+  const resetCamera = (durationMs = 1000) => {
+    fitMapToContainer(durationMs);
+  };
+
+  // Ajustar o zoom inicial do mapa assim que a partida carregar
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      fitMapToContainer(0);
+    }, 200);
+    return () => clearTimeout(timer);
+  }, [matchData]);
 
   // Destaques e Momentos Épicos da Partida (Super-Câmera Cinematográfica Alimentada por Encounters)
   const cinematicHighlights = useMemo(() => {
@@ -1546,8 +1571,8 @@ export function MatchReplay({
           <div id="match-replay-map-container" className="relative w-full h-[70vh] min-h-[500px] bg-black/10 border-2 border-border rounded-xl overflow-hidden shadow-inner flex items-center justify-center bg-stone-900 cursor-grab active:cursor-grabbing">
             <TransformWrapper
                ref={transformComponentRef}
-               initialScale={1}
-               minScale={0.5}
+               initialScale={0.35}
+               minScale={0.2}
                maxScale={4}
                centerOnInit={true}
             >
@@ -1561,8 +1586,8 @@ export function MatchReplay({
                     </div>
                   )}
 
-                  {/* Cinematic Broadcast HUD on Map */}
-                  {currentHighlight && (
+                  {/* Cinematic Broadcast HUD on Map - apenas visível quando Modo Cinematográfico estiver ativo */}
+                  {isCinematicMode && currentHighlight && (
                     <div className="absolute bottom-5 left-1/2 -translate-x-1/2 z-50 pointer-events-auto max-w-xl w-[92%] transition-all animate-in fade-in slide-in-from-bottom-5 duration-500">
                       <div className="bg-stone-950/90 border border-amber-500/60 backdrop-blur-md rounded-2xl p-4 shadow-[0_10px_40px_rgba(0,0,0,0.85)] text-white">
                         <div className="flex items-center justify-between gap-3 mb-2 border-b border-white/10 pb-2">
@@ -1668,7 +1693,7 @@ export function MatchReplay({
                     <Button variant="secondary" size="icon" onClick={() => zoomOut()}>
                       <ZoomOut className="w-4 h-4" />
                     </Button>
-                    <Button variant="secondary" size="icon" onClick={() => resetTransform()}>
+                    <Button variant="secondary" size="icon" onClick={() => fitMapToContainer(600)} title="Ajustar mapa à tela">
                       <Maximize className="w-4 h-4" />
                     </Button>
                   </div>
