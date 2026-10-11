@@ -129,7 +129,7 @@ export function MatchReplay({
 }: MatchReplayProps) {
   const [currentTime, setCurrentTime] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [playbackSpeed, setPlaybackSpeed] = useState(1);
+  const [playbackSpeed, setPlaybackSpeed] = useState(10);
   const [teamFilter, setTeamFilter] = useState<'all' | 'axis' | 'allies'>('all');
   const [showTrails, setShowTrails] = useState(false);
   const [heatmapType, setHeatmapType] = useState<'none' | 'presence' | 'deaths'>('none');
