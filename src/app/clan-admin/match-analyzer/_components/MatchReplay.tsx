@@ -153,7 +153,7 @@ export function MatchReplay({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const transformComponentRef = useRef<ReactZoomPanPinchRef | null>(null);
   const [isCinematicMode, setIsCinematicMode] = useState<boolean>(false);
-  const [showStoryDrawer, setShowStoryDrawer] = useState<boolean>(true);
+  const [showStoryDrawer, setShowStoryDrawer] = useState<boolean>(false);
   const activeCinematicEventRef = useRef<string | null>(null);
   const previousPlaybackSpeedRef = useRef<number>(10);
 
