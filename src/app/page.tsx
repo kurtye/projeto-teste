@@ -16,7 +16,7 @@ import {
   Map as MapIcon,
   Crown
 } from 'lucide-react';
-import { getHallOfFameStats } from '@/app/hall-of-fame/actions';
+import { getMonthlyHallOfFame } from '@/app/hall-of-fame/actions';
 import { clans } from '@/lib/clans';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -34,7 +34,9 @@ const STAT_CATEGORY_INFO: Record<string, { label: string, icon: any, color: stri
 };
 
 export default async function HllHomePage() {
-  const hallOfFameData = await getHallOfFameStats();
+  const currentDate = new Date();
+  const currentMonthId = `month_${currentDate.getFullYear()}-${(currentDate.getMonth() + 1).toString().padStart(2, "0")}`;
+  const hallOfFameData = await getMonthlyHallOfFame(currentMonthId);
   const hallOfFame = hallOfFameData.records;
   
   // Pick top 4 categories for the home page highlights
@@ -123,7 +125,7 @@ export default async function HllHomePage() {
             {categoriesToShow.map((cat) => {
               const player = hallOfFame ? hallOfFame[cat] : undefined;
               const info = STAT_CATEGORY_INFO[cat];
-              if (!player || !player.latestPlayerName) return null;
+              if (!player || !player.playerName) return null;
               
               return (
                 <Card key={cat} className="group overflow-hidden border-accent/10 hover:border-accent/30 transition-all duration-300 hover:shadow-2xl hover:shadow-accent/5 hover:-translate-y-1">
@@ -138,7 +140,7 @@ export default async function HllHomePage() {
                     <CardTitle className="text-sm font-bold uppercase tracking-widest text-muted-foreground">{info.label}</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="text-xl font-bold font-headline truncate mb-4">{player.latestPlayerName}</div>
+                    <div className="text-xl font-bold font-headline truncate mb-4">{player.playerName}</div>
                     <Button variant="outline" size="sm" asChild className="w-full text-[11px] font-bold tracking-widest uppercase border-accent/10 hover:bg-accent/10">
                       <Link href={`/player/${player.id}`}>Ver Perfil Detalhado</Link>
                     </Button>

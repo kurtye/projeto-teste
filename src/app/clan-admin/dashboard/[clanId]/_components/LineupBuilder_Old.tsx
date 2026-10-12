@@ -1,0 +1,843 @@
+'use client';
+
+import { useState, useMemo, useRef, useEffect } from 'react';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useToast } from '@/hooks/use-toast';
+import { toPng } from 'html-to-image';
+import { useFirestore } from '@/firebase';
+import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
+import Image from 'next/image';
+import { getClanFromPlayerName } from '@/lib/clans';
+import { TacticalDNABar } from '@/components/TacticalDNA';
+import { 
+  Users, 
+  Sword, 
+  Shield, 
+  Crosshair, 
+  Binoculars, 
+  Plus, 
+  X, 
+  Trash2,
+  Settings2,
+  UserCheck,
+  CheckSquare,
+  Square,
+  Grab,
+  Hammer,
+  Wrench,
+  Crown,
+  Download,
+  Copy,
+  Share2,
+  Zap,
+  ShieldCheck,
+  HeartPulse,
+  Target,
+  Maximize2,
+  Search,
+  ArrowUpDown
+} from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import type { ClanMember, PlayerAggregates, GlobalStats } from '@/lib/types';
+import { cn } from '@/lib/utils';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+
+type SquadRole = 'Ataque' | 'Defesa' | 'Centro' | 'Flanco Esquerdo' | 'Flanco Direito' | 'Defesa Esquerda' | 'Defesa Direita' | 'Defesa Centro' | 'Ataque Centro' | 'Ataque Direita' | 'Ataque Esquerda';
+type SortCriteria = 'name' | 'kill' | 'attack' | 'defense' | 'support' | 'combat';
+
+interface Squad {
+  id: string;
+  name: string;
+  type: 'commander' | 'infantry' | 'armor' | 'artillery' | 'recon';
+  members: string[]; // member IDs
+  role?: SquadRole;
+  buildNodes?: boolean;
+  customPlayerInfo?: { id: string, playerName: string }[];
+  memberAssignments?: Record<string, { supplies?: boolean, hq?: 'QG 1' | 'QG 2' | 'QG 3' | null }>;
+}
+
+interface LineupBuilderProps {
+  members: ClanMember[];
+  isLoading: boolean;
+  clanId: string;
+}
+
+const SQUAD_TYPES = {
+  commander: { label: 'Comando', icon: Crown, max: 1, color: 'bg-primary/20 text-primary border-primary/30' },
+  infantry: { label: 'Infantaria', icon: Sword, max: 6, color: 'bg-green-500/10 text-green-500 border-green-500/20' },
+  armor: { label: 'Blindado', icon: Shield, max: 3, color: 'bg-amber-500/10 text-amber-500 border-amber-500/20' },
+  artillery: { label: 'Artilharia', icon: Crosshair, max: 2, color: 'bg-red-500/10 text-red-500 border-red-500/20' },
+  recon: { label: 'Reconhecimento', icon: Binoculars, max: 2, color: 'bg-blue-500/10 text-blue-500 border-blue-500/20' },
+};
+
+const ROLES: SquadRole[] = [
+  'Ataque', 'Defesa', 'Centro', 'Flanco Esquerdo', 'Flanco Direito',
+  'Defesa Esquerda', 'Defesa Direita', 'Defesa Centro',
+  'Ataque Centro', 'Ataque Direita', 'Ataque Esquerda'
+];
+
+export function LineupBuilder({ members, isLoading, clanId }: LineupBuilderProps) {
+  const [matchName, setMatchName] = useState('Operação Sem Nome');
+  const [squads, setSquads] = useState<Squad[]>([]);
+  const [selectedMemberIds, setSelectedNewMemberIds] = useState<Set<string>>(new Set());
+  const [draggedMemberId, setDraggedMemberId] = useState<string | null>(null);
+  const [activeDropZone, setActiveDropZone] = useState<string | null>(null);
+  const [isExporting, setIsExporting] = useState(false);
+  const [statsMap, setStatsMap] = useState<Record<string, PlayerAggregates>>({});
+  const [globalStats, setGlobalStats] = useState<GlobalStats | null>(null);
+  const [sortCriteria, setSortCriteria] = useState<SortCriteria>('name');
+  const [customPlayers, setCustomPlayers] = useState<Record<string, { id: string, playerName: string, isCustom: boolean }>>({});
+  const [newCustomPlayerName, setNewCustomPlayerName] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+  
+  const lineupRef = useRef<HTMLDivElement>(null);
+  const { toast } = useToast();
+  const firestore = useFirestore();
+  
+  const activeMembers = useMemo(() => {
+    return members.filter(m => m.status === 'active');
+  }, [members]);
+
+  useEffect(() => {
+    if (activeMembers.length > 0 && firestore) {
+      const fetchData = async () => {
+        const newStats: Record<string, PlayerAggregates> = {};
+        const memberIds = activeMembers.map(m => m.id);
+        
+        const globalRef = doc(firestore, 'globalStats', 'summary');
+        const globalSnap = await getDoc(globalRef);
+        if (globalSnap.exists()) {
+          setGlobalStats(globalSnap.data() as GlobalStats);
+        }
+
+        const chunks = [];
+        for (let i = 0; i < memberIds.length; i += 30) {
+          chunks.push(memberIds.slice(i, i + 30));
+        }
+
+        try {
+          for (const chunk of chunks) {
+            const q = query(collection(firestore, 'playerAggregates'), where('playerId', 'in', chunk));
+            const snap = await getDocs(q);
+            snap.forEach(doc => {
+              newStats[doc.id] = doc.data() as PlayerAggregates;
+            });
+          }
+          setStatsMap(newStats);
+        } catch (err) {
+          console.error("Error fetching member stats for lineup:", err);
+        }
+      };
+      fetchData();
+    }
+  }, [activeMembers, firestore]);
+
+  const getEfficiencyValue = (playerId: string, criteria: SortCriteria) => {
+    const stats = statsMap[playerId];
+    if (!stats || !stats.totalTimeSeconds) return 0;
+    const hours = stats.totalTimeSeconds / 3600;
+    
+    switch (criteria) {
+      case 'kill': return (stats.totalKills || 0) / hours;
+      case 'attack': return (stats.totalOffense || 0) / hours;
+      case 'defense': return (stats.totalDefense || 0) / hours;
+      case 'support': return (stats.totalSupport || 0) / hours;
+      case 'combat': return (stats.totalCombat || 0) / hours;
+      default: return 0;
+    }
+  };
+
+  const sortedActiveMembers = useMemo(() => {
+    const list = [...activeMembers];
+    if (sortCriteria === 'name') {
+      return list.sort((a, b) => a.playerName.localeCompare(b.playerName));
+    }
+
+    return list.sort((a, b) => {
+      const valA = getEfficiencyValue(a.id, sortCriteria);
+      const valB = getEfficiencyValue(b.id, sortCriteria);
+      return valB - valA;
+    });
+  }, [activeMembers, sortCriteria, statsMap]);
+
+  const memberAssignmentMap = useMemo(() => {
+    const map = new Map<string, string>();
+    squads.forEach(s => {
+      s.members.forEach(mId => map.set(mId, s.id));
+    });
+    return map;
+  }, [squads]);
+
+  const unassignedMembers = useMemo(() => {
+    return activeMembers.filter(m => selectedMemberIds.has(m.id) && !memberAssignmentMap.has(m.id));
+  }, [activeMembers, selectedMemberIds, memberAssignmentMap]);
+
+  const sortedSquads = useMemo(() => {
+    const order = { commander: 0, infantry: 1, armor: 2, recon: 3, artillery: 4 };
+    return [...squads].sort((a, b) => order[a.type] - order[b.type]);
+  }, [squads]);
+
+  const getTacticalProfile = (playerId: string) => {
+    const stats = statsMap[playerId];
+    if (!stats || !stats.totalTimeSeconds || stats.totalTimeSeconds < 3600) return null;
+
+    const playerHours = stats.totalTimeSeconds / 3600;
+    const refHours = 500;
+
+    const calculateEfficiency = (val: number, maxRecord: number) => {
+      const playerPPH = val / playerHours;
+      const recordPPH = maxRecord / refHours;
+      return recordPPH > 0 ? (playerPPH / recordPPH) : 0;
+    };
+
+    const roles = [
+      { id: 'ataque', label: 'Ataque', value: calculateEfficiency(stats.totalOffense || 0, globalStats?.maxTotalOffense || 195890), icon: Target, color: 'text-red-500', bgColor: 'bg-red-500/20' },
+      { id: 'defesa', label: 'Defesa', value: calculateEfficiency(stats.totalDefense || 0, globalStats?.maxTotalDefense || 536300), icon: ShieldCheck, color: 'text-blue-500', bgColor: 'bg-blue-500/20' },
+      { id: 'suporte', label: 'Suporte', value: calculateEfficiency(stats.totalSupport || 0, globalStats?.maxTotalSupport || 702001), icon: HeartPulse, color: 'text-green-500', bgColor: 'bg-green-500/20' },
+      { id: 'combate', label: 'Combate', value: calculateEfficiency(stats.totalCombat || 0, globalStats?.maxTotalCombat || 439291), icon: Zap, color: 'text-amber-500', bgColor: 'bg-amber-500/20' },
+    ];
+
+    const sortedRoles = roles.sort((a, b) => b.value - a.value);
+    const primaryRole = sortedRoles[0];
+    const avgEfficiency = Math.min(Math.round(primaryRole.value * 100), 100);
+
+    return { ...primaryRole, powerScore: avgEfficiency };
+  };
+
+  const addCustomPlayer = () => {
+    if (!newCustomPlayerName.trim()) return;
+    const id = `custom-${Math.random().toString(36).substr(2, 9)}`;
+    setCustomPlayers(prev => ({
+      ...prev,
+      [id]: { id, playerName: newCustomPlayerName.trim(), isCustom: true }
+    }));
+    setSelectedNewMemberIds(prev => new Set(prev).add(id));
+    setNewCustomPlayerName('');
+    toast({ title: "Sucesso!", description: `Jogador customizado "${newCustomPlayerName}" adicionado.` });
+  };
+
+  const addSquad = (type: keyof typeof SQUAD_TYPES) => {
+    if (type === 'commander' && squads.some(s => s.type === 'commander')) return;
+    const newSquad: Squad = {
+      id: Math.random().toString(36).substr(2, 9),
+      name: type === 'commander' ? 'Comandante da Equipe' : `${SQUAD_TYPES[type].label} ${squads.filter(s => s.type === type).length + 1}`,
+      type,
+      members: [],
+      role: type === 'infantry' ? 'Ataque' : undefined,
+      buildNodes: false
+    };
+    setSquads([...squads, newSquad]);
+  };
+
+  const removeSquad = (squadId: string) => setSquads(squads.filter(s => s.id !== squadId));
+  const updateSquadRole = (squadId: string, role: SquadRole) => setSquads(squads.map(s => s.id === squadId ? { ...s, role } : s));
+  const toggleSquadNodes = (squadId: string) => setSquads(squads.map(s => s.id === squadId ? { ...s, buildNodes: !s.buildNodes } : s));
+
+  const toggleMemberSelection = (memberId: string) => {
+    setSelectedNewMemberIds(prev => {
+      const next = new Set(prev);
+      if (next.has(memberId)) {
+        next.delete(memberId);
+        setSquads(currentSquads => currentSquads.map(s => ({ ...s, members: s.members.filter(id => id !== memberId) })));
+      } else {
+        next.add(memberId);
+      }
+      return next;
+    });
+  };
+
+  const assignMemberToSquad = (memberId: string, squadId: string) => {
+    if (!selectedMemberIds.has(memberId)) setSelectedNewMemberIds(prev => new Set(prev).add(memberId));
+    setSquads(currentSquads => {
+      const cleanedSquads = currentSquads.map(s => ({ ...s, members: s.members.filter(id => id !== memberId) }));
+      return cleanedSquads.map(s => {
+        if (s.id === squadId) {
+          if (s.members.length >= SQUAD_TYPES[s.type].max) return s;
+          return { ...s, members: [...s.members, memberId] };
+        }
+        return s;
+      });
+    });
+  };
+
+  const removeMemberFromSquad = (memberId: string, squadId: string) => {
+    setSquads(currentSquads => currentSquads.map(s => {
+      if (s.id !== squadId) return s;
+      const nextAssignments = { ...(s.memberAssignments || {}) };
+      delete nextAssignments[memberId];
+      return { 
+        ...s, 
+        members: s.members.filter(id => id !== memberId),
+        memberAssignments: nextAssignments 
+      };
+    }));
+  };
+
+  const toggleMemberSupply = (squadId: string, memberId: string) => {
+    setSquads(currentSquads => currentSquads.map(s => {
+      if (s.id !== squadId) return s;
+      const current = s.memberAssignments?.[memberId] || {};
+      return {
+        ...s,
+        memberAssignments: {
+          ...s.memberAssignments,
+          [memberId]: { ...current, supplies: !current.supplies }
+        }
+      };
+    }));
+  };
+
+  const setMemberHQ = (squadId: string, memberId: string, hq: 'QG 1' | 'QG 2' | 'QG 3' | null) => {
+    setSquads(currentSquads => currentSquads.map(s => {
+      if (s.id !== squadId) return s;
+      const current = s.memberAssignments?.[memberId] || {};
+      return {
+        ...s,
+        memberAssignments: {
+          ...s.memberAssignments,
+          [memberId]: { ...current, hq }
+        }
+      };
+    }));
+  };
+
+  const handleDragStart = (e: React.DragEvent, memberId: string) => {
+    e.dataTransfer.setData('memberId', memberId);
+    setDraggedMemberId(memberId);
+  };
+
+  const handleDragOver = (e: React.DragEvent, squadId: string) => {
+    e.preventDefault();
+    setActiveDropZone(squadId);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    setActiveDropZone(null);
+  };
+
+  const handleDrop = (e: React.DragEvent, squadId: string) => {
+    e.preventDefault();
+    const memberId = e.dataTransfer.getData('memberId');
+    if (memberId) assignMemberToSquad(memberId, squadId);
+    setDraggedMemberId(null);
+    setActiveDropZone(null);
+  };
+
+  const getMemberData = (id: string) => {
+    if (id.startsWith('custom-')) return customPlayers[id];
+    return members.find(m => m.id === id);
+  };
+  const getMemberName = (id: string) => getMemberData(id)?.playerName || 'Desconhecido';
+
+  const TacticalProfileIcon = ({ memberId }: { memberId: string }) => {
+    const profile = getTacticalProfile(memberId);
+    if (!profile) return null;
+    const Icon = profile.icon;
+    return (
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div className={cn("inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-tight ml-1.5 cursor-help", profile.bgColor, profile.color)}>
+              <Icon className="h-2.5 w-2.5" />
+              {profile.label}
+              <span className="ml-1 opacity-70">{profile.powerScore}%</span>
+            </div>
+          </TooltipTrigger>
+          <TooltipContent className="bg-popover border-accent/20">
+            <p className="font-bold text-accent">Poder de Eficiência (PPH)</p>
+            <p className="text-xs">Velocidade operacional: <span className="font-bold">{profile.powerScore}%</span> do recorde mundial em <span className="font-bold">{profile.label}</span>.</p>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    );
+  };
+
+  const ClassBadges = ({ memberId, compact = false }: { memberId: string, compact?: boolean }) => {
+    const member = getMemberData(memberId);
+    if (!member?.preferredClasses || member.preferredClasses.length === 0) return null;
+    return (
+      <div className={cn("flex flex-wrap gap-1 mt-0.5", compact ? "scale-90 origin-left" : "mt-1.5")}>
+        {member.preferredClasses.map(cls => {
+          const shortName = cls
+            .replace('Comandante', 'CMD').replace('Oficial', 'OFC')
+            .replace('Atirador Automático', 'AR').replace('Anti-Tanque', 'AT')
+            .replace('Atirador de Elite', 'SNI').replace('Cmt de Tanque', 'TCM')
+            .replace('Tripulante', 'TRI').replace('Engenheiro', 'ENG')
+            .replace('Metralhador', 'MG').replace('Fuzileiro', 'FUZ')
+            .replace('Médico', 'MED').replace('Suporte', 'SUP')
+            .replace('Assalto', 'ASL').replace('Observador', 'OBS')
+            .substring(0, 3).toUpperCase();
+          return <span key={cls} className="text-[8px] font-bold px-1 py-px bg-accent/20 text-accent rounded border border-accent/20 leading-none">{shortName}</span>;
+        })}
+      </div>
+    );
+  };
+
+  const PreferenceInfo = ({ memberId }: { memberId: string }) => {
+    const member = getMemberData(memberId);
+    if (!member?.primaryRole && !member?.playstyle) return null;
+
+    return (
+      <div className="flex flex-col gap-0.5 mt-1 border-l-2 border-accent/30 pl-2">
+        <div className="flex items-center gap-1.5">
+          {member.primaryRole && (
+            <span className="text-[10px] font-bold text-accent uppercase">{member.primaryRole}</span>
+          )}
+          {member.primaryRole && member.playstyle && (
+            <span className="text-[9px] text-muted-foreground">•</span>
+          )}
+          {member.playstyle && (
+            <span className="text-[10px] text-muted-foreground font-medium">{member.playstyle}</span>
+          )}
+        </div>
+        {member.secondaryRole && member.secondaryRole !== 'Nenhuma' && (
+          <span className="text-[9px] text-muted-foreground italic">Alt: {member.secondaryRole}</span>
+        )}
+      </div>
+    );
+  };
+
+  const handleExportImage = async () => {
+    if (!lineupRef.current) return;
+    setIsExporting(true);
+    await new Promise(r => setTimeout(r, 800));
+    try {
+      const exportWidth = 1200;
+      const dataUrl = await toPng(lineupRef.current, { cacheBust: true, backgroundColor: '#0a0a0a', width: exportWidth, style: { padding: '40px', margin: '0', width: `${exportWidth}px`, maxWidth: 'none', minWidth: `${exportWidth}px` } });
+      const link = document.createElement('a');
+      link.download = `${matchName.replace(/\s+/g, '_')}_Lineup.png`;
+      link.href = dataUrl;
+      link.click();
+      toast({ title: 'Imagem Gerada!', description: 'A escalação foi baixada com sucesso.' });
+    } catch (err) {
+      console.error('Export error:', err);
+      toast({ variant: 'destructive', title: 'Erro ao Exportar', description: 'Não foi possível gerar a imagem da escalação.' });
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handleCopyText = () => {
+    let text = `📋 *ORDEM DE BATALHA: ${matchName.toUpperCase()}*\n📅 Gerado em: ${new Date().toLocaleDateString()}\n\n`;
+    sortedSquads.forEach(s => {
+      text += `*${s.name.toUpperCase()}*${s.role ? ` (${s.role})` : ''}${s.buildNodes ? ` ⚒️` : ''}\n`;
+      if (s.members.length === 0) text += `- (Vazio)\n`;
+      else s.members.forEach(mId => {
+        const m = getMemberData(mId);
+        const profile = getTacticalProfile(mId);
+        const assigns = s.memberAssignments?.[mId];
+        let assignText = '';
+        if (assigns?.supplies) assignText += ' [SUP]';
+        if (assigns?.hq) assignText += ` [${assigns.hq}]`;
+        
+        text += `- ${m?.playerName}${profile ? ` [${profile.label} ${profile.powerScore}%]` : ''}${assignText}${m?.preferredClasses?.length ? ` (${m.preferredClasses.join(', ')})` : ''}\n`;
+      });
+      text += `\n`;
+    });
+    navigator.clipboard.writeText(text).then(() => toast({ title: 'Copiado!', description: 'Escalação em texto copiada para a área de transferência.' }));
+  };
+
+  const handleSaveLineup = async () => {
+    if (squads.length === 0) {
+      toast({ variant: 'destructive', title: 'Erro', description: 'Adicione pelo menos um pelotão antes de salvar.' });
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const { saveLineupAction } = await import('@/app/clan-admin/actions');
+      const result = await saveLineupAction(clanId, {
+        name: matchName,
+        squads: squads.map(s => ({
+          ...s,
+          // We save custom player info too if they are in the squad
+          customPlayerInfo: s.members
+            .filter(mId => mId.startsWith('custom-'))
+            .map(mId => ({
+              id: mId,
+              playerName: customPlayers[mId].playerName
+            }))
+        })),
+        date: new Date().toISOString(),
+      });
+
+      if (result.success) {
+        toast({ title: 'Salvo!', description: 'Escalação salva com sucesso.' });
+      } else {
+        toast({ variant: 'destructive', title: 'Erro ao Salvar', description: result.error || 'Erro desconhecido' });
+      }
+    } catch (err) {
+      console.error('Save error:', err);
+      toast({ variant: 'destructive', title: 'Erro ao Salvar', description: 'Ocorreu um erro inesperado.' });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+        <div className="lg:col-span-1 space-y-4">
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Users className="h-5 w-5 text-accent" />
+                  Membros Ativos
+                </CardTitle>
+                <Dialog>
+                  <DialogTrigger asChild>
+                    <Button variant="ghost" size="icon" className="h-8 w-8">
+                      <Maximize2 className="h-4 w-4" />
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="max-w-5xl max-h-[90vh]">
+                    <DialogHeader>
+                      <DialogTitle className="flex items-center gap-2">
+                        <Maximize2 className="h-5 w-5 text-accent" />
+                        Inteligência Operacional do Clã
+                      </DialogTitle>
+                      <DialogDescription>Clique nos cabeçalhos para ordenar por eficiência (PPH).</DialogDescription>
+                    </DialogHeader>
+                    <ScrollArea className="h-[70vh] pr-4 mt-4">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>
+                              <Button variant="ghost" size="sm" className={cn("font-bold px-0", sortCriteria === 'name' && "text-accent")} onClick={() => setSortCriteria('name')}>
+                                Soldado {sortCriteria === 'name' && <ArrowUpDown className="ml-2 h-3 w-3" />}
+                              </Button>
+                            </TableHead>
+                            <TableHead className="text-right">
+                              <Button variant="ghost" size="sm" className={cn("font-bold ml-auto px-0", sortCriteria === 'kill' && "text-accent")} onClick={() => setSortCriteria('kill')}>
+                                Kills/h {sortCriteria === 'kill' && <ArrowUpDown className="ml-2 h-3 w-3" />}
+                              </Button>
+                            </TableHead>
+                            <TableHead className="text-right">
+                              <Button variant="ghost" size="sm" className={cn("font-bold ml-auto px-0", sortCriteria === 'attack' && "text-accent")} onClick={() => setSortCriteria('attack')}>
+                                Ataque/h {sortCriteria === 'attack' && <ArrowUpDown className="ml-2 h-3 w-3" />}
+                              </Button>
+                            </TableHead>
+                            <TableHead className="text-right">
+                              <Button variant="ghost" size="sm" className={cn("font-bold ml-auto px-0", sortCriteria === 'defense' && "text-accent")} onClick={() => setSortCriteria('defense')}>
+                                Defesa/h {sortCriteria === 'defense' && <ArrowUpDown className="ml-2 h-3 w-3" />}
+                              </Button>
+                            </TableHead>
+                            <TableHead className="text-right">
+                              <Button variant="ghost" size="sm" className={cn("font-bold ml-auto px-0", sortCriteria === 'support' && "text-accent")} onClick={() => setSortCriteria('support')}>
+                                Suporte/h {sortCriteria === 'support' && <ArrowUpDown className="ml-2 h-3 w-3" />}
+                              </Button>
+                            </TableHead>
+                            <TableHead className="text-right">
+                              <Button variant="ghost" size="sm" className={cn("font-bold ml-auto px-0", sortCriteria === 'combat' && "text-accent")} onClick={() => setSortCriteria('combat')}>
+                                Combate/h {sortCriteria === 'combat' && <ArrowUpDown className="ml-2 h-3 w-3" />}
+                              </Button>
+                            </TableHead>
+                            <TableHead className="text-right">DNA</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {sortedActiveMembers.map(m => {
+                            const stats = statsMap[m.id];
+                            const hours = (stats?.totalTimeSeconds || 0) / 3600 || 1;
+                            return (
+                              <TableRow key={m.id} className={cn(selectedMemberIds.has(m.id) && "bg-accent/5")}>
+                                <TableCell className="font-bold">{m.playerName}</TableCell>
+                                <TableCell className={cn("text-right tabular-nums", sortCriteria === 'kill' && "text-accent font-bold")}>{((stats?.totalKills || 0) / hours).toFixed(1)}</TableCell>
+                                <TableCell className={cn("text-right tabular-nums", sortCriteria === 'attack' && "text-accent font-bold")}>{Math.round((stats?.totalOffense || 0) / hours)}</TableCell>
+                                <TableCell className={cn("text-right tabular-nums", sortCriteria === 'defense' && "text-accent font-bold")}>{Math.round((stats?.totalDefense || 0) / hours)}</TableCell>
+                                <TableCell className={cn("text-right tabular-nums", sortCriteria === 'support' && "text-accent font-bold")}>{Math.round((stats?.totalSupport || 0) / hours)}</TableCell>
+                                <TableCell className={cn("text-right tabular-nums", sortCriteria === 'combat' && "text-accent font-bold")}>{Math.round((stats?.totalCombat || 0) / hours)}</TableCell>
+                                <TableCell className="w-32"><TacticalDNABar player={statsMap[m.id]} /></TableCell>
+                              </TableRow>
+                            );
+                          })}
+                        </TableBody>
+                      </Table>
+                    </ScrollArea>
+                  </DialogContent>
+                </Dialog>
+              </div>
+              <CardDescription className="text-[11px] leading-tight">DNA Tático: Proporção acumulada. Poder: Eficiência vs Recorde.</CardDescription>
+              
+              <div className="pt-2 space-y-2">
+                <div className="flex gap-1.5">
+                  <Input 
+                    placeholder="Nome do Jogador Custom" 
+                    className="h-8 text-[11px] bg-muted/50 border-accent/10" 
+                    value={newCustomPlayerName}
+                    onChange={(e) => setNewCustomPlayerName(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && addCustomPlayer()}
+                  />
+                  <Button variant="outline" size="icon" className="h-8 w-8 flex-shrink-0" onClick={addCustomPlayer}>
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </div>
+                
+                <Select value={sortCriteria} onValueChange={(val) => setSortCriteria(val as SortCriteria)}>
+                  <SelectTrigger className="h-8 text-[10px] bg-muted/50 border-accent/10">
+                    <div className="flex items-center gap-2">
+                      <ArrowUpDown className="h-3 w-3 text-accent" />
+                      <SelectValue placeholder="Ordenar por..." />
+                    </div>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="name" className="text-[11px]">Nome (A-Z)</SelectItem>
+                    <SelectItem value="kill" className="text-[11px]">Letalidade (Kills/h)</SelectItem>
+                    <SelectItem value="attack" className="text-[11px]">Eficiência de Ataque</SelectItem>
+                    <SelectItem value="defense" className="text-[11px]">Eficiência de Defesa</SelectItem>
+                    <SelectItem value="support" className="text-[11px]">Eficiência de Suporte</SelectItem>
+                    <SelectItem value="combat" className="text-[11px]">Eficiência de Combate</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </CardHeader>
+            <CardContent className="p-0">
+              <ScrollArea className="h-[600px] px-4">
+                <div className="space-y-1 py-2">
+                  {/* Custom Players Section */}
+                  {Object.values(customPlayers).length > 0 && (
+                    <div className="mb-4 space-y-1">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-accent/70 px-2">Customizados</p>
+                      {Object.values(customPlayers).map(player => {
+                        const isSelected = selectedMemberIds.has(player.id);
+                        const isAssigned = memberAssignmentMap.has(player.id);
+                        const isBeingDragged = draggedMemberId === player.id;
+                        return (
+                          <div key={player.id} draggable onDragStart={(e) => handleDragStart(e, player.id)} className={cn("flex flex-col p-2 rounded-md cursor-grab transition-all text-sm group border border-accent/10 bg-accent/5", isSelected ? "bg-accent/15 border-accent/30" : "hover:bg-accent/10", isBeingDragged && "opacity-40 grayscale scale-95")}>
+                            <div className="flex items-center gap-2 overflow-hidden">
+                              <button onClick={(e) => { e.stopPropagation(); toggleMemberSelection(player.id); }} className="hover:scale-110 transition-transform">
+                                {isSelected ? <CheckSquare className="h-4 w-4 text-accent flex-shrink-0" /> : <Square className="h-4 w-4 text-muted-foreground flex-shrink-0" />}
+                              </button>
+                              <div className="flex flex-col overflow-hidden w-full">
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-2 truncate">
+                                    <Badge variant="outline" className="text-[8px] px-1 bg-accent/20">C</Badge>
+                                    <span className={cn("truncate font-bold text-accent", isAssigned && "text-muted-foreground line-through")}>{player.playerName}</span>
+                                  </div>
+                                  {isAssigned && <Badge variant="outline" className="text-[9px] py-0 px-1 opacity-70">OK</Badge>}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {sortedActiveMembers.length === 0 && !isLoading && Object.values(customPlayers).length === 0 ? (
+                    <p className="text-xs text-muted-foreground text-center py-8 italic">Nenhum membro ativo encontrado.</p>
+                  ) : sortedActiveMembers.map(member => {
+                    const isSelected = selectedMemberIds.has(member.id);
+                    const isAssigned = memberAssignmentMap.has(member.id);
+                    const isBeingDragged = draggedMemberId === member.id;
+                    return (
+                      <div key={member.id} draggable onDragStart={(e) => handleDragStart(e, member.id)} className={cn("flex flex-col p-2 rounded-md cursor-grab transition-all text-sm group border border-transparent", isSelected ? "bg-accent/10 border-accent/20" : "hover:bg-muted", isBeingDragged && "opacity-40 grayscale scale-95")}>
+                        <div className="flex items-center gap-2 overflow-hidden">
+                          <button onClick={(e) => { e.stopPropagation(); toggleMemberSelection(member.id); }} className="hover:scale-110 transition-transform">
+                            {isSelected ? <CheckSquare className="h-4 w-4 text-accent flex-shrink-0" /> : <Square className="h-4 w-4 text-muted-foreground flex-shrink-0" />}
+                          </button>
+                          <div className="flex flex-col overflow-hidden w-full">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2 truncate">
+                                {(() => {
+                                  const dClan = getClanFromPlayerName(member.playerName);
+                                  return dClan?.logoUrl ? <Image src={dClan.logoUrl} alt={dClan.name} width={14} height={14} className="rounded-full flex-shrink-0 object-cover" /> : null;
+                                })()}
+                                <span className={cn("truncate font-medium", isAssigned && "text-muted-foreground line-through")}>{member.playerName}</span>
+                              </div>
+                              <div className="flex items-center gap-1 flex-shrink-0">
+                                {isAssigned && <Badge variant="outline" className="text-[9px] py-0 px-1 opacity-70">OK</Badge>}
+                                <TacticalProfileIcon memberId={member.id} />
+                              </div>
+                            </div>
+                            <div className="flex flex-col mt-1.5 gap-1">
+                               <PreferenceInfo memberId={member.id} />
+                               <ClassBadges memberId={member.id} compact />
+                               <TacticalDNABar player={statsMap[member.id]} className="w-full" />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </ScrollArea>
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="lg:col-span-3 space-y-6">
+          <Card className="bg-card/50">
+            <CardContent className="pt-6">
+              <div className="flex flex-col md:flex-row gap-4 items-end">
+                <div className="flex-1 space-y-2 w-full">
+                  <Label htmlFor="match-name">Nome da Operação / Evento</Label>
+                  <Input id="match-name" value={matchName} onChange={e => setMatchName(e.target.value)} placeholder="Ex: Treino de Sábado" />
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button variant="outline" size="sm" onClick={() => addSquad('commander')} disabled={squads.some(s => s.type === 'commander')} className={cn(squads.some(s => s.type === 'commander') && "opacity-50 border-primary/50 text-primary")}><Plus className="mr-1 h-4 w-4" /> Comando</Button>
+                  <Button variant="outline" size="sm" onClick={() => addSquad('infantry')}><Plus className="mr-1 h-4 w-4" /> Infantaria</Button>
+                  <Button variant="outline" size="sm" onClick={() => addSquad('armor')}><Plus className="mr-1 h-4 w-4" /> Blindado</Button>
+                  <Button variant="outline" size="sm" onClick={() => addSquad('recon')}><Plus className="mr-1 h-4 w-4" /> Recon</Button>
+                  <Button variant="outline" size="sm" onClick={() => addSquad('artillery')}><Plus className="mr-1 h-4 w-4" /> Artilharia</Button>
+                </div>
+              </div>
+              <div className="mt-4 flex flex-col sm:flex-row justify-between items-center gap-4">
+                <div className="flex flex-wrap gap-6 text-sm text-muted-foreground">
+                  <div className="flex items-center gap-1"><Users className="h-4 w-4" /> <span>{selectedMemberIds.size} Selecionados</span></div>
+                  <div className="flex items-center gap-1"><UserCheck className="h-4 w-4" /> <span>{memberAssignmentMap.size} Escalados</span></div>
+                  <div className="flex items-center gap-1"><Wrench className="h-4 w-4 text-blue-400" /> <span className="text-blue-400">{squads.filter(s => s.buildNodes).length}/3 Equipes de Nodos</span></div>
+                </div>
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" onClick={handleSaveLineup} disabled={isSaving}>
+                    {isSaving ? <Zap className="mr-2 h-4 w-4 animate-pulse" /> : <ShieldCheck className="mr-2 h-4 w-4" />}
+                    Salvar
+                  </Button>
+                  <Button variant="secondary" size="sm" onClick={handleCopyText}><Copy className="mr-2 h-4 w-4" /> Copiar Texto</Button>
+                  <Button variant="default" size="sm" onClick={handleExportImage} disabled={isExporting}>{isExporting ? <Share2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}Exportar Imagem</Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {unassignedMembers.length > 0 && (
+            <div className="space-y-2">
+              <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider px-1">Jogadores em Espera (Arraste-os!)</h3>
+              <div className="flex flex-wrap gap-2 p-2 rounded-lg bg-muted/20 border border-dashed">
+                {unassignedMembers.map(m => (
+                  <Badge key={m.id} variant="secondary" draggable onDragStart={(e) => handleDragStart(e, m.id)} className="pl-2 pr-2 py-1 cursor-grab active:cursor-grabbing hover:bg-secondary/80 flex items-center gap-3">
+                    <Grab className="h-3 w-3 text-muted-foreground" />
+                    <div className="flex flex-col">
+                      <div className="flex items-center gap-2">
+                        {m.playerName}
+                        <TacticalProfileIcon memberId={m.id} />
+                      </div>
+                      <TacticalDNABar player={statsMap[m.id]} className="w-20 mt-1" />
+                    </div>
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div ref={lineupRef} className="bg-background">
+            {isExporting && (
+              <div className="mb-8 border-b-4 border-accent/50 pb-6 px-4">
+                <h2 className="text-5xl font-bold font-headline text-accent uppercase tracking-tighter">ORDEM DE BATALHA: {matchName}</h2>
+                <p className="text-lg text-muted-foreground mt-2 font-medium">Gerado via Hell Let Loose BR em {new Date().toLocaleDateString()}</p>
+              </div>
+            )}
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 p-2">
+              {sortedSquads.length === 0 ? (
+                <div className="col-span-full h-40 flex flex-col items-center justify-center border-2 border-dashed rounded-lg bg-muted/20"><Settings2 className="h-8 w-8 text-muted-foreground mb-2" /><p className="text-muted-foreground">Adicione pelotões acima para começar a escalação.</p></div>
+              ) : (
+                sortedSquads.map(squad => {
+                  const config = SQUAD_TYPES[squad.type];
+                  const Icon = config.icon;
+                  const isOver = activeDropZone === squad.id;
+                  const isFull = squad.members.length >= config.max;
+                  const isCommander = squad.type === 'commander';
+                  return (
+                    <Card key={squad.id} onDragOver={(e) => !isFull && handleDragOver(e, squad.id)} onDragLeave={handleDragLeave} onDrop={(e) => handleDrop(e, squad.id)} className={cn("overflow-hidden transition-all duration-200 border-accent/10 flex flex-col shadow-sm", isOver && "ring-2 ring-accent scale-[1.02] shadow-lg", isFull && "opacity-90", isCommander && "border-primary/50 shadow-md shadow-primary/5 border-2")}>
+                      <CardHeader className={cn("p-4 flex flex-row items-center justify-between border-b", config.color)}>
+                        <div className="flex items-center gap-3 overflow-hidden">
+                          <Icon className={cn("flex-shrink-0", isCommander ? "h-6 w-6" : "h-5 w-5")} />
+                          <CardTitle className={cn("truncate font-headline tracking-wider uppercase", isCommander ? "text-lg" : "text-sm")}>{squad.name}</CardTitle>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {!isCommander && <span className={cn("text-xs font-mono px-2 py-0.5 rounded font-bold", isFull ? "bg-destructive text-white" : "bg-black/20")}>{squad.members.length}/{config.max}</span>}
+                          {!isExporting && <button onClick={() => removeSquad(squad.id)} className="hover:text-foreground opacity-70 hover:opacity-100"><X className="h-4 w-4" /></button>}
+                        </div>
+                      </CardHeader>
+                      <CardContent className="p-4 space-y-3 min-h-[140px] bg-card/30 flex-grow">
+                        {squad.type === 'infantry' && !isExporting && (
+                          <div className="flex items-center gap-2 pb-3 border-b border-border/30">
+                            <div className="flex-1"><Select value={squad.role} onValueChange={(val) => updateSquadRole(squad.id, val as SquadRole)}><SelectTrigger className="h-8 text-[11px] bg-background/50"><SelectValue placeholder="Missão" /></SelectTrigger><SelectContent>{ROLES.map(role => (<SelectItem key={role} value={role} className="text-[11px]">{role}</SelectItem>))}</SelectContent></Select></div>
+                            <Button variant={squad.buildNodes ? "default" : "outline"} size="sm" className={cn("h-8 px-2 text-[11px] gap-1", squad.buildNodes && "bg-blue-600 hover:bg-blue-700")} onClick={() => toggleSquadNodes(squad.id)} title="Equipe de Nodos"><Hammer className="h-3 w-3" />{squad.buildNodes && <span>NODOS</span>}</Button>
+                          </div>
+                        )}
+                        <div className="space-y-2">
+                          {squad.members.map(mId => (
+                            <div key={mId} className={cn("flex flex-col p-2 rounded text-sm transition-colors", isCommander ? "bg-primary/10 border border-primary/20 text-primary-foreground font-bold text-base" : "bg-muted/50")}>
+                              <div className="flex items-center justify-between">
+                                <div className="flex flex-col overflow-hidden flex-1">
+                                  <div className="flex items-center">
+                                    <span className="truncate font-medium">{getMemberName(mId)}</span>
+                                    <TacticalProfileIcon memberId={mId} />
+                                    {/* Assignment Badges Display */}
+                                    {squad.memberAssignments?.[mId]?.supplies && <Badge className="ml-1.5 h-4 px-1 text-[8px] bg-green-600 hover:bg-green-600">SUP</Badge>}
+                                    {squad.memberAssignments?.[mId]?.hq && <Badge className="ml-1 h-4 px-1 text-[8px] bg-blue-600 hover:bg-blue-600">{squad.memberAssignments[mId]?.hq}</Badge>}
+                                  </div>
+                                   <ClassBadges memberId={mId} />
+                                  <PreferenceInfo memberId={mId} />
+                                </div>
+                                {!isExporting && <button onClick={() => removeMemberFromSquad(mId, squad.id)} className="text-muted-foreground hover:text-destructive transition-colors ml-2"><Trash2 className="h-4 w-4" /></button>}
+                              </div>
+                              <TacticalDNABar player={statsMap[mId]} className="mt-2" />
+                              
+                              {/* Individual Assignment Controls */}
+                              {!isExporting && (
+                                <div className="flex items-center gap-1 mt-2 pt-2 border-t border-border/20">
+                                  <Button 
+                                    variant={squad.memberAssignments?.[mId]?.supplies ? "default" : "outline"} 
+                                    size="icon" 
+                                    className={cn("h-6 w-12 text-[8px] font-bold p-0", squad.memberAssignments?.[mId]?.supplies && "bg-green-600 hover:bg-green-700")}
+                                    onClick={() => toggleMemberSupply(squad.id, mId)}
+                                  >
+                                    SUPPLIER
+                                  </Button>
+                                  <div className="flex gap-0.5">
+                                    {['QG 1', 'QG 2', 'QG 3'].map((hq) => (
+                                      <Button 
+                                        key={hq}
+                                        variant={squad.memberAssignments?.[mId]?.hq === hq ? "default" : "outline"}
+                                        size="icon"
+                                        className={cn("h-6 w-8 text-[8px] font-bold p-0", squad.memberAssignments?.[mId]?.hq === hq && "bg-blue-600 hover:bg-blue-700")}
+                                        onClick={() => setMemberHQ(squad.id, mId, squad.memberAssignments?.[mId]?.hq === hq ? null : hq as any)}
+                                      >
+                                        {hq}
+                                      </Button>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                          {squad.members.length === 0 && !isOver && <div className="h-20 flex flex-col items-center justify-center text-[11px] text-muted-foreground/50 italic border border-dashed border-muted-foreground/20 rounded">{isCommander ? "Arraste o Comandante aqui" : "Arraste um jogador aqui"}</div>}
+                          {isOver && <div className="h-10 animate-pulse bg-accent/20 border border-accent border-dashed rounded flex items-center justify-center text-[11px] text-accent font-bold">SOLTE PARA ESCALAR</div>}
+                        </div>
+                      </CardContent>
+                      {(squad.role || squad.buildNodes || isCommander) && (<div className={cn("px-4 py-2 border-t border-border/30 flex justify-between items-center", isCommander ? "bg-primary/15 border-primary/20" : "bg-muted/40")}><span className={cn("text-xs font-bold uppercase tracking-wider", isCommander ? "text-primary flex-1 text-center" : "text-foreground")}>{isCommander ? "★ LIDERANÇA SUPREMA ★" : squad.role}</span>{!isCommander && squad.buildNodes && (<div className="flex items-center gap-2"><span className="text-[10px] font-bold text-blue-400">NODOS</span><Wrench className="h-4 w-4 text-blue-400" /></div>)}</div>)}
+                    </Card>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

@@ -4,60 +4,14 @@ import { useState, useEffect, useTransition } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
-import { importServerData, getServerSyncStatus, getPlayerCount, importSpecificMatches, importMatchRange, updateGlobalStats, importHistoricalMatchRange } from '../actions';
+import { importServerDataByDate, getServerSyncStatus, getPlayerCount, updateGlobalStats, getServersConfig, addServerConfig, removeServerConfig, ServerConfig } from '../actions';
 import { Progress } from '@/components/ui/progress';
-import { Database, DownloadCloud, History, ServerIcon, Users, Edit, RefreshCw, BarChart, BetweenHorizontalStart, Archive, Sparkles } from 'lucide-react';
+import { Database, ServerIcon, Users, RefreshCw, BarChart, Plus, Trash2 } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import Link from 'next/link';
-
-const servers = [
-  {
-    id: '3LPZ',
-    name: '3LPZ',
-    apiUrl: 'https://3lpz-stats.hlladmin.com/api',
-  },
-  {
-    id: 'HRB',
-    name: 'HRB',
-    apiUrl: 'https://hrb-stats.hlladmin.com/api',
-  },
-  {
-    id: 'RZN',
-    name: 'RZN',
-    apiUrl: 'https://rzn-stats.crcon.cc/api',
-  },
-  {
-    id: 'GOAT',
-    name: 'GOAT',
-    apiUrl: 'https://goat-stats.hlladmin.com/api',
-  },
-  {
-    id: 'OCL',
-    name: 'OCL',
-    apiUrl: 'https://ocabala-stats.hlladmin.com/api',
-  },
-  {
-    id: 'SAP',
-    name: 'SAP',
-    apiUrl: 'https://sap-stats.hlladmin.com/api',
-  },
-  {
-    id: 'SOH',
-    name: 'SOH',
-    apiUrl: 'https://sohhllbr-stats.hlladmin.com/api'
-  },
-  {
-    id: 'SMK',
-    name: 'SMK',
-    apiUrl: 'http://stats.smk-hll.com/api'
-  }
-];
-
-type Server = (typeof servers)[0];
+import { cn } from '@/lib/utils';
 
 interface ServerImportState {
   isImporting: boolean;
@@ -71,549 +25,293 @@ interface ServerSyncStatus {
 }
 
 export default function AdminDashboardPage() {
-  const [importStates, setImportStates] = useState<Record<string, ServerImportState>>(
-    servers.reduce((acc, server) => {
-      acc[server.id] = { isImporting: false, progress: 0, message: '' };
-      return acc;
-    }, {} as Record<string, ServerImportState>)
-  );
-
+  const [servers, setServers] = useState<ServerConfig[]>([]);
+  const [importStates, setImportStates] = useState<Record<string, ServerImportState>>({});
   const [serverStatus, setServerStatus] = useState<Record<string, ServerSyncStatus> | null>(null);
+  
   const [playerCount, setPlayerCount] = useState<number | null>(null);
   const [isFetchingStats, startFetchingStats] = useTransition();
   const [isUpdatingGlobalStats, startUpdatingGlobalStats] = useTransition();
+  const [isManagingServers, startManagingServers] = useTransition();
 
-  const [manualImportIds, setManualImportIds] = useState('');
-  const [manualImportServer, setManualImportServer] = useState<string>('');
-  const [isManualImporting, setIsManualImporting] = useState(false);
-
-  const [rangeImportServer, setRangeImportServer] = useState<string>('');
-  const [rangeStartId, setRangeStartId] = useState('');
-  const [rangeEndId, setRangeEndId] = useState('');
-  const [isRangeImporting, setIsRangeImporting] = useState(false);
-
-  const [historicalImportServer, setHistoricalImportServer] = useState<string>('');
-  const [historicalStartId, setHistoricalStartId] = useState('');
-  const [historicalEndId, setHistoricalEndId] = useState('');
-  const [isHistoricalImporting, setIsHistoricalImporting] = useState(false);
-
+  const [newServerName, setNewServerName] = useState('');
+  const [newServerUrl, setNewServerUrl] = useState('');
 
   const { toast } = useToast();
 
-  const fetchStats = () => {
+  useEffect(() => {
+    loadServersAndStatus();
+  }, []);
+
+  const loadServersAndStatus = () => {
     startFetchingStats(async () => {
-      setServerStatus(null);
-      setPlayerCount(null);
-      const [statuses, count] = await Promise.all([
-        getServerSyncStatus(),
-        getPlayerCount(),
-      ]);
-      setServerStatus(statuses);
-      setPlayerCount(count);
+      const serverList = await getServersConfig();
+      setServers(serverList);
+      
+      const initialStates: Record<string, ServerImportState> = {};
+      serverList.forEach(s => {
+          initialStates[s.name] = { isImporting: false, progress: 0, message: '' };
+      });
+      setImportStates(initialStates);
+
+      const status = await getServerSyncStatus();
+      setServerStatus(status);
+      
+      const pCount = await getPlayerCount();
+      setPlayerCount(pCount);
     });
   };
 
-  useEffect(() => {
-    fetchStats();
-  }, []);
+  const handleAddServer = () => {
+      if (!newServerName || !newServerUrl) {
+          toast({ title: "Erro", description: "Preencha o nome e a URL.", variant: "destructive" });
+          return;
+      }
+      startManagingServers(async () => {
+          const res = await addServerConfig(newServerName, newServerUrl);
+          if (res.success) {
+              toast({ title: "Sucesso", description: "Servidor adicionado." });
+              setNewServerName('');
+              setNewServerUrl('');
+              loadServersAndStatus();
+          } else {
+              toast({ title: "Erro", description: res.error, variant: "destructive" });
+          }
+      });
+  };
 
-  const anyImportInProgress = Object.values(importStates).some(s => s.isImporting) || isManualImporting || isUpdatingGlobalStats || isRangeImporting || isHistoricalImporting;
+  const handleRemoveServer = (id: string, name: string) => {
+      if (!confirm(`Tem certeza que deseja remover o servidor ${name}?`)) return;
+      startManagingServers(async () => {
+          const res = await removeServerConfig(id);
+          if (res.success) {
+              toast({ title: "Sucesso", description: "Servidor removido." });
+              loadServersAndStatus();
+          } else {
+              toast({ title: "Erro", description: res.error, variant: "destructive" });
+          }
+      });
+  };
+
+  const handleSyncServer = async (serverName: string, apiUrl: string) => {
+    setImportStates(prev => ({
+      ...prev,
+      [serverName]: { isImporting: true, progress: 10, message: 'Buscando histórico dos últimos 3 meses...' }
+    }));
+
+    toast({
+      title: "Sincronização Iniciada",
+      description: `Buscando e processando partidas para ${serverName}. Isso pode levar um tempo.`,
+    });
+
+    try {
+      const result = await importServerDataByDate(serverName, apiUrl, 3);
+      
+      if (result.success) {
+        setImportStates(prev => ({
+          ...prev,
+          [serverName]: { isImporting: false, progress: 100, message: `Concluído! ${result.matchesProcessed} novas partidas importadas.` }
+        }));
+        
+        toast({
+          title: "Sincronização Concluída",
+          description: `${result.matchesProcessed} novas partidas processadas para ${serverName}.`,
+        });
+
+        // Refresh status
+        startFetchingStats(async () => {
+            const status = await getServerSyncStatus();
+            setServerStatus(status);
+        });
+      } else {
+        throw new Error(result.error);
+      }
+    } catch (error: any) {
+      setImportStates(prev => ({
+        ...prev,
+        [serverName]: { isImporting: false, progress: 0, message: `Erro: ${error.message}` }
+      }));
+      
+      toast({
+        title: "Erro de Sincronização",
+        description: `Falha ao sincronizar ${serverName}: ${error.message}`,
+        variant: "destructive"
+      });
+    }
+  };
 
   const handleUpdateGlobalStats = () => {
     startUpdatingGlobalStats(async () => {
-      toast({ title: 'Iniciando cálculo de recordes globais...', description: 'Isso pode levar alguns instantes.' });
+      toast({
+        title: "Atualizando Estatísticas...",
+        description: "Calculando records globais. Aguarde.",
+      });
       const result = await updateGlobalStats();
       if (result.success) {
         toast({
-          title: 'Recordes Globais Atualizados!',
-          description: 'O gráfico de perfil dos jogadores agora usará os novos valores máximos.',
+          title: "Estatísticas Atualizadas!",
+          description: "Os records globais foram atualizados com sucesso.",
         });
-        console.log("Max stats updated:", result.maxStats);
       } else {
         toast({
-          variant: 'destructive',
-          title: 'Falha ao Atualizar Recordes',
-          description: result.error || 'Ocorreu um erro desconhecido.',
+          title: "Erro",
+          description: "Falha ao atualizar estatísticas globais: " + result.error,
+          variant: "destructive"
         });
       }
     });
-  };
-
-  const handleImport = async (server: Server) => {
-    if (!server) return;
-
-    const setServerState = (update: Partial<ServerImportState>) => {
-      setImportStates(prev => ({
-        ...prev,
-        [server.id]: { ...prev[server.id], ...update },
-      }));
-    };
-
-    setServerState({
-      isImporting: true,
-      progress: 10,
-      message: `Iniciando importação de ${server.name}...`,
-    });
-
-    try {
-      const result = await importServerData(server.name, server.apiUrl);
-
-      if (result.success) {
-        setServerState({
-          progress: 100,
-          message: `${result.matchesProcessed} novas partidas processadas de ${result.totalFound}.`,
-        });
-        toast({
-          title: 'Importação Concluída!',
-          description: `Total de ${result.matchesProcessed} novas partidas processadas do servidor ${server.name}.`,
-        });
-        fetchStats(); // Refresh stats after import
-      } else {
-        throw new Error(result.error || 'Ocorreu um erro desconhecido na importação.');
-      }
-    } catch (error: any) {
-      setServerState({
-        progress: 0,
-        message: `Falha: ${error.message}`,
-      });
-      toast({
-        variant: 'destructive',
-        title: 'Falha na Importação',
-        description: error.message,
-      });
-    } finally {
-      setTimeout(() => {
-        setServerState({ isImporting: false, progress: 0, message: '' });
-      }, 8000);
-    }
-  };
-
-  const handleManualImport = async () => {
-    if (!manualImportServer || !manualImportIds) {
-      toast({
-        variant: 'destructive',
-        title: 'Dados Incompletos',
-        description: 'Por favor, selecione um servidor e insira os IDs das partidas.',
-      });
-      return;
-    }
-
-    setIsManualImporting(true);
-    const server = servers.find(s => s.id === manualImportServer);
-    if (!server) {
-      setIsManualImporting(false);
-      toast({ variant: 'destructive', title: 'Erro', description: 'Servidor selecionado não encontrado.' });
-      return;
-    }
-
-    toast({ title: 'Iniciando Importação Manual', description: `Processando partidas para ${server.name}...` });
-
-    try {
-      const result = await importSpecificMatches(server.name, server.apiUrl, manualImportIds);
-      if (result.success) {
-        toast({
-          title: 'Importação Manual Concluída',
-          description: `${result.matchesProcessed} de ${result.totalToProcess} partidas foram processadas com sucesso.`,
-        });
-        setManualImportIds('');
-        setManualImportServer('');
-        fetchStats();
-      } else {
-        throw new Error(result.error || 'Ocorreu um erro desconhecido.');
-      }
-    } catch (error: any) {
-      toast({ variant: 'destructive', title: 'Falha na Importação Manual', description: error.message });
-    } finally {
-      setIsManualImporting(false);
-    }
-  };
-
-  const handleRangeImport = async () => {
-    const startId = parseInt(rangeStartId, 10);
-    const endId = parseInt(rangeEndId, 10);
-
-    if (!rangeImportServer || !startId || !endId || startId <= 0 || endId < startId) {
-      toast({
-        variant: 'destructive',
-        title: 'Dados Incompletos ou Inválidos',
-        description: 'Selecione um servidor e insira um intervalo de IDs válido.',
-      });
-      return;
-    }
-
-    setIsRangeImporting(true);
-    const server = servers.find(s => s.id === rangeImportServer);
-    if (!server) {
-      setIsRangeImporting(false);
-      toast({ variant: 'destructive', title: 'Erro', description: 'Servidor selecionado não encontrado.' });
-      return;
-    }
-
-    toast({ title: 'Iniciando Importação por Intervalo', description: `De ${startId} a ${endId} para ${server.name}...` });
-
-    try {
-      const result = await importMatchRange(server.name, server.apiUrl, startId, endId);
-      if (result.success) {
-        toast({
-          title: 'Importação por Intervalo Concluída',
-          description: `${result.matchesProcessed} de ${result.totalToProcess} partidas foram processadas.`,
-        });
-        setRangeStartId('');
-        setRangeEndId('');
-        setRangeImportServer('');
-        fetchStats();
-      } else {
-        throw new Error(result.error || 'Ocorreu um erro desconhecido.');
-      }
-    } catch (error: any) {
-      toast({ variant: 'destructive', title: 'Falha na Importação por Intervalo', description: error.message });
-    } finally {
-      setIsRangeImporting(false);
-    }
-  };
-
-  const handleHistoricalImport = async () => {
-    const startId = parseInt(historicalStartId, 10);
-    const endId = parseInt(historicalEndId, 10);
-
-    if (!historicalImportServer || !startId || !endId || startId <= 0 || endId < startId) {
-      toast({
-        variant: 'destructive',
-        title: 'Dados Incompletos ou Inválidos',
-        description: 'Selecione um servidor e insira um intervalo de IDs válido.',
-      });
-      return;
-    }
-
-    setIsHistoricalImporting(true);
-    const server = servers.find(s => s.id === historicalImportServer);
-    if (!server) {
-      setIsHistoricalImporting(false);
-      toast({ variant: 'destructive', title: 'Erro', description: 'Servidor selecionado não encontrado.' });
-      return;
-    }
-
-    toast({ title: 'Iniciando Importação Histórica', description: `De ${startId} a ${endId} para ${server.name}...` });
-
-    try {
-      const result = await importHistoricalMatchRange(server.name, server.apiUrl, startId, endId);
-      if (result.success) {
-        toast({
-          title: 'Importação Histórica Concluída',
-          description: `${result.matchesProcessed} de ${result.totalToProcess} partidas foram processadas.`,
-        });
-        setHistoricalStartId('');
-        setHistoricalEndId('');
-        setHistoricalImportServer('');
-        fetchStats();
-      } else {
-        throw new Error(result.error || 'Ocorreu um erro desconhecido.');
-      }
-    } catch (error: any) {
-      toast({ variant: 'destructive', title: 'Falha na Importação Histórica', description: error.message });
-    } finally {
-      setIsHistoricalImporting(false);
-    }
   };
 
   return (
-    <div className="container mx-auto px-4 py-8">
+    <div className="container mx-auto py-10 space-y-8">
+      <div>
+        <h1 className="text-4xl font-bold font-headline mb-2 flex items-center gap-2">
+          <Database className="h-8 w-8 text-primary" />
+          Administração do Sistema
+        </h1>
+        <p className="text-muted-foreground">
+          Gerencie servidores, importe dados de partidas e atualize estatísticas globais.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Users className="h-5 w-5 text-accent" />
+              Base de Jogadores
+            </CardTitle>
+            <CardDescription>Total de jogadores processados no banco de dados</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {isFetchingStats ? (
+               <Skeleton className="h-10 w-32" />
+            ) : (
+               <div className="text-4xl font-bold">{playerCount?.toLocaleString() || 0}</div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <BarChart className="h-5 w-5 text-primary" />
+              Estatísticas Globais
+            </CardTitle>
+            <CardDescription>
+              Atualiza os records máximos para gráficos radiais.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button 
+                onClick={handleUpdateGlobalStats} 
+                disabled={isUpdatingGlobalStats}
+                className="w-full"
+            >
+              <RefreshCw className={cn("mr-2 h-4 w-4", isUpdatingGlobalStats && "animate-spin")} />
+              {isUpdatingGlobalStats ? 'Atualizando...' : 'Recalcular Records Globais'}
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* GERENCIADOR DE SERVIDORES */}
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between space-y-0">
-          <CardTitle className="flex items-center gap-2 text-xl font-headline md:text-2xl">
-            <Database className="h-6 w-6 text-accent" />
-            <span>Painel de Administração</span>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <ServerIcon className="h-5 w-5 text-accent" />
+            Gerenciador de Servidores
           </CardTitle>
-          <Button asChild variant="outline">
-            <Link href="/admin/match-analyzer">
-              <Sparkles className="mr-2 h-4 w-4 text-accent" />
-              Analisador de Batalha (IA)
-            </Link>
-          </Button>
+          <CardDescription>
+            Adicione ou remova servidores HLL. A sincronização busca partidas dos <strong>últimos 3 meses</strong> para cada servidor.
+          </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-8">
+        <CardContent>
+            <div className="flex flex-col sm:flex-row gap-4 mb-8 p-4 bg-muted/20 border border-border rounded-lg">
+                <div className="flex-1 space-y-2">
+                    <Label>Nome do Servidor (Sigla)</Label>
+                    <Input placeholder="Ex: HRB" value={newServerName} onChange={e => setNewServerName(e.target.value)} />
+                </div>
+                <div className="flex-[2] space-y-2">
+                    <Label>URL da API (HLL Admin)</Label>
+                    <Input placeholder="Ex: https://hrb-stats.hlladmin.com/api" value={newServerUrl} onChange={e => setNewServerUrl(e.target.value)} />
+                </div>
+                <div className="flex items-end">
+                    <Button onClick={handleAddServer} disabled={isManagingServers}>
+                        <Plus className="w-4 h-4 mr-2" /> Adicionar
+                    </Button>
+                </div>
+            </div>
 
-          <div className='grid grid-cols-1 md:grid-cols-3 gap-4'>
-            <Card className="bg-muted/30 md:col-span-2">
-              <CardHeader className='pb-2'>
-                <CardTitle className='text-base flex items-center gap-2'>
-                  <History className="h-4 w-4 text-muted-foreground" />
-                  <span>Status de Sincronização de Partidas</span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="pt-2 space-y-3">
-                {isFetchingStats ? (
-                  <div className="space-y-4">
-                    {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-8 w-full" />)}
-                  </div>
-                ) : serverStatus ? (
-                  Object.entries(serverStatus).map(([server, status]) => (
-                    <div key={server}>
-                      {status ? (
-                        <>
-                          <div className="flex justify-between text-sm mb-1">
-                            <span className="font-semibold">{server}</span>
-                            <span className="font-mono text-muted-foreground">
-                              {status.processed.toLocaleString()} / {status.total.toLocaleString()}
-                            </span>
-                          </div>
-                          <Progress value={status.total > 0 ? (status.processed / status.total) * 100 : 0} />
-                        </>
-                      ) : (
-                        <div className="text-sm text-muted-foreground">
-                          <span className="font-semibold">{server}:</span> Falha ao carregar status.
+            <div className="space-y-6">
+                {servers.map(server => {
+                    const state = importStates[server.name] || { isImporting: false, progress: 0, message: '' };
+                    const status = serverStatus?.[server.name];
+                    const isImporting = state.isImporting;
+
+                    return (
+                        <div key={server.id} className="p-4 border rounded-lg bg-card/50">
+                            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4">
+                                <div>
+                                    <h3 className="text-xl font-bold font-headline">{server.name}</h3>
+                                    <p className="text-sm text-muted-foreground font-mono">{server.apiUrl}</p>
+                                </div>
+                                <div className="flex items-center gap-3 w-full md:w-auto">
+                                    {isFetchingStats ? (
+                                        <Skeleton className="h-6 w-32" />
+                                    ) : (
+                                        <div className="text-sm text-right">
+                                            <div className="text-muted-foreground">Último Sync:</div>
+                                            <div className="font-mono font-bold text-accent">
+                                                {status?.processed || 0} Partidas Salvas
+                                            </div>
+                                        </div>
+                                    )}
+                                    <Button 
+                                        variant="outline" 
+                                        onClick={() => handleSyncServer(server.name, server.apiUrl)}
+                                        disabled={isImporting}
+                                    >
+                                        <RefreshCw className={cn("mr-2 h-4 w-4", isImporting && "animate-spin")} />
+                                        {isImporting ? 'Buscando...' : 'Sincronizar (3 Meses)'}
+                                    </Button>
+                                    <Button 
+                                        variant="destructive" 
+                                        size="icon"
+                                        onClick={() => handleRemoveServer(server.id, server.name)}
+                                        disabled={isManagingServers || isImporting}
+                                        title="Remover Servidor"
+                                    >
+                                        <Trash2 className="w-4 h-4" />
+                                    </Button>
+                                </div>
+                            </div>
+
+                            {isImporting && (
+                                <div className="space-y-2 mt-4 p-4 bg-muted/20 rounded-md">
+                                    <div className="flex justify-between text-sm">
+                                        <span className="text-muted-foreground">{state.message}</span>
+                                        <span className="font-bold">{state.progress}%</span>
+                                    </div>
+                                    <Progress value={state.progress} className="h-2" />
+                                </div>
+                            )}
+                            
+                            {!isImporting && state.message && (
+                                <div className="mt-2 text-sm text-green-500 font-medium">
+                                    {state.message}
+                                </div>
+                            )}
                         </div>
-                      )}
+                    );
+                })}
+
+                {servers.length === 0 && (
+                    <div className="text-center py-8 text-muted-foreground">
+                        Nenhum servidor configurado. Adicione um servidor acima.
                     </div>
-                  ))
-                ) : (
-                  <p className="text-sm text-muted-foreground">Nenhum status encontrado.</p>
                 )}
-              </CardContent>
-            </Card>
-
-            <div className="space-y-4">
-              <Card className="bg-muted/30">
-                <CardHeader className='pb-2'>
-                  <CardTitle className='text-base flex items-center gap-2'>
-                    <Users className="h-4 w-4 text-muted-foreground" />
-                    <span>Jogadores na Base</span>
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="pt-2">
-                  <p className="text-sm font-medium text-muted-foreground mb-2">
-                    Total de jogadores únicos:
-                  </p>
-                  {isFetchingStats ? (
-                    <Skeleton className="h-7 w-24" />
-                  ) : (
-                    <p className="text-2xl font-bold text-accent">
-                      {playerCount !== null ? playerCount.toLocaleString() : 'N/A'}
-                    </p>
-                  )}
-                </CardContent>
-              </Card>
-              <Card className="bg-card">
-                <CardHeader className='pb-2'>
-                  <CardTitle className="flex items-center gap-2 text-base">
-                    <BarChart className="h-4 w-4 text-muted-foreground" />
-                    Recordes Globais
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-sm text-muted-foreground mb-4">
-                    Calcule os valores máximos para as estatísticas usadas no gráfico de perfil do jogador.
-                  </p>
-                  <Button onClick={handleUpdateGlobalStats} disabled={anyImportInProgress}>
-                    <RefreshCw className={`mr-2 h-4 w-4 ${isUpdatingGlobalStats ? 'animate-spin' : ''}`} />
-                    {isUpdatingGlobalStats ? 'Calculando...' : 'Atualizar Recordes'}
-                  </Button>
-                </CardContent>
-              </Card>
             </div>
-          </div>
-
-          <div>
-            <h3 className="text-lg font-semibold font-headline mb-4">Importação em Massa por Servidor</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {servers.map(server => {
-                const state = importStates[server.id];
-                return (
-                  <Card key={server.id} className="flex flex-col">
-                    <CardHeader>
-                      <CardTitle className="flex items-center gap-2">
-                        <ServerIcon className="h-5 w-5 text-muted-foreground" />
-                        <span>{server.name}</span>
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent className="flex-grow space-y-4">
-                      <Button
-                        onClick={() => handleImport(server)}
-                        disabled={state.isImporting || anyImportInProgress}
-                        className="w-full"
-                      >
-                        <DownloadCloud className={`mr-2 h-4 w-4 ${state.isImporting ? 'animate-spin' : ''}`} />
-                        {state.isImporting ? 'Importando...' : 'Iniciar Importação'}
-                      </Button>
-                      {state.isImporting && (
-                        <div className="space-y-2">
-                          <Progress value={state.progress} />
-                          <p className="text-sm text-muted-foreground text-center">{state.message}</p>
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
-                )
-              })}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            <Card className="bg-card">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  <Edit className="h-5 w-5 text-accent" />
-                  Importação Manual de Partidas
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="manual-ids">IDs das Partidas</Label>
-                  <Textarea
-                    id="manual-ids"
-                    placeholder="Cole os IDs aqui, separados por vírgula, espaço ou nova linha"
-                    value={manualImportIds}
-                    onChange={(e) => setManualImportIds(e.target.value)}
-                    disabled={anyImportInProgress}
-                    rows={4}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="manual-server">Servidor</Label>
-                  <Select
-                    value={manualImportServer}
-                    onValueChange={setManualImportServer}
-                    disabled={anyImportInProgress}
-                  >
-                    <SelectTrigger id="manual-server">
-                      <SelectValue placeholder="Selecione um servidor" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {servers.map(server => (
-                        <SelectItem key={server.id} value={server.id}>
-                          {server.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <Button onClick={handleManualImport} disabled={anyImportInProgress}>
-                  <DownloadCloud className={`mr-2 h-4 w-4 ${isManualImporting ? 'animate-spin' : ''}`} />
-                  {isManualImporting ? 'Importando...' : 'Importar Partidas Específicas'}
-                </Button>
-              </CardContent>
-            </Card>
-
-            <Card className="bg-card">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  <BetweenHorizontalStart className="h-5 w-5 text-accent" />
-                  Importação por Intervalo de IDs
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="range-start-id">De (ID)</Label>
-                    <Input
-                      id="range-start-id"
-                      type="number"
-                      placeholder="Ex: 1000"
-                      value={rangeStartId}
-                      onChange={(e) => setRangeStartId(e.target.value)}
-                      disabled={anyImportInProgress}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="range-end-id">Até (ID)</Label>
-                    <Input
-                      id="range-end-id"
-                      type="number"
-                      placeholder="Ex: 1050"
-                      value={rangeEndId}
-                      onChange={(e) => setRangeEndId(e.target.value)}
-                      disabled={anyImportInProgress}
-                    />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="range-server">Servidor</Label>
-                  <Select
-                    value={rangeImportServer}
-                    onValueChange={setRangeImportServer}
-                    disabled={anyImportInProgress}
-                  >
-                    <SelectTrigger id="range-server">
-                      <SelectValue placeholder="Selecione um servidor" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {servers.map(server => (
-                        <SelectItem key={server.id} value={server.id}>
-                          {server.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <Button onClick={handleRangeImport} disabled={anyImportInProgress}>
-                  <DownloadCloud className={`mr-2 h-4 w-4 ${isRangeImporting ? 'animate-spin' : ''}`} />
-                  {isRangeImporting ? 'Importando Intervalo...' : 'Importar Intervalo'}
-                </Button>
-              </CardContent>
-            </Card>
-
-            <Card className="bg-card border-amber-500/50">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-lg text-amber-500">
-                  <Archive className="h-5 w-5" />
-                  Importação Histórica por Intervalo
-                </CardTitle>
-                <CardDescription>
-                  Use para carregar partidas antigas. <strong>Não afetará</strong> os rankings semanais ou mensais, apenas o geral.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="historical-start-id">De (ID)</Label>
-                    <Input
-                      id="historical-start-id"
-                      type="number"
-                      placeholder="Ex: 1"
-                      value={historicalStartId}
-                      onChange={(e) => setHistoricalStartId(e.target.value)}
-                      disabled={anyImportInProgress}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="historical-end-id">Até (ID)</Label>
-                    <Input
-                      id="historical-end-id"
-                      type="number"
-                      placeholder="Ex: 500"
-                      value={historicalEndId}
-                      onChange={(e) => setHistoricalEndId(e.target.value)}
-                      disabled={anyImportInProgress}
-                    />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="historical-server">Servidor</Label>
-                  <Select
-                    value={historicalImportServer}
-                    onValueChange={setHistoricalImportServer}
-                    disabled={anyImportInProgress}
-                  >
-                    <SelectTrigger id="historical-server">
-                      <SelectValue placeholder="Selecione um servidor" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {servers.map(server => (
-                        <SelectItem key={server.id} value={server.id}>
-                          {server.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <Button onClick={handleHistoricalImport} disabled={anyImportInProgress} variant="secondary">
-                  <DownloadCloud className={`mr-2 h-4 w-4 ${isHistoricalImporting ? 'animate-spin' : ''}`} />
-                  {isHistoricalImporting ? 'Importando...' : 'Importar Dados Históricos'}
-                </Button>
-              </CardContent>
-            </Card>
-
-          </div>
         </CardContent>
       </Card>
     </div>

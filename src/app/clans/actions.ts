@@ -1,7 +1,7 @@
 'use server';
 
 import { db } from '@/firebase/server';
-import { collection, getDocs, orderBy, query, limit } from 'firebase/firestore';
+import { collection, getDocs, orderBy, query, limit, where } from 'firebase/firestore';
 import type { PlayerAggregates } from '@/lib/types';
 import { clans, getClanFromPlayerName } from '@/lib/clans';
 
@@ -44,10 +44,14 @@ export async function getClanRankingStats(): Promise<{
   console.log('[LOG] Calculando estatísticas de clãs...');
 
   try {
-    // Fetch all players — limite alto pois os dados são agregados no servidor
-    // e apenas o resumo por clã é enviado ao cliente
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = (now.getMonth() + 1).toString().padStart(2, '0');
+    const periodId = `month_${year}-${month}`;
+
     const playersQuery = query(
-      collection(db, 'playerAggregates'),
+      collection(db, 'playerMonthlyStats'),
+      where('periodId', '==', periodId),
       orderBy('totalKills', 'desc'),
       limit(5000)
     );

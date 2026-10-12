@@ -16,7 +16,7 @@ import {
     limit,
     deleteDoc,
 } from 'firebase/firestore';
-import type { ClanMember, PlayerAggregates, PromotionLog, PlayerPeriodStats } from '@/lib/types';
+import type { ClanMember, PlayerAggregates, PromotionLog, PlayerPeriodStats, MonthlyPlayerStats } from '@/lib/types';
 import { revalidatePath } from 'next/cache';
 import { clans } from '@/lib/clans';
 import { analyzeClanPerformance } from '@/ai/flows/analyze-clan-performance';
@@ -386,4 +386,335 @@ export async function saveLineupAction(clanId: string, lineupData: any): Promise
     console.error("Error saving lineup:", error);
     return { success: false, error: error.message };
   }
+}
+
+/**
+ * Fetches aggregate stats (from playerAggregates) for all members of a clan.
+ * Used for the clan-internal score ranking.
+ */
+export async function getClanMemberAggregates(clanId: string): Promise<{ success: boolean; players?: PlayerAggregates[]; error?: string }> {
+    try {
+        // 1. Get all member IDs for the clan
+        const membersRef = collection(db, 'clans', clanId, 'members');
+        const membersSnapshot = await getDocs(membersRef);
+        if (membersSnapshot.empty) {
+            return { success: true, players: [] };
+        }
+        const memberIds = membersSnapshot.docs.map(doc => doc.id);
+
+        const clan = clans.find(c => c.id === clanId);
+        if (!clan) return { success: false, error: "Clã não encontrado." };
+
+        // 2. Fetch playerAggregates for those members (Firestore 'in' query limited to 30 items)
+        const players: PlayerAggregates[] = [];
+        const chunkSize = 30;
+        for (let i = 0; i < memberIds.length; i += chunkSize) {
+            const chunk = memberIds.slice(i, i + chunkSize);
+
+            const statsQuery = query(
+                collection(db, 'playerAggregates'),
+                where('__name__', 'in', chunk)
+            );
+
+            const statsSnapshot = await getDocs(statsQuery);
+            statsSnapshot.forEach(docSnap => {
+                const data = docSnap.data();
+                const playerName = String(data.latestPlayerName || 'Unknown');
+                
+                // Only include if the name starts with the clan tag (ignoring leading special characters like '[')
+                const cleanStart = playerName.toUpperCase().trim().replace(/^[^A-Z0-9]+/, '');
+                
+                if (cleanStart.startsWith(clan.tag.toUpperCase())) {
+                    players.push({
+                        id: docSnap.id,
+                        playerId: data.playerId || docSnap.id,
+                        latestPlayerName: playerName,
+                        totalKills: Number(data.totalKills || 0),
+                        totalDeaths: Number(data.totalDeaths || 0),
+                        totalCombat: Number(data.totalCombat || 0),
+                        totalOffense: Number(data.totalOffense || 0),
+                        totalDefense: Number(data.totalDefense || 0),
+                        totalSupport: Number(data.totalSupport || 0),
+                        totalTimeSeconds: Number(data.totalTimeSeconds || 0),
+                    });
+                }
+            });
+        }
+
+        // 3. Sort by total score (combat + offense + defense + support) descending
+        players.sort((a, b) => {
+            const scoreA = (a.totalCombat || 0) + (a.totalOffense || 0) + (a.totalDefense || 0) + (a.totalSupport || 0);
+            const scoreB = (b.totalCombat || 0) + (b.totalOffense || 0) + (b.totalDefense || 0) + (b.totalSupport || 0);
+            return scoreB - scoreA;
+        });
+
+        // 4. Fetch ELO
+        const playerIdsForElo = players.map(p => p.playerId);
+        const eloChunkSize = 30;
+        for (let i = 0; i < playerIdsForElo.length; i += eloChunkSize) {
+            const chunk = playerIdsForElo.slice(i, i + eloChunkSize);
+            if (chunk.length === 0) continue;
+            const playersQuery = query(collection(db, 'players'), where('__name__', 'in', chunk));
+            const playersSnapshot = await getDocs(playersQuery);
+            playersSnapshot.forEach(docSnap => {
+                const data = docSnap.data();
+                const p = players.find(p => p.playerId === docSnap.id);
+                if (p && data.elo !== undefined) {
+                    p.elo = data.elo;
+                }
+            });
+        }
+
+        return { success: true, players: JSON.parse(JSON.stringify(players)) };
+    } catch (error: any) {
+        console.error("Error fetching clan member aggregates:", error);
+        return { success: false, error: "Falha ao buscar estatísticas dos membros do clã." };
+    }
+}
+
+/**
+ * Fetches and accumulates monthly_player_stats for players matching the clan tag across the specified months.
+ * Ignores the 'members' subcollection completely to avoid manual registration overhead.
+ */
+export async function getClanMonthlyAggregates(clanId: string, periodIds: string[]): Promise<{ success: boolean; players?: MonthlyPlayerStats[]; error?: string }> {
+    try {
+        const clan = clans.find(c => c.id === clanId);
+        if (!clan) return { success: false, error: "Clã não encontrado." };
+        const tagUpper = clan.tag.toUpperCase();
+
+        const accumulatedMap = new Map<string, MonthlyPlayerStats>();
+
+        for (const periodId of periodIds) {
+            // Fetch top 2000 players for this month to ensure we get active players
+            const statsQuery = query(
+                collection(db, 'monthly_player_stats'),
+                where('month', '==', periodId),
+                orderBy('totalKills', 'desc'),
+                limit(2000)
+            );
+
+            const statsSnapshot = await getDocs(statsQuery);
+            statsSnapshot.forEach(docSnap => {
+                const data = docSnap.data() as MonthlyPlayerStats;
+                const playerName = String(data.playerName || 'Unknown');
+                
+                // Only include if the name starts with the clan tag (ignoring leading special characters like '[')
+                const cleanStart = playerName.toUpperCase().trim().replace(/^[^A-Z0-9]+/, '');
+                
+                if (cleanStart.startsWith(tagUpper)) {
+                    const playerId = data.playerId;
+                    const existing = accumulatedMap.get(playerId);
+                    
+                    if (existing) {
+                        // Accumulate data
+                        existing.totalKills += (data.totalKills || 0);
+                        existing.totalDeaths += (data.totalDeaths || 0);
+                        existing.totalCombat += (data.totalCombat || 0);
+                        existing.totalOffense += (data.totalOffense || 0);
+                        existing.totalDefense += (data.totalDefense || 0);
+                        existing.totalSupport += (data.totalSupport || 0);
+                        existing.totalTimeSeconds = (existing.totalTimeSeconds || 0) + (data.totalTimeSeconds || 0);
+                        existing.matchesPlayed = (existing.matchesPlayed || 0) + (data.matchesPlayed || 0);
+                        existing.totalVehicleKills = (existing.totalVehicleKills || 0) + (data.totalVehicleKills || 0);
+                        existing.totalVehiclesDestroyed = (existing.totalVehiclesDestroyed || 0) + (data.totalVehiclesDestroyed || 0);
+                        existing.totalTeamkills = (existing.totalTeamkills || 0) + (data.totalTeamkills || 0);
+                        existing.deathsByTk = (existing.deathsByTk || 0) + (data.deathsByTk || 0);
+                        existing.maxKillsStreak = Math.max(existing.maxKillsStreak || 0, data.maxKillsStreak || 0);
+                        existing.longestLifeSecs = Math.max(existing.longestLifeSecs || 0, data.longestLifeSecs || 0);
+                        
+                        // Accumulate timePlayedByRole
+                        const existingRoles = existing.timePlayedByRole || {};
+                        const newRoles = data.timePlayedByRole || {};
+                        for (const [r, t] of Object.entries(newRoles)) {
+                            existingRoles[Number(r)] = (existingRoles[Number(r)] || 0) + t;
+                        }
+                        existing.timePlayedByRole = existingRoles;
+                        
+                        // Accumulate topWeapons
+                        const existingWeapons = existing.topWeapons || {};
+                        const newWeapons = data.topWeapons || {};
+                        for (const [w, c] of Object.entries(newWeapons)) {
+                            existingWeapons[w] = (existingWeapons[w] || 0) + c;
+                        }
+                        existing.topWeapons = existingWeapons;
+                        
+                        // Accumulate topVictims
+                        const existingVictims = existing.topVictims || {};
+                        const newVictims = data.topVictims || {};
+                        for (const [v, c] of Object.entries(newVictims)) {
+                            existingVictims[v] = (existingVictims[v] || 0) + c;
+                        }
+                        existing.topVictims = existingVictims;
+
+                        // Accumulate topKilledBy
+                        const existingKilledBy = existing.topKilledBy || {};
+                        const newKilledBy = data.topKilledBy || {};
+                        for (const [v, c] of Object.entries(newKilledBy)) {
+                            existingKilledBy[v] = (existingKilledBy[v] || 0) + c;
+                        }
+                        existing.topKilledBy = existingKilledBy;
+
+                    } else {
+                        // Deep clone the object to avoid mutating firestore data accidentally
+                        accumulatedMap.set(playerId, JSON.parse(JSON.stringify(data)));
+                    }
+                }
+            });
+        }
+
+        const players = Array.from(accumulatedMap.values());
+        
+        // --- FETCH ELO ---
+        const playerIds = players.map(p => p.playerId);
+        const chunkSize = 30;
+        for (let i = 0; i < playerIds.length; i += chunkSize) {
+            const chunk = playerIds.slice(i, i + chunkSize);
+            if (chunk.length === 0) continue;
+            const playersQuery = query(collection(db, 'players'), where('__name__', 'in', chunk));
+            const playersSnapshot = await getDocs(playersQuery);
+            playersSnapshot.forEach(docSnap => {
+                const data = docSnap.data();
+                const p = players.find(p => p.playerId === docSnap.id);
+                if (p && data.elo !== undefined) {
+                    p.elo = data.elo;
+                }
+            });
+        }
+        
+        // Recalculate mainRole for accumulated data
+        players.forEach(p => {
+             let updatedMainRole = -1;
+             let updatedMaxTime = -1;
+             for (const [r, t] of Object.entries(p.timePlayedByRole || {})) {
+                 if ((t as number) > updatedMaxTime) {
+                     updatedMaxTime = t as number;
+                     updatedMainRole = Number(r);
+                 }
+             }
+             if (updatedMainRole !== -1) {
+                 p.mainRole = updatedMainRole;
+             }
+        });
+
+        // Sort by total score (combat + offense + defense + support) descending
+        players.sort((a, b) => {
+            const scoreA = (a.totalCombat || 0) + (a.totalOffense || 0) + (a.totalDefense || 0) + (a.totalSupport || 0);
+            const scoreB = (b.totalCombat || 0) + (b.totalOffense || 0) + (b.totalDefense || 0) + (b.totalSupport || 0);
+            return scoreB - scoreA;
+        });
+
+        return { success: true, players };
+    } catch (error: any) {
+        console.error("Error fetching clan monthly aggregates:", error);
+        return { success: false, error: "Falha ao buscar estatísticas mensais do clã." };
+    }
+}
+
+export async function saveLineup(clanId: string, title: string, squadsData: any) {
+    try {
+        const docRef = await addDoc(collection(db, 'lineups'), {
+            clanId,
+            title,
+            squads: squadsData,
+            createdAt: serverTimestamp()
+        });
+        return { success: true, id: docRef.id };
+    } catch (error: any) {
+        console.error("Error saving lineup:", error);
+        return { success: false, error: "Falha ao salvar a escalação." };
+    }
+}
+
+export async function getLineup(lineupId: string) {
+    try {
+        const { getDoc } = await import('firebase/firestore');
+        const docRef = doc(db, 'lineups', lineupId);
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+            const data = docSnap.data();
+            // Convert serverTimestamp if present to string or null so it can be serialized
+            const createdAt = data.createdAt ? data.createdAt.toDate().toISOString() : null;
+            return { success: true, lineup: { ...data, createdAt } as any };
+        }
+        return { success: false, error: "Escalação não encontrada." };
+    } catch (error: any) {
+        console.error("Error fetching lineup:", error);
+        return { success: false, error: "Falha ao buscar a escalação." };
+    }
+}
+
+export async function syncPlayerElo(playerId: string): Promise<{ success: boolean; elo?: number; error?: string }> {
+    try {
+        const response = await fetch(`https://hllrecords.com/profiles/${playerId}/progression`, {
+            headers: {
+                'accept': '*/*',
+                'accept-language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
+                'cookie': 'progression-chart-metric-v1=kd; bunny_shield_id_87989=39cfc1a1a5404c72913b250f23609b4d; interaction=2',
+                'priority': 'u=1, i',
+                'referer': `https://hllrecords.com/profiles/${playerId}`,
+                'sec-ch-ua': '"Chromium";v="152", "Not?A_Brand";v="24", "Google Chrome";v="152"',
+                'sec-ch-ua-mobile': '?1',
+                'sec-ch-ua-platform': '"Android"',
+                'sec-fetch-dest': 'empty',
+                'sec-fetch-mode': 'cors',
+                'sec-fetch-site': 'same-origin',
+                'user-agent': 'Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36'
+            },
+            next: { revalidate: 3600 } 
+        });
+
+        console.log(`[syncPlayerElo] Fetching ELO for ${playerId}. Status: ${response.status}`);
+
+        if (!response.ok) {
+            console.error(`[syncPlayerElo] Failed to fetch. Status: ${response.status}`);
+            return { success: false, error: 'Failed to fetch from HLL Records' };
+        }
+
+        const data = await response.json();
+        
+        if (!Array.isArray(data) || data.length === 0) {
+             return { success: false, error: 'No progression data found' };
+        }
+        
+        let elo = 0;
+        for (let i = data.length - 1; i >= 0; i--) {
+            if (data[i].elo !== undefined) {
+                elo = data[i].elo;
+                break;
+            }
+        }
+        
+        if (elo === 0) {
+             return { success: false, error: 'Elo not found in progression data' };
+        }
+
+        const playerRef = doc(db, 'players', playerId);
+        await setDoc(playerRef, { elo, lastEloSync: serverTimestamp() }, { merge: true });
+
+        return { success: true, elo };
+
+    } catch (e: any) {
+        return { success: false, error: e.message };
+    }
+}
+
+export async function getPlayerNamesByIds(ids: string[]): Promise<Record<string, string>> {
+    const result: Record<string, string> = {};
+    if (!ids || ids.length === 0) return result;
+    try {
+        const chunkSize = 30;
+        for (let i = 0; i < ids.length; i += chunkSize) {
+            const chunk = ids.slice(i, i + chunkSize);
+            if (chunk.length === 0) continue;
+            const playersQuery = query(collection(db, 'players'), where('__name__', 'in', chunk));
+            const playersSnapshot = await getDocs(playersQuery);
+            playersSnapshot.forEach(docSnap => {
+                const data = docSnap.data();
+                result[docSnap.id] = data.latestPlayerName || data.playerName || 'Desconhecido';
+            });
+        }
+    } catch (e) {
+        console.error("Error fetching player names by IDs", e);
+    }
+    return result;
 }

@@ -1,28 +1,9 @@
-
 'use server';
 
 import { db } from '@/firebase/server';
 import { collection, query, orderBy, limit, getDocs, where } from 'firebase/firestore';
-import type { PlayerAggregates } from '@/lib/types';
+import type { MonthlyPlayerStats } from '@/lib/types';
 import { unstable_cache } from 'next/cache';
-
-// Função interna para sanitizar um jogador manualmente, sem recursão
-function sanitizePlayer(id: string, data: any): PlayerAggregates {
-  return {
-    id: String(id || ''),
-    playerId: String(data.playerId || id || ''),
-    latestPlayerName: String(data.latestPlayerName || 'Unknown'),
-    totalKills: Number(data.totalKills || 0),
-    totalDeaths: Number(data.totalDeaths || 0),
-    totalCombat: Number(data.totalCombat || 0),
-    totalOffense: Number(data.totalOffense || 0),
-    totalDefense: Number(data.totalDefense || 0),
-    totalSupport: Number(data.totalSupport || 0),
-    totalTimeSeconds: Number(data.totalTimeSeconds || 0),
-    longestLifeSecs: Number(data.longestLifeSecs || 0),
-    status: data.status === 'retired' ? 'retired' : undefined,
-  };
-}
 
 const STAT_KEYS: string[] = [
   'totalKills',
@@ -32,6 +13,8 @@ const STAT_KEYS: string[] = [
   'totalSupport',
   'totalTimeSeconds',
   'longestLifeSecs',
+  'totalVehicleKills',
+  'maxKillsStreak'
 ];
 
 const CLAN_TAGS = ['SMK', 'HRB', 'RZN', 'OCL', '3LPZ', 'WRT', 'SAP', 'BOLD', 'IDG', 'SOH'];
@@ -42,51 +25,56 @@ function hasClanTag(playerName: string): boolean {
   return CLAN_TAGS.some(tag => lowerPlayerName.includes(tag.toLowerCase()));
 }
 
-async function _getHallOfFameStats(): Promise<{
-  records: Record<string, PlayerAggregates | undefined>;
-  efficiency: Record<string, (PlayerAggregates & { efficiencyValue: number }) | undefined>;
+async function _getMonthlyHallOfFame(month: string): Promise<{
+  records: Record<string, MonthlyPlayerStats | undefined>;
+  efficiency: Record<string, (MonthlyPlayerStats & { efficiencyValue: number }) | undefined>;
+  roles: Record<number, MonthlyPlayerStats | undefined>;
 }> {
-  console.log('[LOG] Buscando Hall da Fama (Mapeamento Manual Final)...');
+  console.log(`[LOG] Buscando Hall da Fama Mensal para: ${month}`);
   
-  const records: Record<string, PlayerAggregates | undefined> = {};
-  const efficiency: Record<string, (PlayerAggregates & { efficiencyValue: number }) | undefined> = {};
+  const records: Record<string, MonthlyPlayerStats | undefined> = {};
+  const efficiency: Record<string, (MonthlyPlayerStats & { efficiencyValue: number }) | undefined> = {};
+  const roles: Record<number, MonthlyPlayerStats | undefined> = {};
 
   try {
+    const collRef = collection(db, 'monthly_player_stats');
+
     // 1. Recordes brutos
     const statPromises = STAT_KEYS.map(async (statKey) => {
-      const q = query(collection(db, 'playerAggregates'), orderBy(statKey, 'desc'), limit(1));
+      const q = query(collRef, where('month', '==', month), orderBy(statKey, 'desc'), limit(1));
       const querySnapshot = await getDocs(q);
       if (!querySnapshot.empty) {
-        const docSnap = querySnapshot.docs[0];
-        records[statKey] = sanitizePlayer(docSnap.id, docSnap.data());
+        records[statKey] = querySnapshot.docs[0].data() as MonthlyPlayerStats;
       }
     });
 
-    // 2. Eficiência
+    // 2. Eficiência (exige mínimo de 2 horas no mês)
+    const MIN_HOURS_EFFICIENCY = 2;
     const efficiencyCategories = ['totalOffense', 'totalDefense', 'totalSupport', 'totalCombat', 'totalKills'];
+    
     const efficiencyPromises = efficiencyCategories.map(async (cat) => {
       const q = query(
-        collection(db, 'playerAggregates'), 
-        where('totalTimeSeconds', '>=', 36000),
+        collRef, 
+        where('month', '==', month),
+        where('totalTimeSeconds', '>=', MIN_HOURS_EFFICIENCY * 3600),
         orderBy('totalTimeSeconds', 'desc'),
-        limit(1000)
+        limit(100)
       );
       
       const querySnapshot = await getDocs(q);
-      let bestPlayer: (PlayerAggregates & { efficiencyValue: number }) | undefined = undefined;
+      let bestPlayer: (MonthlyPlayerStats & { efficiencyValue: number }) | undefined = undefined;
       let maxEfficiency = 0;
 
       querySnapshot.forEach(docSnap => {
-        const data = docSnap.data();
+        const data = docSnap.data() as MonthlyPlayerStats;
         const hours = (data.totalTimeSeconds || 0) / 3600;
-        const val = (data[cat] as number) || 0;
+        const val = (data[cat as keyof MonthlyPlayerStats] as number) || 0;
         const efVal = val / hours;
 
         if (efVal > maxEfficiency) {
           maxEfficiency = efVal;
           const finalVal = cat === 'totalKills' ? Math.round(efVal * 10) / 10 : Math.round(efVal);
-          const sanitized = sanitizePlayer(docSnap.id, data);
-          bestPlayer = { ...sanitized, efficiencyValue: finalVal };
+          bestPlayer = { ...data, efficiencyValue: finalVal };
         }
       });
       
@@ -95,30 +83,40 @@ async function _getHallOfFameStats(): Promise<{
 
     // 3. Lobo Solitário
     const loneWolfPromise = async () => {
-      const q = query(collection(db, 'playerAggregates'), orderBy('totalKills', 'desc'), limit(1000));
+      const q = query(collRef, where('month', '==', month), orderBy('totalKills', 'desc'), limit(100));
       const querySnapshot = await getDocs(q);
       for (const docSnap of querySnapshot.docs) {
-        const data = docSnap.data();
-        if (data.latestPlayerName && !hasClanTag(data.latestPlayerName)) {
-          records['loneWolf'] = sanitizePlayer(docSnap.id, data);
+        const data = docSnap.data() as MonthlyPlayerStats;
+        if (data.playerName && !hasClanTag(data.playerName)) {
+          records['loneWolf'] = data;
           return;
         }
       }
     };
 
-    await Promise.all([...statPromises, ...efficiencyPromises, loneWolfPromise()]);
+    // 4. Melhores por Classe (Roles principais)
+    // Vamos pegar o melhor combat score por classe
+    const ROLE_IDS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+    const rolesPromises = ROLE_IDS.map(async (roleId) => {
+      const q = query(collRef, where('month', '==', month), where('mainRole', '==', roleId), orderBy('totalCombat', 'desc'), limit(1));
+      const querySnapshot = await getDocs(q);
+      if (!querySnapshot.empty) {
+        roles[roleId] = querySnapshot.docs[0].data() as MonthlyPlayerStats;
+      }
+    });
+
+    await Promise.all([...statPromises, ...efficiencyPromises, loneWolfPromise(), ...rolesPromises]);
     
-    // Ultimate Sterilization
-    return JSON.parse(JSON.stringify({ records, efficiency }));
+    return JSON.parse(JSON.stringify({ records, efficiency, roles }));
 
   } catch (error) {
-    console.error('[ERRO] Falha no Hall da Fama:', error);
-    return JSON.parse(JSON.stringify({ records: {}, efficiency: {} }));
+    console.error('[ERRO] Falha no Hall da Fama Mensal:', error);
+    return JSON.parse(JSON.stringify({ records: {}, efficiency: {}, roles: {} }));
   }
 }
 
-export const getHallOfFameStats = unstable_cache(
-    _getHallOfFameStats,
-    ['hall-of-fame-stats'],
+export const getMonthlyHallOfFame = unstable_cache(
+    _getMonthlyHallOfFame,
+    ['monthly-hall-of-fame-stats'],
     { revalidate: 60 }
 );

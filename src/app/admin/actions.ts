@@ -1,144 +1,217 @@
-
 'use server';
 
 import { db } from '@/firebase/server';
-import { collection, writeBatch, doc, query, getDocs, where, getCountFromServer, orderBy, limit, setDoc, getDoc, serverTimestamp, addDoc } from 'firebase/firestore';
+import { collection, writeBatch, doc, query, getDocs, where, getCountFromServer, orderBy, limit, setDoc, getDoc, serverTimestamp, addDoc, deleteDoc } from 'firebase/firestore';
 import { analyzeMatch } from '@/ai/flows/analyze-match-flow';
 
-interface ScoreboardMapsResponse {
-  result: {
-    total: number;
-    page_size: number;
-    maps: { id: number }[];
-  };
+export interface ServerConfig {
+  id: string; // The doc ID in Firestore
+  name: string;
+  apiUrl: string;
 }
 
-interface MatchDetails {
-    id: number;
-    numeric_id: number;
-    creation_time: string;
-    start: string;
-    end: string;
-    server_number: number;
-    map_name: string;
-    player_stats: PlayerStats[];
-    [key: string]: any;
+// ---------------------------------------------------------
+// 1. GERENCIAMENTO DE SERVIDORES
+// ---------------------------------------------------------
+export async function getServersConfig(): Promise<ServerConfig[]> {
+    try {
+        const snap = await getDocs(collection(db, 'serversConfig'));
+        if (snap.empty) {
+            // Default servers fallback Se a coleção estiver vazia
+            return [
+               { id: 'HRB', name: 'HRB', apiUrl: 'https://hrb-stats.hlladmin.com/api' }
+            ];
+        }
+        return snap.docs.map(d => ({ id: d.id, ...d.data() } as ServerConfig));
+    } catch (e) {
+        console.error("Erro ao buscar configurações de servidores:", e);
+        return [];
+    }
 }
 
-interface MapScoreboardResponse {
-  result: MatchDetails;
+export async function addServerConfig(name: string, apiUrl: string) {
+    try {
+        const docRef = doc(collection(db, 'serversConfig'));
+        await setDoc(docRef, { name, apiUrl });
+        return { success: true };
+    } catch(e: any) { return { success: false, error: e.message }; }
 }
 
-
-interface PlayerStats {
-    player_id: string;
-    name: string;
-    kills: number;
-    deaths: number;
+export async function removeServerConfig(id: string) {
+    try {
+        await deleteDoc(doc(db, 'serversConfig', id));
+        return { success: true };
+    } catch(e: any) { return { success: false, error: e.message }; }
 }
 
-const serversConfig = [
-  { id: '3LPZ', name: '3LPZ', apiUrl: 'https://3lpz-stats.hlladmin.com/api' },
-  { id: 'HRB', name: 'HRB', apiUrl: 'https://hrb-stats.hlladmin.com/api' },
-  { id: 'RZN', name: 'RZN', apiUrl: 'https://rzn-stats.crcon.cc/api' },
-  { id: 'GOAT', name: 'GOAT', apiUrl: 'https://goat-stats.hlladmin.com/api' },
-  { id: 'OCL', name: 'OCL', apiUrl: 'https://ocabala-stats.hlladmin.com/api' },
-  { id: 'SAP', name: 'SAP', apiUrl: 'https://sap-stats.hlladmin.com/api' },
-  { id: 'SOH', name: 'SOH', apiUrl: 'https://sohhllbr-stats.hlladmin.com/api' },
-  { id: 'SMK', name: 'SMK', apiUrl: 'http://stats.smk-hll.com/api' },
-];
-
+// ---------------------------------------------------------
+// 2. SINCRONIZAÇÃO INTELIGENTE POR DATA
+// ---------------------------------------------------------
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-async function fetchAllMatchIds(apiUrl: string, fetchOptions: RequestInit): Promise<number[]> {
-    let allIds: number[] = [];
-    let currentPage = 1;
-    let totalPages = 1;
-
-    console.log('[LOG] Iniciando busca de todos os IDs de partida...');
-
-    try {
-        do {
-            const url = `${apiUrl}/get_scoreboard_maps?page=${currentPage}&limit=100`;
-            const response = await fetch(url, fetchOptions);
-
-            if (!response.ok) {
-                const errorText = await response.text();
-                console.error(`Falha ao buscar a página ${currentPage} de mapas. Status: ${response.status}, Corpo: ${errorText}`);
-                throw new Error(`Falha ao buscar a lista de mapas na página ${currentPage}: ${response.statusText}`);
-            }
-
-            const data: ScoreboardMapsResponse = await response.json();
-            
-            if (currentPage === 1) {
-                const totalMatches = data.result.total;
-                const pageSize = data.result.page_size;
-                totalPages = Math.ceil(totalMatches / pageSize);
-                console.log(`[LOG] Total de partidas encontrado: ${totalMatches}. Total de páginas a buscar: ${totalPages}.`);
-            }
-
-            const pageIds = data.result.maps.map(m => m.id);
-            allIds = allIds.concat(pageIds);
-            
-            currentPage++;
-            if(currentPage <= totalPages) await delay(200); 
-
-        } while (currentPage <= totalPages);
-
-        console.log(`[LOG] Busca de IDs concluída. Total de IDs encontrados: ${allIds.length}`);
-        return allIds;
-    } catch (error) {
-        console.error("Erro ao buscar todos os IDs de partida:", error);
-        throw error;
-    }
-}
-
-async function getLastImportedMatchIdForServer(serverName: string): Promise<number> {
-    console.log(`[LOG] Buscando último ID de partida processado para ${serverName} a partir do novo sistema.`);
-    const syncStatusRef = doc(db, 'serverSyncStatus', serverName);
-    try {
-        const docSnap = await getDoc(syncStatusRef);
-
-        if (docSnap.exists()) {
-            const lastId = docSnap.data().lastProcessedId || 0;
-            console.log(`[LOG] Último ID encontrado para ${serverName}: ${lastId}`);
-            return lastId;
-        } else {
-            console.log(`[LOG] Nenhum status de sincronização encontrado para ${serverName}. Retornando 0.`);
-            return 0;
-        }
-    } catch (error) {
-        console.error(`Erro ao buscar status de sincronização para ${serverName}:`, error);
-        // Fallback to 0 in case of error
-        return 0;
-    }
-}
-
-
 export async function getServerSyncStatus(): Promise<Record<string, { processed: number; total: number }>> {
-    console.log(`[LOG] Buscando status de sincronização para todos os servidores.`);
     const status: Record<string, { processed: number; total: number }> = {};
-    const fetchOptions = { headers: { 'Content-Type': 'application/json' } };
-
-    for (const server of serversConfig) {
+    const servers = await getServersConfig();
+    
+    for (const server of servers) {
         try {
-            const allMatchIds = await fetchAllMatchIds(server.apiUrl, fetchOptions);
-            const total = allMatchIds.length > 0 ? Math.max(...allMatchIds) : 0;
+            const syncStatusRef = doc(db, 'serverSyncStatus', server.name);
+            const docSnap = await getDoc(syncStatusRef);
+            let processed = 0;
+            if (docSnap.exists()) {
+                const data = docSnap.data();
+                processed = data.processedIds ? data.processedIds.length : 0;
+            }
             
-            const processed = await getLastImportedMatchIdForServer(server.name);
-
+            // Tenta pegar o total da API
+            let total = 0;
+            try {
+                const res = await fetch(`${server.apiUrl}/get_scoreboard_maps?page=1&limit=1`, { headers: { 'Content-Type': 'application/json' }});
+                if (res.ok) {
+                    const data = await res.json();
+                    total = data.result?.total || 0;
+                }
+            } catch(e) {}
+            
             status[server.name] = { processed, total };
-            console.log(`[LOG] Status para ${server.name}: ${processed}/${total}`);
-
         } catch (error) {
-            console.error(`Erro ao obter status para ${server.name}:`, error);
             status[server.name] = { processed: 0, total: 0 };
         }
     }
-    console.log('[LOG] Status de sincronização por servidor:', status);
     return status;
 }
 
+export async function importServerDataByDate(serverName: string, apiUrl: string, months = 3) {
+    console.log(`[LOG] Sincronização Inteligente (últimos ${months} meses) iniciada para ${serverName}`);
+    try {
+        const syncStatusRef = doc(db, 'serverSyncStatus', serverName);
+        const docSnap = await getDoc(syncStatusRef);
+        let processedIds: number[] = [];
+        if (docSnap.exists() && docSnap.data().processedIds) {
+            processedIds = docSnap.data().processedIds;
+        }
+
+        const fetchOptions = { headers: { 'Content-Type': 'application/json' } };
+        let currentPage = 1;
+        let matchesProcessed = 0;
+        let keepFetching = true;
+        
+        const cutoffDate = new Date();
+        cutoffDate.setMonth(cutoffDate.getMonth() - months);
+        console.log(`[LOG] Data limite: ${cutoffDate.toISOString()}`);
+
+        while (keepFetching) {
+            const url = `${apiUrl}/get_scoreboard_maps?page=${currentPage}&limit=50`;
+            console.log(`[LOG] Buscando página ${currentPage}...`);
+            const response = await fetch(url, fetchOptions);
+
+            if (!response.ok) {
+                console.error(`Falha ao buscar página ${currentPage}. Status: ${response.status}`);
+                break;
+            }
+
+            const data = await response.json();
+            const maps = data.result?.maps || [];
+            
+            if (maps.length === 0) {
+                console.log("[LOG] Nenhuma partida retornada na página. Parando busca.");
+                break;
+            }
+
+            let allOlder = true;
+
+            for (const m of maps) {
+                const matchId = m.id;
+                const matchEndDate = new Date(m.end);
+                
+                if (matchEndDate >= cutoffDate) {
+                    allOlder = false;
+                    
+                    const matchDurationMins = (matchEndDate.getTime() - new Date(m.start).getTime()) / 60000;
+                    
+                    if (!processedIds.includes(matchId)) {
+                        if (matchDurationMins < 15) {
+                            console.log(`[LOG] Partida ${matchId} ignorada por ser inválida/muito curta (${Math.round(matchDurationMins)} min).`);
+                            continue;
+                        }
+
+                        try {
+                            await delay(250);
+                            const mapUrl = `${apiUrl}/get_map_scoreboard?map_id=${matchId}`;
+                            const mapResponse = await fetch(mapUrl, fetchOptions);
+                            if (mapResponse.ok) {
+                                const mapData = await mapResponse.json();
+                                const matchInfo = mapData.result;
+                                if (matchInfo && matchInfo.player_stats) {
+                                    
+                                    const totalPlayers = matchInfo.player_stats.length;
+                                    const totalKills = matchInfo.player_stats.reduce((acc: number, p: any) => acc + (p.kills || 0), 0);
+
+                                    if (totalPlayers < 40 || totalKills < 50) {
+                                        console.log(`[LOG] Partida ID ${matchId} de ${serverName} descartada por seeding (Jogadores: ${totalPlayers}, Kills: ${totalKills}).`);
+                                        processedIds.push(matchId);
+                                        continue;
+                                    }
+
+                                    // Function to clean __ fields
+                                    const cleanFirestoreData = (data: any): any => {
+                                        if (data === null || typeof data !== 'object') return data;
+                                        if (Array.isArray(data)) return data.map(cleanFirestoreData);
+                                        const cleaned: any = {};
+                                        for (const [key, value] of Object.entries(data)) {
+                                            if (key.startsWith('__') && key.endsWith('__')) continue;
+                                            cleaned[key] = cleanFirestoreData(value);
+                                        }
+                                        return cleaned;
+                                    };
+
+                                    const cleanedMatchInfo = cleanFirestoreData(matchInfo);
+
+                                    const matchDocRef = doc(db, 'rawMatchResults', matchInfo.id.toString());
+                                    await setDoc(matchDocRef, { ...cleanedMatchInfo, numeric_id: matchInfo.id, server: serverName });
+                                    
+                                    processedIds.push(matchId);
+                                    matchesProcessed++;
+                                    console.log(`[LOG] Partida ${matchId} (Data: ${matchEndDate.toISOString()}) importada com sucesso.`);
+                                } else {
+                                    console.log(`[LOG] Partida ${matchId} ignorada por falta de jogadores válidos.`);
+                                }
+                            }
+                        } catch (err: any) {
+                            console.error(`[ERRO] Falha ao processar a partida ${matchId}:`, err.message);
+                            // We don't push to processedIds so we can try again later
+                        }
+                    }
+                }
+            }
+
+            if (allOlder) {
+                console.log("[LOG] Todas as partidas da página são mais antigas que o limite. Parando busca.");
+                keepFetching = false;
+            } else {
+                currentPage++;
+                await delay(200);
+            }
+        }
+
+        // Save updated processed IDs
+        await setDoc(syncStatusRef, { 
+            processedIds,
+            serverName,
+            lastChecked: serverTimestamp()
+        }, { merge: true });
+
+        console.log(`[LOG FINAL] Sincronização concluída para ${serverName}. Novas importadas: ${matchesProcessed}.`);
+        return { success: true, matchesProcessed };
+    } catch(e: any) {
+        console.error('[ERRO GERAL]', e);
+        return { success: false, error: e.message };
+    }
+}
+
+// ---------------------------------------------------------
+// 3. ESTATÍSTICAS GLOBAIS E PUBLICAÇÃO
+// ---------------------------------------------------------
 export async function getPlayerCount(): Promise<number> {
     try {
         const aggregatesRef = collection(db, 'playerAggregates');
@@ -148,311 +221,6 @@ export async function getPlayerCount(): Promise<number> {
         console.error("Error getting player count:", error);
         return 0;
     }
-}
-
-
-export async function importServerData(
-  serverName: string,
-  apiUrl: string
-): Promise<{ success: boolean; matchesProcessed?: number; totalFound?: number; error?: string }> {
-  console.log(`[LOG INICIAL] Função importServerData iniciada para o servidor: ${serverName}`);
-  
-  try {
-    const fetchOptions = {
-        headers: {
-            'Content-Type': 'application/json',
-        }
-    };
-    
-    const lastImportedId = await getLastImportedMatchIdForServer(serverName);
-    console.log(`[LOG] Último ID de partida processado para '${serverName}': ${lastImportedId}`);
-
-    const allMatchIds = await fetchAllMatchIds(apiUrl, fetchOptions);
-    const totalMatchesApi = allMatchIds.length;
-    
-    const matchIdsToImport = allMatchIds.filter(id => id > lastImportedId).sort((a, b) => a - b);
-    console.log(`[LOG] Total de partidas na API: ${totalMatchesApi}. Novas partidas a importar: ${matchIdsToImport.length}`);
-
-    if (matchIdsToImport.length === 0) {
-      console.log("[LOG] Nenhuma partida nova para importar.");
-      return { success: true, matchesProcessed: 0, totalFound: totalMatchesApi };
-    }
-
-    let matchesProcessed = 0;
-    let highestSuccessfullyProcessedId = lastImportedId;
-    const loopLimit = matchIdsToImport.length;
-    console.log(`[LOG] Iniciando loop de importação para ${loopLimit} partidas.`);
-
-    for (let i = 0; i < loopLimit; i++) {
-      const matchId = matchIdsToImport[i];
-      try {
-        await delay(200); 
-        
-        const mapUrl = `${apiUrl}/get_map_scoreboard?map_id=${matchId}`;
-        console.log(`[LOG] Processando partida ${i + 1} de ${loopLimit} (ID: ${matchId}).`);
-
-        const mapResponse = await fetch(mapUrl, fetchOptions);
-
-        if (!mapResponse.ok) {
-          const errorText = await mapResponse.text();
-          console.warn(`Falha ao buscar partida ID ${matchId}. Status: ${mapResponse.status}. Corpo: ${errorText}. Pulando.`);
-          continue;
-        }
-
-        const mapData: MapScoreboardResponse = await mapResponse.json();
-        const matchInfo = mapData.result;
-
-        if (!matchInfo || !matchInfo.player_stats) {
-            console.warn(`Dados da partida ID ${matchId} estão incompletos ou nulos. Pulando.`);
-            continue;
-        }
-
-        const matchDocRef = doc(db, 'rawMatchResults', matchInfo.id.toString());
-        await setDoc(matchDocRef, { ...matchInfo, numeric_id: matchInfo.id, server: serverName });
-
-        matchesProcessed++;
-        highestSuccessfullyProcessedId = matchId;
-
-      } catch (innerError: any) {
-        console.error(`Erro processando partida ID ${matchId}:`, innerError.message);
-      }
-    }
-
-    if (highestSuccessfullyProcessedId > lastImportedId) {
-        const syncStatusRef = doc(db, 'serverSyncStatus', serverName);
-        await setDoc(syncStatusRef, { 
-            lastProcessedId: highestSuccessfullyProcessedId,
-            serverName: serverName,
-            lastChecked: serverTimestamp()
-        }, { merge: true });
-        console.log(`[LOG] Status de sincronização para ${serverName} atualizado para a partida ID: ${highestSuccessfullyProcessedId}`);
-    }
-
-    console.log(`[LOG FINAL] Importação concluída. ${matchesProcessed} partidas processadas.`);
-    return { success: true, matchesProcessed, totalFound: totalMatchesApi };
-  } catch (error: any) {
-    console.error('[ERRO GERAL] Erro na importação de dados do servidor:', error);
-    return { success: false, error: error.message };
-  }
-}
-
-export async function importSpecificMatches(
-  serverName: string,
-  apiUrl: string,
-  matchIdsString: string
-): Promise<{ success: boolean; matchesProcessed?: number; totalToProcess?: number; error?: string }> {
-  console.log(`[LOG INICIAL] Importação manual iniciada para o servidor: ${serverName}`);
-
-  if (!serverName || !apiUrl || !matchIdsString) {
-    return { success: false, error: "Servidor, URL da API e IDs das partidas são obrigatórios." };
-  }
-
-  // Parse a string de IDs (separados por vírgula, espaço ou nova linha) para um array de números
-  const matchIdsToImport = matchIdsString
-    .split(/[\s,]+/)
-    .map(id => parseInt(id.trim(), 10))
-    .filter(id => !isNaN(id) && id > 0);
-
-  if (matchIdsToImport.length === 0) {
-    return { success: false, error: "Nenhum ID de partida válido encontrado." };
-  }
-
-  console.log(`[LOG] Total de partidas para importar manualmente: ${matchIdsToImport.length}`);
-  
-  try {
-    const fetchOptions = { headers: { 'Content-Type': 'application/json' } };
-    let matchesProcessed = 0;
-
-    for (const matchId of matchIdsToImport) {
-      try {
-        await delay(250); // Delay para não sobrecarregar a API
-        
-        const mapUrl = `${apiUrl}/get_map_scoreboard?map_id=${matchId}`;
-        console.log(`[LOG MANUAL] Processando partida ID: ${matchId}`);
-        
-        const mapResponse = await fetch(mapUrl, fetchOptions);
-
-        if (!mapResponse.ok) {
-          const errorText = await mapResponse.text();
-          console.warn(`[LOG MANUAL] Falha ao buscar partida ID ${matchId}. Status: ${mapResponse.status}. Corpo: ${errorText}. Pulando.`);
-          continue;
-        }
-
-        const mapData: MapScoreboardResponse = await mapResponse.json();
-        const matchInfo = mapData.result;
-
-        if (!matchInfo || !matchInfo.player_stats) {
-            console.warn(`[LOG MANUAL] Dados da partida ID ${matchId} estão incompletos. Pulando.`);
-            continue;
-        }
-
-        const batch = writeBatch(db);
-        const matchDocRef = doc(db, 'rawMatchResults', matchInfo.id.toString());
-        batch.set(matchDocRef, { ...matchInfo, numeric_id: matchInfo.id, server: serverName });
-
-        await batch.commit();
-        matchesProcessed++;
-      } catch (innerError: any) {
-        console.error(`[LOG MANUAL] Erro processando partida ID ${matchId}:`, innerError.message);
-      }
-    }
-
-    console.log(`[LOG FINAL] Importação manual concluída. ${matchesProcessed} de ${matchIdsToImport.length} partidas processadas.`);
-    return { success: true, matchesProcessed, totalToProcess: matchIdsToImport.length };
-
-  } catch (error: any) {
-    console.error('[ERRO GERAL] Erro na importação manual:', error);
-    return { success: false, error: error.message };
-  }
-}
-
-export async function importMatchRange(
-  serverName: string,
-  apiUrl: string,
-  startId: number,
-  endId: number
-): Promise<{ success: boolean; matchesProcessed?: number; totalToProcess?: number; error?: string }> {
-  console.log(`[LOG INICIAL] Importação por intervalo iniciada para o servidor: ${serverName}, de ${startId} a ${endId}`);
-
-  if (!serverName || !apiUrl || !startId || !endId || startId <= 0 || endId < startId) {
-    return { success: false, error: "Parâmetros inválidos. Verifique servidor, IDs e intervalo." };
-  }
-
-  const matchIdsToImport = Array.from({ length: endId - startId + 1 }, (_, i) => startId + i);
-  const totalToProcess = matchIdsToImport.length;
-  console.log(`[LOG] Total de partidas para importar no intervalo: ${totalToProcess}`);
-  
-  try {
-    const fetchOptions = { headers: { 'Content-Type': 'application/json' } };
-    let matchesProcessed = 0;
-    const lastImportedId = await getLastImportedMatchIdForServer(serverName);
-    let highestSuccessfullyProcessedId = lastImportedId;
-
-    for (const matchId of matchIdsToImport) {
-      try {
-        await delay(250); // Delay to avoid overwhelming the API
-        
-        const mapUrl = `${apiUrl}/get_map_scoreboard?map_id=${matchId}`;
-        console.log(`[LOG INTERVALO] Processando partida ID: ${matchId}`);
-        
-        const mapResponse = await fetch(mapUrl, fetchOptions);
-
-        if (!mapResponse.ok) {
-          const errorText = await mapResponse.text();
-          console.warn(`[LOG INTERVALO] Falha ao buscar partida ID ${matchId}. Status: ${mapResponse.status}. Corpo: ${errorText}. Pulando.`);
-          continue;
-        }
-
-        const mapData: MapScoreboardResponse = await mapResponse.json();
-        const matchInfo = mapData.result;
-
-        if (!matchInfo || !matchInfo.player_stats) {
-            console.warn(`[LOG INTERVALO] Dados da partida ID ${matchId} estão incompletos. Pulando.`);
-            continue;
-        }
-
-        const matchDocRef = doc(db, 'rawMatchResults', matchInfo.id.toString());
-        await setDoc(matchDocRef, { ...matchInfo, numeric_id: matchInfo.id, server: serverName });
-
-        matchesProcessed++;
-        highestSuccessfullyProcessedId = Math.max(highestSuccessfullyProcessedId, matchId);
-      } catch (innerError: any) {
-        console.error(`[LOG INTERVALO] Erro processando partida ID ${matchId}:`, innerError.message);
-      }
-    }
-
-    if (highestSuccessfullyProcessedId > lastImportedId) {
-        const syncStatusRef = doc(db, 'serverSyncStatus', serverName);
-        await setDoc(syncStatusRef, { 
-            lastProcessedId: highestSuccessfullyProcessedId,
-            serverName: serverName,
-            lastChecked: serverTimestamp()
-        }, { merge: true });
-        console.log(`[LOG INTERVALO] Status de sincronização para ${serverName} atualizado para a partida ID: ${highestSuccessfullyProcessedId}`);
-    }
-
-    console.log(`[LOG FINAL] Importação por intervalo concluída. ${matchesProcessed} de ${totalToProcess} partidas processadas.`);
-    return { success: true, matchesProcessed, totalToProcess };
-
-  } catch (error: any) {
-    console.error('[ERRO GERAL] Erro na importação por intervalo:', error);
-    return { success: false, error: error.message };
-  }
-}
-
-export async function importHistoricalMatchRange(
-  serverName: string,
-  apiUrl: string,
-  startId: number,
-  endId: number
-): Promise<{ success: boolean; matchesProcessed?: number; totalToProcess?: number; error?: string }> {
-  console.log(`[LOG INICIAL] Importação HISTÓRICA por intervalo iniciada para o servidor: ${serverName}, de ${startId} a ${endId}`);
-
-  if (!serverName || !apiUrl || !startId || !endId || startId <= 0 || endId < startId) {
-    return { success: false, error: "Parâmetros inválidos. Verifique servidor, IDs e intervalo." };
-  }
-
-  const matchIdsToImport = Array.from({ length: endId - startId + 1 }, (_, i) => startId + i);
-  const totalToProcess = matchIdsToImport.length;
-  console.log(`[LOG] Total de partidas para importar no intervalo histórico: ${totalToProcess}`);
-  
-  try {
-    const fetchOptions = { headers: { 'Content-Type': 'application/json' } };
-    let matchesProcessed = 0;
-    const lastImportedId = await getLastImportedMatchIdForServer(serverName);
-    let highestSuccessfullyProcessedId = lastImportedId;
-
-    for (const matchId of matchIdsToImport) {
-      try {
-        await delay(250); // Delay para não sobrecarregar a API
-        
-        const mapUrl = `${apiUrl}/get_map_scoreboard?map_id=${matchId}`;
-        console.log(`[LOG HISTÓRICO] Processando partida ID: ${matchId}`);
-        
-        const mapResponse = await fetch(mapUrl, fetchOptions);
-
-        if (!mapResponse.ok) {
-          const errorText = await mapResponse.text();
-          console.warn(`[LOG HISTÓRICO] Falha ao buscar partida ID ${matchId}. Status: ${mapResponse.status}. Corpo: ${errorText}. Pulando.`);
-          continue;
-        }
-
-        const mapData: MapScoreboardResponse = await mapResponse.json();
-        const matchInfo = mapData.result;
-
-        if (!matchInfo || !matchInfo.player_stats) {
-            console.warn(`[LOG HISTÓRICO] Dados da partida ID ${matchId} estão incompletos. Pulando.`);
-            continue;
-        }
-
-        const matchDocRef = doc(db, 'rawMatchResults', matchInfo.id.toString());
-        await setDoc(matchDocRef, { ...matchInfo, numeric_id: matchInfo.id, server: serverName, historical: true });
-
-        matchesProcessed++;
-        highestSuccessfullyProcessedId = Math.max(highestSuccessfullyProcessedId, matchId);
-      } catch (innerError: any) {
-        console.error(`[LOG HISTÓRICO] Erro processando partida ID ${matchId}:`, innerError.message);
-      }
-    }
-    
-    if (highestSuccessfullyProcessedId > lastImportedId) {
-        const syncStatusRef = doc(db, 'serverSyncStatus', serverName);
-        await setDoc(syncStatusRef, { 
-            lastProcessedId: highestSuccessfullyProcessedId,
-            serverName: serverName,
-            lastChecked: serverTimestamp()
-        }, { merge: true });
-        console.log(`[LOG HISTÓRICO] Status de sincronização para ${serverName} atualizado para a partida ID: ${highestSuccessfullyProcessedId}`);
-    }
-
-
-    console.log(`[LOG FINAL] Importação histórica por intervalo concluída. ${matchesProcessed} de ${totalToProcess} partidas processadas.`);
-    return { success: true, matchesProcessed, totalToProcess };
-
-  } catch (error: any) {
-    console.error('[ERRO GERAL] Erro na importação histórica por intervalo:', error);
-    return { success: false, error: error.message };
-  }
 }
 
 export async function updateGlobalStats(): Promise<{ success: boolean; error?: string; maxStats?: any }> {
@@ -483,17 +251,13 @@ export async function updateGlobalStats(): Promise<{ success: boolean; error?: s
       } else {
         maxStats[`max${stat.charAt(0).toUpperCase() + stat.slice(1)}`] = 0;
       }
-      console.log(`[LOG] Valor máximo para ${stat}: ${maxStats[`max${stat.charAt(0).toUpperCase() + stat.slice(1)}`]}`);
     }
 
     const globalStatsRef = doc(db, 'globalStats', 'summary');
     await setDoc(globalStatsRef, maxStats, { merge: true });
 
-    console.log('[LOG] Estatísticas globais atualizadas com sucesso:', maxStats);
     return { success: true, maxStats };
-
   } catch (error: any) {
-    console.error('[ERRO GERAL] Falha ao atualizar estatísticas globais:', error);
     return { success: false, error: error.message };
   }
 }
@@ -503,7 +267,6 @@ export async function runMatchAnalysisAction(matchJson: string, factionFilter: '
     const report = await analyzeMatch({ matchJson, factionFilter });
     return { success: true, report };
   } catch (error: any) {
-    console.error('Error in match analysis action:', error);
     return { success: false, error: error.message || 'Falha ao analisar a partida.' };
   }
 }
@@ -532,7 +295,6 @@ export async function publishToCasernaAction(title: string, content: string): Pr
     await addDoc(collection(db, 'articles'), articleData);
     return { success: true };
   } catch (error: any) {
-    console.error('Error publishing to Caserna:', error);
     return { success: false, error: error.message || 'Falha ao publicar na Caserna.' };
   }
 }
