@@ -3,10 +3,12 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { Slider } from '@/components/ui/slider';
 import { Play, Pause, FastForward, SkipBack, ZoomIn, ZoomOut, Maximize, User, Shield, Skull, Crosshair, Truck, Activity, Trophy, Flag, Flame, Target, Rocket, Award, Crown, Wrench, Clapperboard, Sparkles, Video, ChevronRight, X, Swords, Zap, Filter, Search } from 'lucide-react';
 import Image from 'next/image';
 import { ROLE_MAPPING } from '@/lib/roles';
+import { getMapNameByImage } from '../_data/matches';
 import { TransformWrapper, TransformComponent, type ReactZoomPanPinchRef } from "react-zoom-pan-pinch";
 
 interface Position {
@@ -217,6 +219,25 @@ export function MatchReplay({
     setSelectedPlayerDossier(null);
   }, [matchData]);
 
+  // Normalize match telemetry (recover timestamps if a player has time: 0 but valid match_elapsed)
+  const normalizedMatchData = useMemo(() => {
+    if (!matchData?.players_list) return matchData;
+    return {
+      ...matchData,
+      players_list: matchData.players_list.map(p => {
+        const needsFix = p.position.length > 0 && p.position.every(pos => pos.time === 0) && (p.position[0] as any).match_elapsed !== undefined;
+        if (!needsFix) return p;
+        return {
+          ...p,
+          position: p.position.map(pos => ({
+            ...pos,
+            time: Math.round((pos as any).match_elapsed || 0)
+          }))
+        };
+      })
+    };
+  }, [matchData]);
+
   // Coordinate mapping (assume map bounds are -100k to +100k)
   const mapCoordToPercent = (coord: number) => {
     return ((coord + 100000) / 200000) * 100;
@@ -224,17 +245,17 @@ export function MatchReplay({
 
   const maxTime = useMemo(() => {
     let max = 0;
-    matchData.players_list.forEach(p => {
+    normalizedMatchData.players_list.forEach(p => {
       p.position.forEach(pos => {
         if (pos.time > max) max = pos.time;
       });
     });
     return max;
-  }, [matchData]);
+  }, [normalizedMatchData]);
 
   // Player active positions (with continuous LERP interpolation)
   const activePositions = useMemo(() => {
-    return matchData.players_list.map(player => {
+    return normalizedMatchData.players_list.map(player => {
       let currentPos: Position | null = null;
       const trail: Position[] = [];
       const trailDuration = 60; // 60 seconds of history for trail
@@ -303,26 +324,27 @@ export function MatchReplay({
        if (teamFilter !== 'all' && p.team !== teamFilter) return false;
        return p.currentPos && p.currentPos.time > currentTime - 300;
     }); // Disappear if no update for 5 mins
-  }, [matchData, currentTime, teamFilter, showTrails, playerStats, smoothMovement]);
+  }, [normalizedMatchData, currentTime, teamFilter, showTrails, playerStats, smoothMovement]);
 
   // Compute Recent Deaths (last 60 seconds)
   const recentDeaths = useMemo(() => {
-    if (!showDeaths) return [];
+    if (!showDeaths || currentTime <= 0) return [];
     const deaths: { id: string, name: string, team: string, time: number, x: number, y: number }[] = [];
     
-    matchData.players_list.forEach(p => {
+    normalizedMatchData.players_list.forEach(p => {
       for (let i = 1; i < p.position.length; i++) {
          const curr = p.position[i];
          const prev = p.position[i-1];
          
          if (curr.time > currentTime) break; // Future
+         if (curr.time <= 0) continue; // Skip warmup or time 0
          
          // If this record falls within the last 60 seconds
          if (curr.time >= currentTime - 60 && curr.time <= currentTime) {
             // If transitioned to dead (0,0) from a valid position
             if (curr.x === 0 && curr.y === 0 && (prev.x !== 0 || prev.y !== 0)) {
                deaths.push({
-                 id: `${p.id}-${curr.time}`,
+                 id: `${p.id}-${curr.time}-${i}`,
                  name: p.name,
                  team: p.team,
                  time: curr.time,
@@ -334,24 +356,25 @@ export function MatchReplay({
       }
     });
     return deaths;
-  }, [matchData, currentTime, showDeaths]);
+  }, [normalizedMatchData, currentTime, showDeaths]);
 
   // Compute All Historical Deaths (up to current time, for heatmap)
   const historicalDeaths = useMemo(() => {
-    if (heatmapType !== 'deaths') return [];
+    if (heatmapType !== 'deaths' || currentTime <= 0) return [];
     const deaths: { team: string, time: number, x: number, y: number }[] = [];
-    matchData.players_list.forEach(p => {
+    normalizedMatchData.players_list.forEach(p => {
       for (let i = 1; i < p.position.length; i++) {
          const curr = p.position[i];
          const prev = p.position[i-1];
          if (curr.time > currentTime) break; // Future
+         if (curr.time <= 0) continue;
          if (curr.x === 0 && curr.y === 0 && (prev.x !== 0 || prev.y !== 0)) {
              deaths.push({ team: p.team, time: curr.time, x: prev.x, y: prev.y });
          }
       }
     });
     return deaths;
-  }, [matchData, currentTime, heatmapType]);
+  }, [normalizedMatchData, currentTime, heatmapType]);
 
   // Compute active squads and their officers for Cohesion
   const activeSquads = useMemo(() => {
@@ -1549,9 +1572,14 @@ export function MatchReplay({
       <Card className="bg-card shadow-2xl border-accent/20">
         <CardHeader className="border-b bg-muted/20 flex flex-row items-center justify-between">
           <div>
-            <CardTitle className="text-2xl font-headline flex items-center gap-2">
-              Replay Interativo: {matchTitle || matchData.map}
-            </CardTitle>
+            <div className="flex flex-wrap items-center gap-2 mb-1">
+              <CardTitle className="text-2xl font-headline flex items-center gap-2">
+                Replay Interativo: {matchTitle || matchData.map}
+              </CardTitle>
+              <Badge variant="outline" className="text-xs font-mono border-primary/40 text-primary bg-primary/5">
+                🗺️ {getMapNameByImage(mapImageUrl)}
+              </Badge>
+            </div>
             <CardDescription>Análise tática de movimentação da partida</CardDescription>
           </div>
           
@@ -1696,6 +1724,12 @@ export function MatchReplay({
                     <Button variant="secondary" size="icon" onClick={() => fitMapToContainer(600)} title="Ajustar mapa à tela">
                       <Maximize className="w-4 h-4" />
                     </Button>
+                  </div>
+
+                  {/* Map Indicator Badge */}
+                  <div className="absolute bottom-4 right-4 z-40 bg-stone-950/85 border border-white/10 px-2.5 py-1 rounded-md text-[11px] font-mono text-stone-300 backdrop-blur pointer-events-none flex items-center gap-1.5 shadow-lg">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                    <span>{getMapNameByImage(mapImageUrl)}</span>
                   </div>
                   
                   {/* Quick Access Sidebars */}

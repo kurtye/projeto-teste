@@ -2,6 +2,7 @@ import React from 'react';
 import { MatchManager } from './_components/MatchManager';
 import matchData1567 from '@/app/jsons/positions.json';
 import matchData1600 from '@/app/jsons/positions2.json';
+import matchData1634 from '@/app/jsons/positions3.json';
 
 async function fetchMatchScoreboard(mapId: string) {
   try {
@@ -24,10 +25,15 @@ export default async function MatchAnalyzerPage({
   searchParams?: Promise<{ match?: string }>;
 }) {
   const resolvedParams = searchParams ? await searchParams : {};
-  const targetMatchId = resolvedParams.match === '1567' ? '1567' : '1600';
+  const targetMatchId = resolvedParams.match || '1634';
 
   // Server-side initial data pre-load
-  const initialTelemetry = targetMatchId === '1567' ? matchData1567 : matchData1600;
+  let initialTelemetry = matchData1634;
+  if (targetMatchId === '1567') {
+    initialTelemetry = matchData1567;
+  } else if (targetMatchId === '1600') {
+    initialTelemetry = matchData1600;
+  }
   const initialScoreboard = await fetchMatchScoreboard(targetMatchId);
 
   return (

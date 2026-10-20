@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { MatchConfig, MATCH_PRESETS } from '../_data/matches';
+import { MatchConfig, MATCH_PRESETS, AVAILABLE_MAPS, detectMapImage, getMapNameByImage } from '../_data/matches';
 import { MatchReplay } from './MatchReplay';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -42,7 +42,7 @@ interface MatchManagerProps {
 }
 
 export function MatchManager({
-  initialMatchId = '1600',
+  initialMatchId = '1634',
   initialTelemetry,
   initialScoreboard,
 }: MatchManagerProps) {
@@ -160,6 +160,9 @@ export function MatchManager({
         if (!customTitle && parsed.map) {
           setCustomTitle(parsed.map);
         }
+        if (parsed.map) {
+          setSelectedMapImage(detectMapImage(parsed.map));
+        }
       } catch (err: any) {
         setFileParsingError(err.message || 'Erro ao processar JSON');
         setParsedUploadedData(null);
@@ -208,7 +211,7 @@ export function MatchManager({
         subtitle: `${new Date().toLocaleDateString('pt-BR')} • Customizada`,
         date: new Date().toLocaleDateString('pt-BR'),
         duration: 'Replay Carregado',
-        mapName: parsedUploadedData.map || 'Utah Beach',
+        mapName: parsedUploadedData.map || getMapNameByImage(selectedMapImage),
         mapImage: selectedMapImage,
         telemetryUrl: '',
         gameUrl: `https://hrb-stats.hlladmin.com/games/${gameId}`,
@@ -232,6 +235,19 @@ export function MatchManager({
     } finally {
       setModalSubmitting(false);
     }
+  };
+
+  const handleMapChangeForActiveMatch = (newMapImage: string) => {
+    setMatches(prev => prev.map(m => {
+      if (m.id === selectedMatchId) {
+        return {
+          ...m,
+          mapImage: newMapImage,
+          mapName: getMapNameByImage(newMapImage),
+        };
+      }
+      return m;
+    }));
   };
 
   const currentTelemetry = telemetryCache[selectedMatchId];
@@ -264,7 +280,7 @@ export function MatchManager({
                   <span>{m.shortTitle}</span>
                   {m.isNew && (
                     <Badge variant={isSelected ? "secondary" : "default"} className="text-[9px] px-1.5 py-0 h-4">
-                      {m.id === '1600' ? 'NOVA' : 'RECÉM ADICIONADA'}
+                      {m.id === '1634' ? 'NOVA' : 'RECÉM ADICIONADA'}
                     </Badge>
                   )}
                 </button>
@@ -273,8 +289,29 @@ export function MatchManager({
           </div>
         </div>
 
-        {/* Action Buttons: HRB link & Load Custom */}
-        <div className="flex items-center gap-2 shrink-0">
+        {/* Action Buttons: Map Switcher, HRB link & Load Custom */}
+        <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+          {/* Live Map Switcher */}
+          <div className="flex items-center gap-1.5 bg-muted/40 border border-border/80 px-2.5 py-1 rounded-lg">
+            <MapPin className="w-3.5 h-3.5 text-primary shrink-0" />
+            <span className="text-xs font-semibold text-muted-foreground hidden sm:inline">Mapa:</span>
+            <Select
+              value={activeMatch.mapImage || '/maps/utah.jpg'}
+              onValueChange={handleMapChangeForActiveMatch}
+            >
+              <SelectTrigger className="h-7 text-xs bg-background/90 min-w-[130px] border-none shadow-none font-medium">
+                <SelectValue placeholder="Selecione o mapa" />
+              </SelectTrigger>
+              <SelectContent>
+                {AVAILABLE_MAPS.map((map) => (
+                  <SelectItem key={map.id} value={map.image} className="text-xs">
+                    {map.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
           {activeMatch.gameUrl && (
             <a
               href={activeMatch.gameUrl}
@@ -423,7 +460,11 @@ export function MatchManager({
                   <SelectValue placeholder="Selecione o mapa" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="/maps/utah.jpg">Utah Beach (Padrão)</SelectItem>
+                  {AVAILABLE_MAPS.map((map) => (
+                    <SelectItem key={map.id} value={map.image}>
+                      {map.name}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
