@@ -28,7 +28,7 @@ export default async function MatchAnalyzerPage({
   const targetMatchId = resolvedParams.match || '1634';
 
   // Server-side initial data pre-load
-  let initialTelemetry = matchData1634;
+  let initialTelemetry: any = matchData1634;
   if (targetMatchId === '1567') {
     initialTelemetry = matchData1567;
   } else if (targetMatchId === '1600') {
