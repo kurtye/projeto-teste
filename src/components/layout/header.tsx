@@ -7,7 +7,7 @@ import { Activity } from 'lucide-react';
 
 export function Header() {
   return (
-    <header className="sticky top-0 z-40 w-full border-b bg-background/90 backdrop-blur-md">
+    <header className="sticky top-0 z-[60] w-full border-b bg-background/90 backdrop-blur-md">
       <div className="container flex h-14 max-w-[1600px] items-center justify-between px-4">
         <Link href="/match-analyzer" className="flex items-center space-x-3 group">
           <Image
